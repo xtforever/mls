@@ -5,6 +5,9 @@ extern int linecnt;
 #define YYCP() strncpy( yylval.str, yytext, sizeof(yylval.str)) 
 %}
 
+%option nounput
+%option noinput
+
 %%
 [#].*$			TRACE(1,"Comment");
 "="			return EQUAL;

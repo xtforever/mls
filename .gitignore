@@ -51,3 +51,9 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# lex/yacc,executeables
+ini_lex.lex.h
+ini_parse.tab.c
+ini_parse.tab.h
+ini_read_test

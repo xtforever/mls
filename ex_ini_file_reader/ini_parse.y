@@ -3,10 +3,13 @@
 #include "mls.h"
 #include "ini_read2.h"
 
+int yylex(void);
+
 char *cur_text ="";
 int linecnt =0;
 int string_width =0;
 int num_strings=0;
+
 
 void yyerror(const char *str)
 {
