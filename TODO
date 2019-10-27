@@ -1,4 +1,4 @@
 replace v_kset with m_stringlist_add
 replace v_kget with m_stringlist_get
 
-
+create m_stringlist_empty( int string_list, int position )
