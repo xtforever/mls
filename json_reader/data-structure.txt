@@ -1,0 +1,31 @@
+
+    "o2": [ "x", { "num": 5, "cat": 6 }, "y" ]
+
+
+"o2"
+
+
+
+
+
+string :  int marray
+number :  string
+
+
+struct value {
+       mstr name;     
+       int  t;
+       int  d;
+}
+
+
+
+
+root = [ ( "", OBJ, 100 ) ]
+
+100  = [ ( "o2", ARR, 101 ) ]
+
+101  = [ ("",STR,"x"), ("",OBJ,102), ("",STR,"y") ]
+
+102  = [ ("num",NUM,5), ("cat",NUM,6) ]
+
