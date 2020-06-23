@@ -6,6 +6,7 @@
 #include <string.h>
 extern int linecnt;
 extern char* yylval;
+void json_stack( char *arg );
 
 #define YYCP() do { \
 yylval=strdup(yytext); \

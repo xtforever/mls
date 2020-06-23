@@ -3,6 +3,9 @@
 #include "mls.h"
 #include "json_read.h"
 
+    void json_new(char *name, int t);
+    void json_close(void);
+
  int yylex(void);    
  void yyerror(const char *str);
  
@@ -25,63 +28,53 @@
 
 %%
 START: ARRAY {
-    // printf("%s",$1);
   }
 | OBJECT {
-    // printf("%s",$1);
   }
 ;
 OBJECT: O_BEGIN O_END {
     $$ = "{}";
+    json_new("",5); json_close();
   }
-| O_BEGIN { json_object_push(); } MEMBERS O_END {
-    // $$ = (char *)malloc(sizeof(char)*(1+strlen($3)+1+1));
-    // sprintf($$,"{%s}",$3);
-    json_object_pop();
+| O_BEGIN {
+    TRACE(3,"{");
+    json_new("",5);
+  } MEMBERS O_END {
+      TRACE(3,"}");
+      json_close();
   }
 ;
 MEMBERS: PAIR {
     $$ = $1;
   }
 | PAIR COMMA MEMBERS {
-    // $$ = (char *)malloc(sizeof(char)*(strlen($1)+1+strlen($3)+1));
-    // sprintf($$,"%s,%s",$1,$3);
-  }
+ }
 ;
 PAIR: STRING COLON VALUE {
-    // $$ = (char *)malloc(sizeof(char)*(strlen($1)+1+strlen($3)+1));
-    // sprintf($$,"%s:%s",$1,$3);
-    json_pair($1,$3);
-    TRACE(2, "PAIR %s :%s", $1, $3 );
+    TRACE(3,"NAME:%s", $1);
+    json_name($1);
+    // json_pair($1,$3);
+    // json_pair2($1);
   }
 ;
 ARRAY: A_BEGIN A_END {
-    // $$ = (char *)malloc(sizeof(char)*(2+1));
-    // sprintf($$,"[]"); /* empty array */
   }
-| A_BEGIN  ELEMENTS A_END {
-    // $$ = (char *)malloc(sizeof(char)*(1+strlen($2)+1+1));
-    // sprintf($$,"[%s]",$2); /* $2 is array */
- }
+| A_BEGIN { TRACE(3,"["); json_new("",4); } ELEMENTS A_END  { TRACE(3,"]"); json_close(); } 
 ;
 ELEMENTS: VALUE {
-    $$ = $1; /* init array with $1 */
-    json_array($1);
+    $$ = $1; 
   }
 | VALUE COMMA ELEMENTS {
-    // $$ = (char *)malloc(sizeof(char)*(strlen($1)+1+strlen($3)+1));
-    // sprintf($$,"%s,%s",$1,$3); /* pre-append $1 */
-    json_array($1);
-    TRACE(2,"ARR + %s", $1);
+    
  }
 ;
-VALUE: STRING {$$=yylval;  }
-| NUMBER { $$=yylval; }
-| OBJECT { $$=$1; }
-| ARRAY { $$=$1; }
-| true { $$=yylval; }
-| false {$$=yylval; }
-| null {$$=yylval; }
+VALUE: STRING {$$=yylval;     json_new($$, 0);  }
+| NUMBER { $$=yylval;         json_new($$, 1);  }
+| OBJECT { $$=$1;                 }
+| ARRAY { $$=$1;                  }
+| true { $$=yylval;           json_new("true",  2);  }
+| false {$$=yylval;           json_new("false", 2);  }
+| null {$$=yylval;            json_new("null",  3);  }
 ;
 %%
 

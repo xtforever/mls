@@ -1,7 +1,7 @@
 #include "json_read.h"
 #include "mls.h"
 
-void v_dump(int opts);
+void v_dump_object(int opts);
 
 void v_dump_element( int var )
 {
@@ -30,7 +30,7 @@ void v_dump_object(int opts)
     printf("{\n");
     int *d,p;
     m_foreach(opts,p,d) {
-	v_dump_elemnt(*d);
+	v_dump_element(*d);
     }
     v_free(opts);
     printf("}\n");
@@ -42,13 +42,13 @@ int main(int argc, char **argv)
   FILE *fp;
 
 
-  trace_level=2;
+  trace_level=3;
   m_init();
   TRACE(1,"start");
   ASSERT( (fp=fopen( "settings.json", "r" )));
   int opts = json_init( fp );
   printf("\n***************");
-  v_dump_object(opts);
+  // v_dump_object(opts);
   fclose(fp);
 
   m_destruct();
