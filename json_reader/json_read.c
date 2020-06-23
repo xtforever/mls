@@ -35,6 +35,8 @@ int json_init( FILE *fp )
     yyin=fp;
     yyparse();
     m_free_strings( MEM, 0 );
+    m_free(STACK);
+    m_free_strings(ARG,0); /* root arg object */ 
     return LIST;
 }
 
