@@ -9,123 +9,88 @@
 #include "json_lex.lex.h"
 #include <limits.h>
 #include <stdlib.h>
-
 int yyparse(void);
 
 static int MEM = 0;
+static int stack2 = 0;
+static int current, root;
+
+inline static void* m_last(int d)
+{
+  return mls(d, m_len(d)-1);
+}
 
 void json_stack( char *arg )
 {
     m_put(MEM,&arg);
 }
 
-static int stack2 = 0;
-static struct json_st *current, *root;
-static struct json_st ROOT;
-
-static void d_elem( struct json_st *obj );
-static void d_obj(int l)
+inline static struct json_st *add_element(int list, int typ)
 {
-    printf("OBJ %d:", l );
-    int p; struct json_st *d;
-    m_foreach(l,p,d) {
-	d_elem(d); 
-    }
-    printf("\n");
+  struct json_st *e = m_add(list);
+  *e = (struct json_st){ .typ = typ }; 
+  return e;
 }
 
-static void d_elem( struct json_st *obj )
+void json_new(char *value, int typ)
 {
-    printf("e:");
-    if( obj->name )
-	printf("%s: ",CHARP(obj->name));
-
-    switch( obj->typ ) {
-    case JSON_OBJ:
-	printf("obj %d\n", obj->d);
-	d_obj(obj->d);
-	break;
-    case JSON_ARR:
-	printf("arr %d\n", obj->d);
-	d_obj(obj->d);
-	break;
-    case JSON_NUM:
-	printf("num %s", CHARP(obj->d));
-	break;
-    case JSON_STRING:
-	printf("str %s", CHARP(obj->d));
-	break;
-    case JSON_BOOL:
-	printf("bool %s", CHARP(obj->d));
-	break;
-    case JSON_NULL:
-	printf("null");
-	break;
-    }    
-}
-
-
-static void dump_stack(void)
-{
-    if(!root) return;
-    d_elem(root);
-    printf("\n---------------------\n\n");
-}
-
-void json_new(char *name, int t)
-{
-    TRACE(3,"NEW %s", name );
+    TRACE(3,"NEW %s", value );
     struct json_st *json;
     if( stack2 == 0 ) {
-	stack2=m_create(50,sizeof(struct json_st*));
-	root = &ROOT;
-	root->d = m_create(10,sizeof(struct json_st));
-	root->typ = t;
-	root->name = 0;
-	current=root;
-	m_put(stack2,&current);
-	return;
+	stack2=m_create(50,sizeof(int));
+    }
+    if(m_len(stack2)==0) {
+      root = current = m_create(10,sizeof(struct json_st));
+      m_put(stack2,&current);
+      return;
     }
 
-    TRACE(3,"append to list: %d", current->d );
-    json = m_add(current->d);
-    json->typ = t;
-    json->name = 0;
-    json->d = 0;
-    
-    switch( t ) {
-    case JSON_OBJ:
-    case JSON_ARR:
+    TRACE(3,"append to list: %d", current );
+    json = add_element(current,typ);
+    if((json->typ == JSON_OBJ) || (json->typ == JSON_ARR)) {
 	m_put(stack2, &current);
-	current = json;
-	current->d = m_create(10,sizeof(struct json_st));
+	current = json->d = m_create(10,sizeof(struct json_st));
 	return;
-    default:
-	json->d = s_printf(0,0,"%s", name );
     }
-    return;
+    json->d = s_printf(0,0,"%s", value );
 }
 
 void json_close(void)
 {
-    current = *(struct json_st**)m_pop(stack2);
-    TRACE(3,"current list: %d", current->d );
-    dump_stack();
+  if(!m_len(stack2)) {
+    fprintf(stderr,"json syntax error. closing braces without opening");
+    return;
+  }
+  current = *(int*)m_pop(stack2);
+  TRACE(3,"current list: %d", current );
 }
 
 void json_name(char*name)
 {
-    struct json_st *json =
-	mls(current->d, m_len(current->d)-1);
-    json->name = s_printf(0,0,"%s", name );
+  struct json_st *json = m_last(current);
+  json->name = s_printf(0,0,"%s", name );
 }
 
 int json_init( FILE *fp )
 {
     MEM = m_create(20,sizeof(char*));
     yyin=fp;
-    yyparse();
+    int ret = yyparse();
     m_free_strings( MEM, 0 );
+    m_free(stack2);
+    if(ret) { json_free(root); root=0; WARN("json read error"); } 
+    return root;
+}
 
-    return ROOT.d;
+void json_free(int opt)
+{
+  if(!root) return;
+  int p;  struct json_st *j; 
+  m_foreach( opt, p, j ) {
+    if( j->name ) m_free(j->name);
+    if( (j->typ == JSON_OBJ) || (j->typ == JSON_ARR) )
+      json_free(j->d);
+    else m_free(j->d);
+  }
+  m_free(opt);
 }
