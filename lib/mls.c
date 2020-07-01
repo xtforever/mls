@@ -33,6 +33,7 @@ static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jen
 // 2014-06-30 lst_resize, lst_create - fill allocated memory with  0
 // 2014-07-09 m_utf8getchar - benutzt jetzt neue UTF8CHAR
 // 2014-07-09 void m_qsort( int list, int(*compar)(const void *, const void *))
+// 2020-07-01 avoid memory leak: free(FR) in m_destruct() 
 // -----------------------------------------------------------------------------------------------------
 
 struct lst_owner_st {
@@ -416,6 +417,7 @@ int m_destruct()
     for( p=-1; lst_next( ML, &p, &d); )
       if(*d) { free(*d); TRACE(1,"m_free %d\n", p ); }
     free(ML); ML=0;
+    free(FR); FR=0;
     return 0;
 }
 

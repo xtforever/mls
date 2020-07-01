@@ -4,13 +4,12 @@
 #include "json_parse.tab.h"
 #include "json_read.h"
 #include <string.h>
-extern int linecnt;
+extern int yylinecnt;
 extern char* yylval;
-void json_stack( char *arg );
 
 #define YYCP() do { \
-yylval=strdup(yytext); \
-json_stack(yylval); } while(0)
+yylval=yytext; \
+} while(0)
 
 %}
 
@@ -33,56 +32,79 @@ CHAR {UNESCAPEDCHAR}|{ESCAPEDCHAR}|{UNICODECHAR}
 CHARS {CHAR}+
 DBL_QUOTE ["]
 
+
 %%
-{DBL_QUOTE}{DBL_QUOTE} |
+{DBL_QUOTE}{DBL_QUOTE} {
+    yylval=""; 
+    return  STRING;
+}
+
 {DBL_QUOTE}{CHARS}{DBL_QUOTE} {
-    YYCP();
+    yylval=yytext+1;
+    yylval[strlen(yylval)-1]=0; 
     return STRING;
-};
+}
+
 {NUMBER} {
     YYCP();
     return NUMBER;
 }
+
 true {
     YYCP();
     return true;
-};
+}
+
 false {
     YYCP();
     return false;
-};
+}
+
 null {
     YYCP();
     return null;
-};
+}
+
 \{ {
     return O_BEGIN;
-};
+}
 
 \} {
     return O_END;
-};
+}
 
 \[ {
     return A_BEGIN;
-};
+}
 
 \] {
     return A_END;
-};
+}
 
 , {
     return COMMA;
-};
+}
+
 : {
     return COLON;
-};
+}
 
-[ \t\n]+ /* ignore whitespace */;
+[ \t]+ /* ignore whitespace */;
+
+[\n] {
+    yylinecnt++;
+}
 
 . {
-    printf("Unexpected: %c\nExiting...\n",*yytext);
-    exit(0);
+    return UNEXPECTED;
 }
 
 %%
+void set_input_string(const char* in) {
+  yy_scan_string(in);
+}
+
+void end_lexical_scan(void) {
+  yy_delete_buffer(YY_CURRENT_BUFFER);
+  yylex_destroy();
+}

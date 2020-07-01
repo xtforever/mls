@@ -1,41 +1,89 @@
 #include "json_read.h"
 #include "mls.h"
 
-void v_dump_object(int opts);
 
-void v_dump_element( int var )
+void d_obj(int opts, char *c1, char *c2);
+void dump_element(struct json_st *obj)
 {
-    char *n = STR(var,0);
-    char *v = STR(var,1);
- 
-    printf("%s: ", n );
-
-    if( *v == 0x01 ) { /* dump object */
-	int list = atoi( v+1 );
-	v_dump_object(list);
-	return;
-    }
-
-    printf("%s", v );
-    
-    for(int i=2; i < m_len(var); i++ )
-	printf(",%s", STR(var,i));
-    printf("\n");
+  if( obj->name )
+	printf("%s:",CHARP(obj->name));
+  
+  switch( obj->typ ) {
+  case JSON_OBJ:
+    d_obj(obj->d," { "," } " );
+    break;
+  case JSON_ARR:
+    d_obj(obj->d," [ "," ] " );
+    break;
+  case JSON_NUM:
+    printf("%s", CHARP(obj->d));
+    break;
+  case JSON_STRING:
+    printf("%s", CHARP(obj->d));
+    break;
+  case JSON_BOOL:
+    printf("%s", CHARP(obj->d));
+    break;
+  case JSON_NULL:
+    printf("null");
+    break;
+  }    
 }
 
-void v_dump_object(int opts)
+void d_obj_list(int opts)
 {
-    TRACE(1,"%d", opts);
-
-    printf("{\n");
-    int *d,p;
-    m_foreach(opts,p,d) {
-	v_dump_element(*d);
-    }
-    v_free(opts);
-    printf("}\n");
+  int p;
+  struct json_st *d;
+  m_foreach(opts,p,d) {
+    dump_element(d);
+    if( p < m_len(opts)-1 ) putchar(',');
+  }
 }
 
+void d_obj(int opts, char *c1, char *c2)
+{
+  printf("%s",c1);
+  d_obj_list(opts);
+  printf("%s",c2);
+}
+
+
+
+int json_cmp(char *name, struct json_st *j)
+{
+  if( j->name ) return mstrcmp(j->name,0,name);
+  return 1;
+}
+
+struct json_st *json_find_data(int opts, char *name)
+{
+  int p;
+  struct json_st *j;
+  m_foreach(opts,p,j) {
+    if( !json_cmp(name,j) ) return j;
+    if( j->typ >= JSON_ARR ) {
+      j=json_find_data(j->d,name);
+      if( j ) return j;
+    }
+  }
+  return NULL;
+}
+
+char *json_value( struct json_st *j, int p )
+{
+  if( (!j) || (j->typ  == JSON_OBJ) || (!j->d)) { return ""; }
+  if(j->typ  == JSON_ARR) {
+    if( m_len(j->d) > p ) return json_value( mls(j->d,p), 0 );
+    return "";
+  }  
+  return CHARP(j->d);
+}
+
+char *json_find(int opts, char *name, int p)
+{
+  struct json_st *j = json_find_data(opts, name);  
+  return json_value(j,p);
+}
 
 int main(int argc, char **argv)
 {
@@ -46,10 +94,31 @@ int main(int argc, char **argv)
   m_init();
   TRACE(1,"start");
   ASSERT( (fp=fopen( "settings.json", "r" )));
-  int opts = json_init( fp );
-  printf("\n***************");
-  // v_dump_object(opts);
+  int opts = json_from_file( fp );
   fclose(fp);
+  
+  TRACE(3,"opts %d", opts);
+  if( !opts ) ERR("could not read settings.json");
+  printf("\n***************\n");
+  d_obj(opts, "{\n", "\n}\n");
+  char *s = json_find(opts,"o2",2 );
+  printf("\no2{2}=%s\n", s );
+  json_free(opts);
+
+
+  char *json_test;
+  json_test =
+    "{ \"top\": [  { \"tobj\": { \"a\":6 }  }  ] ,\"o2\": [ \"x\", { \"num\":5,\"cat\":6 } ,\"y\" ] }";
+
+  for(int i=0;i<10;i++) {
+    opts = json_from_string(json_test);
+    ASSERT(opts); d_obj(opts, "{\n", "\n}\n");
+    s = json_find(opts,"o2",2 );
+    printf("\no2{2}=%s\n", s );
+    json_free(opts);
+  }
+
+  
 
   m_destruct();
 
