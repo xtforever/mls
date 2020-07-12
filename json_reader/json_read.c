@@ -16,7 +16,7 @@ void end_lexical_scan(void);
 
 
 static int stack2 = 0;
-static int current, root;
+static int current;
 
 inline static void* m_last(int d)
 {
@@ -74,12 +74,12 @@ int json_from_string(char *s)
 {
   set_input_string(s);
   int ret = json_parse();
-  // end_lexical_scan();
   return ret;
 }
 
 int json_parse(void)
 {
+    int root;
     stack2=m_create(50,sizeof(int));
     root = current = m_create(10,sizeof(struct json_st));
     int ret = yyparse(); /* sets global int root */
@@ -91,10 +91,10 @@ int json_parse(void)
 
 void json_free(int opt)
 {
-  if(!root) return;
+  if(!opt) return;
   int p;  struct json_st *j; 
   m_foreach( opt, p, j ) {
-    if( j->name ) m_free(j->name);
+    m_free(j->name);
     if( (j->typ == JSON_OBJ) || (j->typ == JSON_ARR) )
       json_free(j->d);
     else m_free(j->d);
