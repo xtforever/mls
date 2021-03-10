@@ -33,7 +33,8 @@ static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jen
 // 2014-06-30 lst_resize, lst_create - fill allocated memory with  0
 // 2014-07-09 m_utf8getchar - benutzt jetzt neue UTF8CHAR
 // 2014-07-09 void m_qsort( int list, int(*compar)(const void *, const void *))
-// 2020-07-01 avoid memory leak: free(FR) in m_destruct() 
+// 2020-07-01 avoid memory leak: free(FR) in m_destruct()
+// 2021-03-09 add binsert 
 // -----------------------------------------------------------------------------------------------------
 
 struct lst_owner_st {
@@ -1859,6 +1860,47 @@ int m_bsearch( const void *key, int list, int (*compar)(const void *, const void
 	return (res - m_buf(list)) / m_width(list);
     return -1;
 }
+
+/* returns: position of new element */
+int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ))
+{
+    int left = 0;
+    int right = m_len(buf)+1;
+    int cur = 1;
+    void *obj;
+    int cmp;
+
+    if( m_len(buf)==0 ) {
+	m_put(buf,data);
+	return 0;
+    }
+    
+    while(1) {
+	cur = (left+right) / 2;
+	TRACE(1, "[%d %d] cur:%d", left, right, cur );	
+	obj = mls( buf, cur - 1 );
+	cmp = cmpf( data, obj );
+	if( cmp == 0 ) break;
+	if( cmp < 0 ) {
+	    right=cur;
+	    if( left+1 == right ) break;
+	} else {
+	    left  = cur;
+	    if( left+1 == right ) {
+		cur++;
+		break;
+	    }
+	}
+    }
+    
+
+    cur--;
+    TRACE(1, "insert at %d", cur );
+    m_ins( buf, cur, 1 );
+    m_write( buf, cur, data, 1 );
+    return cur;
+}
+
 
 int m_lfind(const void *key, int list, int (*compar)(const void *, const void *)){
     size_t max;
