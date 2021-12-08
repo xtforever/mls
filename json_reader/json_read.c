@@ -45,14 +45,17 @@ void json_new(char *value, int typ)
 	current = json->d = m_create(10,sizeof(struct json_st));
 	return;
     }
+    /* number, boolean, null, string --  */
+    /* It's all the same, only the names will change */
+    /* Every day, it seems we're wastin' away */
     json->d = s_printf(0,0,"%s", value );
 }
 
 void json_close(void)
 {
   if(!m_len(stack2)) {
-    fprintf(stderr,"json syntax error. closing braces without opening");
-    return;
+      WARN("json syntax error. closing braces without opening");
+      return;
   }
   current = *(int*)m_pop(stack2);
   TRACE(3,"current list: %d", current );
