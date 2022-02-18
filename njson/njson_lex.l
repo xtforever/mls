@@ -1,11 +1,11 @@
 %{
-#define YYSTYPE char*
+#define NJSONSTYPE char*
 #include "mls.h"
 #include "njson_parse.tab.h"
 #include "njson_read.h"
 #include <string.h>
-extern int yylinecnt;
-extern char* yylval;
+
+#define yylval njsonlval
 
 #define YYCP() do { \
 yylval=yytext; \
@@ -13,8 +13,15 @@ yylval=yytext; \
 
 %}
 
+%option prefix="njson"
 %option noinput
 %option stack
+%option nounput
+%option noinput
+%option noyywrap
+%option yylineno
+%option noyy_top_state
+
 
 DIGIT1to9 [1-9]
 DIGIT [0-9]
@@ -45,7 +52,7 @@ IDENT {IDENT0}{IDENTCHAR}*
 <IN_COMMENT>{
 "(*"              yy_push_state(IN_COMMENT); TRACE(1,"comment start");
 "*)"      yy_pop_state(); TRACE(1,"comment end");
-\n        yylinecnt++;
+\n       /* yylinecnt++; */
 .
 }
 
@@ -105,7 +112,7 @@ null {
 [ \t]+ /* ignore whitespace */;
 
 [\n] {
-    yylinecnt++;
+    /* yylinecnt++; */
 }
 
 . {

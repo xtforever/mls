@@ -68,7 +68,7 @@ void njson_name(char*name)
 
 int njson_from_file( FILE *fp )
 {
-    yyin=fp;
+    njsonin=fp;
     return njson_parse();
 }
 
@@ -84,7 +84,7 @@ int njson_parse(void)
     int root;
     stack2=m_create(50,sizeof(int));
     root = current = m_create(10,sizeof(struct njson_st));
-    int ret = yyparse(); /* sets global int root */
+    int ret = njsonparse(); /* sets global int root */
     m_free(stack2); stack2=0;
     if(ret) { njson_free(root); root=0; WARN("njson read error"); }
     end_lexical_scan();

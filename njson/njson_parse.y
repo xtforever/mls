@@ -2,14 +2,15 @@
 #include <stdio.h>
 #include "mls.h"
 #include "njson_read.h"
-#define YYSTYPE char*  
+#define NJSONSTYPE char*  
 
   int yylex(void);    
   void yyerror(const char *str);
-  int yylinecnt =0;
+  extern int njsonlineno;
   
 %}
 
+%define api.prefix {njson}
 %token true false null
 %left O_BEGIN O_END A_BEGIN A_END
 %left COMMA
@@ -45,12 +46,10 @@ VALUE: STRING { njson_new(yylval, 0);   }
 ;
 %%
 
+       
 void yyerror(const char *str)
 {
-  printf("ERROR: '%s' in Line:%d\n",str,yylinecnt );
+  printf("ERROR: '%s' in Line:%d\n",str,njsonlineno );
 }
+      
 
-int yywrap()
-{
-        return 1;
-}
