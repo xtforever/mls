@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <search.h>
+#include <limits.h>
 
 static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jens Exp $";
 
@@ -22,10 +23,10 @@ static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jen
 //
 // 2007-12-25 nomux: m_free(): ignore h==0 instead of abort with error
 //
-// 2011-02-04 nomux: m_ins: added n==0 -> error, keine erlaubnis 0 elemente einzuf√ºgen
+// 2011-02-04 nomux: m_ins: added n==0 -> error, keine erlaubnis 0 elemente einzuf√É¬ºgen
 //
 // 2012-03-09 nomux: deb_err: removed "debi.me=0". es sollte verhindert werden das nach einem internen fehler noch
-// ueberfl√ºssige melden erscheinen. dies funktionierte ganz und gar nicht. stattdessen wurde die fehler-r√ºckverfolgung abgeschaltet.
+// ueberfl√É¬ºssige melden erscheinen. dies funktionierte ganz und gar nicht. stattdessen wurde die fehler-r√É¬ºckverfolgung abgeschaltet.
 //
 // 2012-03-12 nomux: m_setlen verwendet jetzt lst_resize um neuen speicher zu allokieren
 
@@ -33,8 +34,12 @@ static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jen
 // 2014-06-30 lst_resize, lst_create - fill allocated memory with  0
 // 2014-07-09 m_utf8getchar - benutzt jetzt neue UTF8CHAR
 // 2014-07-09 void m_qsort( int list, int(*compar)(const void *, const void *))
-// 2020-07-01 avoid memory leak: free(FR) in m_destruct()
-// 2021-03-09 add binsert 
+// 2016-11-27 mstr_to_long
+// 2018-12-28 m_write, lst_write
+//            lst_write bug: if m_len(m) and count=0 -> error
+// 2019-03-13 BUG: buffer overflow in deb_xxx better use vsnprintf :-)
+// 2021-05-11 m_next do nothing if list==0 
+// 2021-11-22 BUG: lst_resize - fill new memory with zero 
 // -----------------------------------------------------------------------------------------------------
 
 struct lst_owner_st {
@@ -62,7 +67,7 @@ static struct debug_info_st debi;
 //
 
 int trace_level = 0;
-static char buf[1024];
+static char buf[4096];
 
 void deb_err( int line, const char* file, const char *function, const char *format, ... )
 {
@@ -70,7 +75,7 @@ void deb_err( int line, const char* file, const char *function, const char *form
     va_list argptr;
     int err = errno;
     va_start(argptr, format);
-    vsnprintf(buf, sizeof buf, format, argptr);
+    vsnprintf(buf, sizeof(buf), format, argptr);
     va_end(argptr);
 
     fprintf(stderr, "ERROR: %s Line: %d Function: %s\n%s\n", file, line, function, buf );
@@ -87,7 +92,7 @@ void deb_warn( int line, const char* file, const char *function, const char *for
 
 
    va_start(argptr, format);
-   vsnprintf(buf, sizeof buf, format, argptr);
+   vsnprintf(buf,sizeof(buf), format, argptr);
    va_end(argptr);
 
    fprintf(stderr, "WARNING: %s Line: %d Function: %s\n%s\n", file, line, function, buf );
@@ -101,7 +106,7 @@ void deb_trace( int l, int line, const char* file, const char *function, const c
    (void) file;
 
    va_start(argptr, format);
-   vsnprintf(buf, sizeof buf, format, argptr);
+   vsnprintf(buf,sizeof(buf), format, argptr);
    va_end(argptr);
 
    fprintf(stderr, "[%d]%s: %s\n", l, function, buf );
@@ -137,6 +142,20 @@ int print_stacksize()
   return 0;
 }
 
+/** this functions calls realloc and fills the newly allocated memory with zeros 
+ * in case realloc returns zero this exits with an error message 
+ */
+void* reallocz(void* pBuffer, size_t oldSize, size_t newSize)
+{
+  void* pNew = realloc(pBuffer, newSize);
+  if( !pNew ) ERR("could not realloc buffer");
+  if ( newSize > oldSize && pNew ) {
+    size_t diff = newSize - oldSize;
+    void* pStart = ((char*)pNew) + oldSize;
+    memset(pStart, 0, diff);
+  }
+  return pNew;
+}
 
 // returns: ptr to element i
 // R: NULL - index out of bounds
@@ -174,24 +193,23 @@ int lst_new(lst_t *LP, int n)
       max = len + n;
     int new_size = max * (**LP).w + sizeof(struct ls_st);
     int old_size = (**LP).max * (**LP).w + sizeof(struct ls_st);
-    *LP = (lst_t) realloc(*LP, new_size );
-    if( ! *LP ) ERR("Out Of Memory"); // return -1;
-    memset( ((void*)*LP) + old_size, 0, new_size - old_size );
+    *LP = (lst_t) reallocz(*LP, old_size, new_size );
     (**LP).max = max;
   }
   (**LP).l += n;
   return len;
 }
 
-void lst_resize(lst_t *LP, int new_size)
+void lst_resize(lst_t *LP, int new_len)
 {
   int len =  (**LP).l;
-  if( new_size < 0 ) ERR("need new_size>=0. but new_size=%d", new_size );
-
-  *LP = (lst_t) realloc(*LP, new_size * (**LP).w + sizeof(struct ls_st));
-  if( ! *LP ) ERR("Out Of Memory"); // return -1;
-  if( new_size < len ) (**LP).l = new_size;
-  (**LP).max = new_size;
+  if( new_len < 0 ) ERR("need new_size>=0. but new_size=%d", new_len );
+  int new_size = new_len * (**LP).w + sizeof(struct ls_st);
+  int old_size = (**LP).max * (**LP).w + sizeof(struct ls_st); 
+  if( new_size == old_size ) return;
+  *LP = (lst_t) reallocz(*LP, old_size, new_size );
+  (**LP).max = new_len;
+  if( new_len < len ) (**LP).l = new_len;
 }
 
 // append item
@@ -227,14 +245,15 @@ void* lst_ins( lst_t *lp, int p, int n )
   int cnt; void *src, *dst; lst_t l=*lp;
   if( (uint)p > (uint)l->l ) return NULL;
   if( l->l + n > l->max )
-    {    // Optimize resize if we resize by one
-      int new_max = l->l + n;
-      if( new_max - l->max == 1 ) new_max <<= 1;
-      l->max = new_max;
-      l=(lst_t)realloc(l,l->max*l->w+sizeof(struct ls_st));
-      if( !l) ERR("Could not realloc");
-      *lp=l;
-    }
+      {    // Optimize resize if we resize by one
+	int old_size = l->max*l->w+sizeof(struct ls_st);	
+	int new_max = l->l + n;
+	if( new_max - l->max == 1 ) new_max <<= 1;
+	l->max = new_max;
+	int new_size  = l->max*l->w+sizeof(struct ls_st);      
+	l=(lst_t)reallocz(l,old_size,new_size);
+	*lp=l;
+      }
   cnt = (l->l -p ) * l->w;
   l->l += n;
   src = lst(l,p);
@@ -304,7 +323,7 @@ int lst_write( lst_t *lp, int p, const void *data, int n)
   void *mem;
   lst_t l = *lp;
   if( p<0 || n<0 ) return -1;
-  if( !n ) return 0;
+  if( n == 0 ) return 0;
   if( p+n > l->max )
     {
       l->max = p+n;
@@ -339,9 +358,9 @@ int lst_read( lst_t l, int p, void **data, int n)
 // hole zeiger auf das array m
 // ist das array nicht allociert oder
 // ist ML nicht init. oder m ausserhalb der
-// m√∂glichen grenzen wird NULL √ºbergeben
+// m√É¬∂glichen grenzen wird NULL √É¬ºbergeben
 // ansonsten ein zeiger auf auf den array-header
-static lst_t* _get_list(int m)
+static inline lst_t* _get_list(int m)
 {
   if(ML==0 || m < 1 ) ERR("Not initialized");
   lst_t *l = (lst_t*) lst( ML, m );
@@ -386,16 +405,17 @@ void m_remove( int m, int p, int n )
 
 /**
     @brief hole den zeiger auf das folgende element
-    @param p - zeiger auf das zuletzt geholte element, -1 falls das erste gew¸nscht wird
-    @param d - zeiger auf zeiger auf die gew¸nschte datenstruktur
+    @param p - zeiger auf das zuletzt geholte element, -1 falls das erste gew√ºnscht wird
+    @param d - zeiger auf zeiger auf die gew√ºnschte datenstruktur
     @param m - die liste
     @return 1 if element exists, 0 otherwise
 */
 int m_next( int m, int *p, void *d )
 {
-  lst_t *lp = _get_list(m);
-  if( !d ) ERR("Data address d is ZERO");
-  return lst_next(*lp,p,d);
+    if(!m || !m_len(m) ) return 0;
+    lst_t *lp = _get_list(m);
+    if( !d ) ERR("Data address d is ZERO");
+    return lst_next(*lp,p,d);
 }
 
 // returns 0 - ok, 1 - liste schon initialisiert
@@ -448,9 +468,9 @@ int  m_create(int max, int w)
 #if 0
   int stopper;
   /*
-    suche vom letzten element der liste ML r¸ckw‰rts zum zweiten
+    suche vom letzten element der liste ML r√ºckw√§rts zum zweiten
     nach einem NULL-Ptr.
-    sonst anh‰ngen
+    sonst anh√§ngen
 
     suche nur die obersten 100 der liste ab
   */
@@ -473,7 +493,7 @@ int  m_create(int max, int w)
 
 #else
 
-  // falls FR->l > 0 nehme freie pl‰tze aus FR
+  // falls FR->l > 0 nehme freie pl√§tze aus FR
   if( FR->l > 0 ) {
     i = *(int *) lst( FR, FR->l-1 );
     FR->l--;
@@ -601,6 +621,7 @@ int m_write(  int m, int p,
 		  const void *data, int n  )
 {
   lst_t *lp;
+  if( n <=0 ) return m;
   lp=_get_list(m);
   lst_write( lp, p, data, n);
   return m;
@@ -879,9 +900,15 @@ void m_putc(int m,char c)
   m_put(m,&c);
 }
 
+//!X! speicher ein int an das ende von marray m
+void m_puti(int m,int c)
+{
+  m_put(m,&c);
+}
+
 // Vorteile:
-// ‹bergabe eines Speicherbereichs an eine Funktion die
-// ggf. den Speicher vergrˆﬂern muss:
+// √úbergabe eines Speicherbereichs an eine Funktion die
+// ggf. den Speicher vergr√∂√üern muss:
 //
 // Vorher:
 //
@@ -911,12 +938,12 @@ void m_putc(int m,char c)
 //
 //
 //
-// wenn der Puffer auf den "line" verweist vergrˆﬂert werden muss bleibt
-// "line" unver‰ndert.
+// wenn der Puffer auf den "line" verweist vergr√∂√üert werden muss bleibt
+// "line" unver√§ndert.
 // zudem wird durch die funktion sofort klar, das hier speicher reserviert wurde
 // und am ende der funktion eine freigabe "m_free(line)" stehen muss.
 //
-// vorher war es notwendig zus‰tzlich die funktionen von getline zu kennen,
+// vorher war es notwendig zus√§tzlich die funktionen von getline zu kennen,
 // um zu wissen das "line" ein zeiger auf einen reservierten speicherbereich
 // sein kann.
 //
@@ -925,10 +952,10 @@ void m_putc(int m,char c)
 
 
 
-//TODO: Erkl‰re Stringlist
+//TODO: Erkl√§re Stringlist
 // String-Liste
-// Eine String-Liste besteht aus einer Liste von Datenblˆcken beliebiger Grˆﬂe.
-// Jeder Datenblock der Stringliste enth‰lt als erstes einen
+// Eine String-Liste besteht aus einer Liste von Datenbl√∂cken beliebiger Gr√∂√üe.
+// Jeder Datenblock der Stringliste enth√§lt als erstes einen
 // Zeiger auf einen Speicherbereich mit einem Null-terminierten String.
 //
 // struct my_data_st { char *string; int x, y,z; }
@@ -963,13 +990,13 @@ void m_free_strings(int list, int CLEAR_ONLY )
 
 //!X! splitte den string (s) bei jedem zeichen 'c'
 //und kopiere die teil-strings in die stringliste (m).
-//ein leerer string f√ºhrt zu einem eintrag mit einem
-//string der l√§nge null.
-//ein string mit nur dem separator f√ºhrt zu einer
-//stringliste mit zwei eint√§gen, beide leer.
+//ein leerer string f√É¬ºhrt zu einem eintrag mit einem
+//string der l√É¬§nge null.
+//ein string mit nur dem separator f√É¬ºhrt zu einer
+//stringliste mit zwei eint√É¬§gen, beide leer.
 //wird (m) == 0 angegeben wird eine neue stringliste
-//erzeugt. sonst wird die vorhandene gel√∂scht und benutzt.
-//wird (remove_wspace) != 0 gesetzt werden f√ºhrende
+//erzeugt. sonst wird die vorhandene gel√É¬∂scht und benutzt.
+//wird (remove_wspace) != 0 gesetzt werden f√É¬ºhrende
 //und folgende whitespace-zeichen in den strings entfernt
 //returns: erzeugte string-liste
 
@@ -1031,7 +1058,7 @@ int m_split(int m, const char *s, int c, int remove_wspace)
  stellen fuer ein pattern sucht
 
 
- @PARAMS: int m - eine string-liste oder 0. wird mit m_free_strings gelˆscht.
+ @PARAMS: int m - eine string-liste oder 0. wird mit m_free_strings gel√∂scht.
  char *regex - die expression
  char *s - der zu durchsuchende string
 
@@ -1234,7 +1261,7 @@ int utf8_getchar(FILE *fp, utf8_char_t buf )
 // lese aus fp und speicher in m, falls m>0,
 // bis EOF oder das Zeichen delim gefunden wurde.
 // returns: -1 EOF, delim - OK
-// wird m>0 ¸bergeben, erh‰lt man einen mit null-terminierten string
+// wird m>0 √ºbergeben, erh√§lt man einen mit null-terminierten string
  //
 int m_fscan( int m, char delim, FILE *fp)
 {
@@ -1254,10 +1281,11 @@ int m_fscan( int m, char delim, FILE *fp)
 // lese aus fp und speicher in m, falls m>0,
 // bis EOF oder das Zeichen delim gefunden wurde.
 // returns: -1 = EOF, oder 'delim'
-// wird m>0 ¸bergeben, erh‰lt man einen mit null-terminierten string
-// f¸hrende und folgende Leerzeichen werden nicht gespeichert
+// wird m>0 √ºbergeben, erh√§lt man einen mit null-terminierten string
+// f√ºhrende und folgende Leerzeichen werden nicht gespeichert
 // es werden doppelte leerzeichen zu einem reduziert (squeeze).
-// die gelesenen daten werden an m angeh‰ngt, falls m existiert (i.e. m>0)!
+// tabs werden zu leerzeichen
+// die gelesenen daten werden an m angeh√§ngt, falls m existiert (i.e. m>0)!
 int m_fscan2( int m, char delim, FILE *fp)
 {
   int ch;
@@ -1288,7 +1316,7 @@ int m_fscan2( int m, char delim, FILE *fp)
 
 //!X! vergleiche zwei marrays mit strncmp
 // returns: 0 wenn beide gleich sind, sonst !=0
-// beide strings m¸ssen mit 0 enden
+// beide strings m√ºssen mit 0 enden
 int m_cmp( int a, int b )
 {
   int l1,l2;
@@ -1299,7 +1327,7 @@ int m_cmp( int a, int b )
 
 
 /* suche nach obj in der liste m
-   ist obj noch nicht vorhanden wird es der liste hinzugef¸gt
+   ist obj noch nicht vorhanden wird es der liste hinzugef√ºgt
    RETURNS:
    index von obj
 */
@@ -1318,13 +1346,13 @@ int m_lookup_obj( int m, void *obj, int size )
 
 //!X! lookup-table verwaltung
 // suche nach key in liste m
-// falls key gefunden gebe den treffer zur¸ck
-// ansonsten f¸ge key hinzu und gebe key zur¸ck
+// falls key gefunden gebe den treffer zur√ºck
+// ansonsten f√ºge key hinzu und gebe key zur√ºck
 // m - marray [ int ]
 // key - marray [ char ], type: ZMSTRING zero-terminated string in marray
-// returns: entweder wird (key) zur¸ckgegeben, dann wurde key hinzugef¸gt,
-// oder es wird ein wert !=key zur¸ckgegeben, dann existiert der schl¸ssel
-// schon und der r¸ckgabewert zeigt auf den existieren schl¸ssel.
+// returns: entweder wird (key) zur√ºckgegeben, dann wurde key hinzugef√ºgt,
+// oder es wird ein wert !=key zur√ºckgegeben, dann existiert der schl√ºssel
+// schon und der r√ºckgabewert zeigt auf den existieren schl√ºssel.
 //
 int m_lookup( int m, int key )
 {
@@ -1377,7 +1405,7 @@ void    v_free( int vl )
 // using variable name
 
 //
-int     v_set( int vs, const char* name, const char* value, int pos )
+int v_set( int vs, const char* name, const char* value, int pos )
 {
   int key = v_lookup(vs,name);
   v_kset( key, value, pos );
@@ -1441,6 +1469,7 @@ void v_remove( int vs, const char* name )
   }
 }
 
+/* return key to access variable "name" inside "vl" */
 int v_lookup( int vl, const char* name )
 {
   if( is_empty(name) ) return -1;
@@ -1648,16 +1677,16 @@ int escape_str( int buf, char *src )
 /** @brief erzeugt aus *s einen string mit escape zeichen
     @param s2 - 0 oder mls liste
     @param s - ein string der umgewandelt werden soll
-    @param quotes - falls quotes==1 werden einfache anf¸hrungszeichen um die variable gesetzt
-    @return g¸ltiger mls string (liste mit breite 1, string ohne Nullbyte)
+    @param quotes - falls quotes==1 werden einfache anf√ºhrungszeichen um die variable gesetzt
+    @return g√ºltiger mls string (liste mit breite 1, string ohne Nullbyte)
  */
 static int field_escape(int s2, char *s, int quotes)
 {
   // "*s" ist der zu speichernde string
   // um das sql-kommando zu generieren werden sonderzeichen
   // "escaped". dies ist ein gutes beispiel warum die "mls"
-  // speicherverwaltung vorteile bietet. der benˆtigte speicher
-  // von mysql_escape_string muss abgesch‰tzt und reserviert werden.
+  // speicherverwaltung vorteile bietet. der ben√∂tigte speicher
+  // von mysql_escape_string muss abgesch√§tzt und reserviert werden.
   // die gleiche funktion in mls ist viel einfacher zu verwenden
   if( quotes ) m_putc( s2, '\'');
   escape_buf( s2, s );
@@ -1667,7 +1696,7 @@ static int field_escape(int s2, char *s, int quotes)
 
 
 /**
-    @return einen g¸ltigen string - immer
+    @return einen g√ºltigen string - immer
  */
 char* se_expand( str_exp_t *se, int vl, int row )
 {
@@ -1678,15 +1707,15 @@ char* se_expand( str_exp_t *se, int vl, int row )
   vn=0; // number of variables
 
 
-  // string zusammenf¸gen
+  // string zusammenf√ºgen
   // variablen werden durch ihren wert ersetzt
-  // variablen werden durch ein f¸hrendes "$" erkannt
+  // variablen werden durch ein f√ºhrendes "$" erkannt
   // folgt dem $ ein "'" wird der eingesetzte wert durch "'" umschlossen
   //
   m_foreach( se->splitbuf, p,d ) {
     s = *d;
 
-    if( *s != '$' ) { // einfacher text-baustein, nur anh‰ngen
+    if( *s != '$' ) { // einfacher text-baustein, nur anh√§ngen
       m_write( buf, m_len(buf), s, strlen(s) );
     }
     else  // variable found
@@ -1742,7 +1771,10 @@ int s_strlen(int m)
     return p && CHAR(m,p-1)==0 ? p-1 : p;
 }
 
-static int s_app1( int m, char *s )
+/** append cstring to mstr
+ * returns: mstr
+ */
+int s_app1( int m, char *s )
 {
     int p = s_strlen(m);
     m_write( m, p, s, strlen(s)+1 );
@@ -1759,7 +1791,7 @@ static int vas_app(int m, va_list ap)
     return m;
 }
 
-/** anh‰ngen der char* strings an |m| */
+/** anh√§ngen der char* strings an |m| */
 int s_app(int m, ...)
 {
     va_list ap;
@@ -1776,7 +1808,7 @@ int vas_printf(int m, int p, char *format, va_list ap )
 	va_list copy;
 
 
-	// Patch f¸r 64Bit machines 08.10.14
+	// Patch f√ºr 64Bit machines 08.10.14
 	va_copy(copy, ap);
 
     len=vsnprintf(0,0, format, ap ); /* get string size */
@@ -1814,8 +1846,8 @@ int s_printf(int m, int p, char *format, ...)
 }
 
 /** das letzte zeichen des strings finden
-    falls der string leer ist oder nur NULL enth‰lt
-    wird 0 zur¸ckgegeben
+    falls der string leer ist oder nur NULL enth√§lt
+    wird 0 zur√ºckgegeben
 */
 int s_lastchar(int m)
 {
@@ -2018,4 +2050,47 @@ int mstrcmp(int m,int p, char *s)
     p++; s++;
   }
   return res;
+}
+
+int mstr_to_long(int buf, int *p, long int *ret_val)
+{
+    int sign=0;
+    int ch;
+    long int val = 0;
+    int pp = 0;
+    if( !p ) p=&pp;
+
+    if( buf <= 0 || *p < 0 || *p >= m_len(buf) ) return -1;
+
+    while( isspace(ch=CHAR(buf,*p)) ) {
+        (*p)++;
+        if( *p >= m_len(buf) ) return -1;
+    }
+
+    if(! isdigit(ch) ) {
+        if( ch == '-' )  { sign = -1; (*p)++; }
+        else if( ch == '+' )  (*p)++;
+        else return -1;
+        if( *p >= m_len(buf) ) return -1;
+        ch=CHAR(buf,*p);
+        if(! isdigit(ch) ) return -1;
+    }
+    ch -= '0';
+
+    while(1) {
+
+        val += ch;
+        (*p)++;
+
+        if( *p >= m_len(buf) ) break;
+        ch=CHAR(buf,*p);
+        if(! isdigit(ch) ) break;
+        ch -='0';
+        if( val > LONG_MAX / 10 ) return -2 + sign;
+        val *= 10;
+        if( val > (LONG_MAX - ch) ) return -2 + sign;
+    }
+
+    *ret_val = sign ?  -val : val;
+    return 0;
 }
