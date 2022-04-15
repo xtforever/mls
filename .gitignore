@@ -53,7 +53,9 @@ Mkfile.old
 dkms.conf
 
 # lex/yacc,executeables
-ini_lex.lex.h
-ini_parse.tab.c
-ini_parse.tab.h
+*.lex.h
+*.lex.c
+*.tab.c
+*.tab.h
 ini_read_test
+njson_read_test
