@@ -1893,8 +1893,21 @@ int m_bsearch( const void *key, int list, int (*compar)(const void *, const void
     return -1;
 }
 
-/* returns: position of new element */
-int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ))
+
+int m_lfind(const void *key, int list, int (*compar)(const void *, const void *)){
+    size_t max;
+    if( list < 1 || m_len(list) == 0 ) return -1;
+    max = m_len(list);
+    void *res = lfind(key, m_buf(list), &max, m_width(list), compar );
+    if( res )
+	return (res - m_buf(list)) / m_width(list);
+    return -1;
+}
+
+/** @brief insert *data into sorted list buf
+ * @returns: position of new element, or -1 if elem. exists 
+ */
+int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ), int with_duplicates )
 {
     int left = 0;
     int right = m_len(buf)+1;
@@ -1909,10 +1922,12 @@ int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void 
     
     while(1) {
 	cur = (left+right) / 2;
-	TRACE(1, "[%d %d] cur:%d", left, right, cur );	
 	obj = mls( buf, cur - 1 );
 	cmp = cmpf( data, obj );
-	if( cmp == 0 ) break;
+	if( cmp == 0 ) {
+	    if( ! with_duplicates ) return -1;
+	    break;
+	}
 	if( cmp < 0 ) {
 	    right=cur;
 	    if( left+1 == right ) break;
@@ -1925,24 +1940,12 @@ int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void 
 	}
     }
     
-
     cur--;
-    TRACE(1, "insert at %d", cur );
     m_ins( buf, cur, 1 );
     m_write( buf, cur, data, 1 );
     return cur;
 }
 
-
-int m_lfind(const void *key, int list, int (*compar)(const void *, const void *)){
-    size_t max;
-    if( list < 1 || m_len(list) == 0 ) return -1;
-    max = m_len(list);
-    void *res = lfind(key, m_buf(list), &max, m_width(list), compar );
-    if( res )
-	return (res - m_buf(list)) / m_width(list);
-    return -1;
-}
 
 int s_index( int buf,int p, int ch )
 {

@@ -224,8 +224,7 @@ int m_utf8char(int buf, int *p);
 void m_qsort( int list, int(*compar)(const void *, const void *));
 int m_bsearch( const void *key, int list, int (*c)(const void *, const void *));
 int m_lfind(const void *key, int list, int (*c)(const void *, const void *));
-int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ));
-		   
+int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ), int with_duplicates );
 // ********************************************
 //
 // UTILITIES, vars
