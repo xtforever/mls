@@ -32,17 +32,24 @@ EXP {E}{DIGITS}
 E [eE][+-]?
 HEX_DIGIT [0-9a-f]
 NUMBER {INT}|{INT}{FRAC}|{INT}{EXP}|{INT}{FRAC}{EXP}
-UNESCAPEDCHAR [ -!#-\[\]-~]
-ESCAPEDCHAR \\["\\bfnrt/]
+UNESCAPEDCHAR [ !#$%&(-\[\]-~]
+ESCAPEDCHAR \\['"\\bfnrt/]
 UNICODECHAR \\u{HEX_DIGIT}{HEX_DIGIT}{HEX_DIGIT}{HEX_DIGIT}
 CHAR {UNESCAPEDCHAR}|{ESCAPEDCHAR}|{UNICODECHAR}
-CHARS {CHAR}+
+CHARS {CHAR}*
 DBL_QUOTE ["]
+SINGLE_QUOTE [']
+CHAR_OR_DOUBLEQUOTE    {CHAR}|{DBL_QUOTE}
+CHAR_OR_SINGLEQUOTE    {CHAR}|{SINGLE_QUOTE}
+
 ALPHA [a-zA-Z]
 ALNUM {ALPHA}|{DIGIT}
 IDENTCHAR {ALNUM}|[_.'!]|-
 IDENT0 {ALPHA}|[_]
 IDENT {IDENT0}{IDENTCHAR}*
+
+
+
 
 %x IN_COMMENT
 %%
@@ -60,16 +67,29 @@ IDENT {IDENT0}{IDENTCHAR}*
     yylval=""; 
     return  STRING;
 }
+{SINGLE_QUOTE}{SINGLE_QUOTE} {
+    yylval=""; 
+    return  STRING;
+}
 
-{DBL_QUOTE}{CHARS}{DBL_QUOTE} {
+{SINGLE_QUOTE}{CHAR_OR_DOUBLEQUOTE}*{SINGLE_QUOTE} {
     yylval=yytext+1;
-    yylval[strlen(yylval)-1]=0; 
+    yylval[strlen(yylval)-1]=0;
+    TRACE(1,"X-SQ-STRING %s", yylval );
     return STRING;
 }
 
-{IDENT}: {
+{DBL_QUOTE}{CHAR_OR_SINGLEQUOTE}*{DBL_QUOTE} {
+    yylval=yytext+1;
+    yylval[strlen(yylval)-1]=0;
+    TRACE(1,"DQ-STRING %s", yylval );
+    return STRING;
+}
+
+{IDENT}: {    
     yylval=yytext;
     yylval[ strlen( yylval)-1 ]=0;
+    TRACE(1,"IDENT %s", yylval );
     return IDENT;
 }
 
@@ -94,10 +114,12 @@ null {
 }
 
 \( {
+    TRACE(1,"OPEN");
     return O_BEGIN;
 }
 
 \) {
+    TRACE(1,"CLOSE");
     return O_END;
 }
 
@@ -115,7 +137,16 @@ null {
     /* yylinecnt++; */
 }
 
+
+{IDENT} {
+    yylval=yytext;
+    TRACE(1,"STRING %s", yylval );
+    return STRING;
+}
+
+
 . {
+    TRACE(1,"UNEXPECTED: %c", (int) *yytext );
     return UNEXPECTED;
 }
 
