@@ -236,7 +236,7 @@ int lst_next( lst_t l, int *p, void *data )
     if( *p > l->l || *p < 0 )
       { *p = (int) l->l; return 0; }
     if( *p ==(int) l->l ) return 0;
-    *(void**)data = lst( l, *p );
+    if(data) *(void**)data = lst( l, *p );
     return 1;
 }
 

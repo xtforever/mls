@@ -1,15 +1,9 @@
 (
-	ver-test-file: "sample.conf",
-	mod!test!file: "sample.conf",
-	ver.test.file: "sample.conf",
-	str'test-file: "sample.conf",
-
-    test: "hello World",
-    aa: "hello 2",
-    bb: ( 1,2,3,4 ),
-    (* nested comments are allowed
-     even (*some*) newlines
-     ment no problem
-     *)
-    b1_9: ( "some words", mystring: "other words",100,1e9,0,null)
+   title: 'freigabe erstellen',
+   script: "freigabe.sh -m '$kk' $sandbox $srv $domain",
+   fields: (
+      ( type: 'kuerzel', title: 'Kuerzel', variable: 'kk' ),
+      ( type: 'input', title: 'sandbox', variable: 'sandbox' ),
+      ( type: 'option', title: 'server', variable: 'srv', values: ( 'sandbox7','sandbox9','sandbox10' ) )
+   )
 )
