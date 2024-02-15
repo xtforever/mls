@@ -284,7 +284,7 @@ int s_app1(int m, char *s);
 int vas_printf(int m, int p, char *format, va_list argptr );
 int s_printf(int m, int p, char *format, ...);
 int s_index( int buf,int p, int ch );
-int mstrcmp(int m,int p, char *s);
+int mstrcmp(int m,int p, const char *s);
 int mstr_to_long(int buf, int *p, long int *ret_val);
 int s_lastchar(int m);
 int s_copy( int m, int first_char, int last_char  );
