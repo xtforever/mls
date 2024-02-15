@@ -2044,7 +2044,7 @@ void ring_free(int r )
 }
 
 /* check if SUBSTRING(m,p,strlen(s)) == s */
-int mstrcmp(int m,int p, char *s)
+int mstrcmp(int m,int p, const char *s)
 {
   int res = 1;
   while( m_len(m) > p ) {
