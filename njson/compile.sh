@@ -53,41 +53,24 @@ run()
 }
 
 rm log
-exit_codes=""
+ec=()
 global_state=$( cat  nodes.json )
 loop_count=0
-nr_jobs=1
 
-while (( nr_jobs > 0 && loop_count < 10 )) 
+while (( loop_count < 10 )) 
 do
     ((loop_count++))
-    echo "current loop: $loop_count"
-
-    prog=$( echo $global_state | ./bmake "$exit_codes"  )
-    echo -e "\n$prog" >>log
-
-    X=()
-    P=()
+    
+    prog=$( echo "$global_state" | ./bmake "${ec[*]}" | tee -a log )
+    X=(); P=()
     eval "$prog"
 
-    if (( ${#P[@]} == 0 ));
-    then
-	echo no more jobs
-	break;
-    fi
-    
-    # Check the exit codes
-    i=0
-    ec=()
+    if (( ${#P[@]} == 0 )); then break; fi
+
+    i=0;  ec=()
     for pid in "${P[@]}"; do
-	wait "$pid"; 	err=$? 
-	# echo err=$err pid=$pid
-
 	ec+=(${X[i++]})
-	ec+=($err)
+	wait "$pid"; ec+=($?)
     done
-    exit_codes="${ec[@]}"
-    echo "exit_codes= $exit_codes"
-
-    
+    echo >>log "exit codes ${ec[@]}"
 done
