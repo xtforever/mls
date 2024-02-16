@@ -1,7 +1,7 @@
 YFLAGS  = -d
 YACC    = bison
 LEX     = flex
-
+CC = gcc
 
 VPATH=../lib
 

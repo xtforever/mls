@@ -1,5 +1,7 @@
 include ../rules.mk
 
+CFLAGS+=-Werror
+
 ALL: njson_read_test
 
 njson_lex.lex.o: njson_parse.tab.c
