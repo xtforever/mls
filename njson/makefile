@@ -1,6 +1,6 @@
 include ../rules.mk
 
-CFLAGS+=-Werror
+CFLAGS+=-Werror -DMLS_DEBUG
 
 ALL: njson_read_test
 

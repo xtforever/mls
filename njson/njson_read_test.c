@@ -336,18 +336,18 @@ typedef struct cs_st {
 
 int read_checksum( const char *fn )
 {
-  int crsr = 0;
   int inc = 10;
   int len = 0;
   int rd;
   int cs = m_create( inc, sizeof( cs_t));
-
+  m_setlen( cs,inc );
+  
   FILE *fp = fopen(fn, "rb" );
   if(!fp) return cs;
 
-  while( (rd=fread( mls(cs,crsr), sizeof(cs_t), inc, fp )) == inc ) {
+  while( (rd=fread( mls(cs,len), sizeof(cs_t), inc, fp )) == inc ) {
     len+=inc; 
-    m_setlen( cs,len ); 
+    m_setlen( cs,len+inc ); 
   }
   len+=rd; 
   m_setlen( cs,len );
@@ -355,11 +355,17 @@ int read_checksum( const char *fn )
 }
 
 
-int cscmp( const void *a,const void *b )
+int cscmpmstr( const void *a,const void *b )
 {
   const int *fn = a;
   const cs_t *d = b;
   return mstrcmp( *fn, 0, d->fn );
+}
+int cscmp( const void *a,const void *b )
+{
+  const cs_t *a0 = a;
+  const cs_t *b0  = b;
+  return strncmp(a0->fn,b0->fn,sizeof( a0->fn) );
 }
 
 
@@ -369,7 +375,7 @@ void update_checksum_file( int cs, int fn )
   cs_t *d;
   struct stat sb = { 0 };
   int err = stat( CHARP(fn), &sb );
-  int pos = m_bsearch( &fn, cs, cscmp );
+  int pos = m_bsearch( &fn, cs, cscmpmstr );
   if( err ) {		   /* if no file then remove node if exists */
     m_del( cs, pos );
     return;
@@ -405,6 +411,8 @@ void save_checksum( int cs, const char *fn )
   ASERR( w==m_len(cs), "checksum file not written" );
   ASERR( fclose(fp)==0, "checksum file error on close()");
 }
+
+
 
 #define CHECKSUM_FN "TMP.checksum"
 
@@ -448,7 +456,9 @@ void list_nodes( int global_state, int ec )
     } else {
       int id = fetch_node_int(j->d, "id", -1 );
       int x = get_exit_code(id,ec);
-      if( x>=0 ) set_node( j->d, "exit_code", x );
+      if( x>=0 ) {
+	set_node( j->d, "exit_code", x );
+      }
       update_checksum_node( checksum, search_obj_data("OUT", j->d ));
     }
   }
