@@ -431,7 +431,7 @@ int m_init()
 }
 
 // returns ZERO
-int m_destruct()
+void m_destruct()
 {
     int p;
     lst_t *d;
@@ -440,7 +440,6 @@ int m_destruct()
       if(*d) { free(*d); TRACE(1,"m_free %d\n", p ); }
     free(ML); ML=0;
     free(FR); FR=0;
-    return 0;
 }
 
 
@@ -554,9 +553,20 @@ int m_bufsize( int m )
   return (**lp).max;
 }
 
-// !X!
-// Insert n elements at Position p
-// Returns start (p)
+/**
+ * @brief Insert 'n' elements at position 'p' in the array pointed to by 'm'.
+ * 
+ * Inserts 'n' elements at position 'p' in the array pointed to by 'm'.
+ * If 'p' is negative or 'n' is non-positive, an error is raised.
+ * 
+ * @param m Pointer to the array where elements are to be inserted.
+ * @param p The position at which to insert the elements.
+ * @param n The number of elements to insert.
+ * @return The start position 'p' after insertion.
+ * 
+ * @note This function assumes 'm' points to a valid array.
+ * @note The position 'p' should be within the bounds of the array.
+ */
 int m_ins(int m, int p, int n)
 {
   lst_t *lp;
@@ -579,26 +589,35 @@ void* m_pop(int m)
 }
 
 // remove element
-int m_del( int m, int p )
+void m_del( int m, int p )
 {
   lst_t *lp;
-  if( p < 0 ) ERR("Wrong args: p=%d",p);
+  if( p < 0 ) return;
   lp=_get_list(m);
   lst_del( *lp, p );
-  return 0;
 }
 
 // clears array, sets used ptr to zero
-int m_clear( int m )
+void m_clear( int m )
 {
      lst_t *lp;
      lp=_get_list(m);
      (**lp).l = 0;
-     return 0;
 }
 
-// set used ptr to len
-// does not resize array
+/**
+ * @brief Set the length of the array pointed to by 'm' to the specified length.
+ * 
+ * Sets the length of the array pointed to by 'm' to the specified length 'len'.
+ * If 'len' is greater than the current maximum length of the array, the array
+ * is resized to accommodate the new length. If 'len' is negative, an error is raised.
+ * 
+ * @param m Pointer to the array whose length is to be set.
+ * @param len The new length to set for the array.
+ * @return 0 on success, -1 on error.
+ * 
+ * @note This function only grows the array and does not shrink it.
+ */
 int m_setlen( int m, int len )
 {
   lst_t *lp;
@@ -1906,7 +1925,7 @@ int m_lfind(const void *key, int list, int (*compar)(const void *, const void *)
 }
 
 /** @brief insert *data into sorted list buf
- * @returns: position of new element, or -1 if elem. exists 
+ * @returns: position of new element, or ret=-pos-1 (ret<0) if elem. exists 
  */
 int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ), int with_duplicates )
 {
@@ -1926,8 +1945,8 @@ int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void 
 	obj = mls( buf, cur - 1 );
 	cmp = cmpf( data, obj );
 	if( cmp == 0 ) {
-	    if( ! with_duplicates ) return -1;
-	    break;
+	  if( ! with_duplicates ) return -cur;
+	  break;
 	}
 	if( cmp < 0 ) {
 	    right=cur;
@@ -2043,11 +2062,14 @@ void ring_free(int r )
     m_free(r);
 }
 
-/* check if SUBSTRING(m,p,strlen(s)) == s */
+/* return 0 if SUBSTRING(m,p,strlen(s)) == s
+   else return <0 or >0
+ */
 int mstrcmp(int m,int p, const char *s)
 {
   int res = 1;
-  while( m_len(m) > p ) {
+  if( !s ) return 1;
+  while( p < m_len(m) ) {
     if( *s == 0 ) return 0;
     res = CHAR(m,p) - *s;
     if( res ) break;

@@ -1,5 +1,8 @@
 #include "njson_read.h"
 #include "mls.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 void d_obj2(FILE *fp, int opts, char *c1, char *c2);
 void d_obj(int opts, char *c1, char *c2);
@@ -323,6 +326,88 @@ int get_exit_code(int id, int ec)
 }
 
 
+
+
+typedef struct cs_st {
+  char fn[256];
+  struct timespec mtim;
+} cs_t;
+
+
+int read_checksum( const char *fn )
+{
+  int crsr = 0;
+  int inc = 10;
+  int len = 0;
+  int rd;
+  int cs = m_create( inc, sizeof( cs_t));
+
+  FILE *fp = fopen(fn, "rb" );
+  if(!fp) return cs;
+
+  while( (rd=fread( mls(cs,crsr), sizeof(cs_t), inc, fp )) == inc ) {
+    len+=inc; 
+    m_setlen( cs,len ); 
+  }
+  len+=rd; 
+  m_setlen( cs,len );
+  return cs;
+}
+
+
+int cscmp( const void *a,const void *b )
+{
+  const int *fn = a;
+  const cs_t *d = b;
+  return mstrcmp( *fn, 0, d->fn );
+}
+
+
+/* read file modified date and store in checksum list */
+void update_checksum_file( int cs, int fn )
+{
+  cs_t *d;
+  struct stat sb = { 0 };
+  int err = stat( CHARP(fn), &sb );
+  int pos = m_bsearch( &fn, cs, cscmp );
+  if( err ) {		   /* if no file then remove node if exists */
+    m_del( cs, pos );
+    return;
+  }
+  
+  if(pos<0) {			/* if no node then create node */
+    cs_t tmp;
+    tmp.mtim = sb.st_mtim;
+    snprintf(tmp.fn,sizeof(tmp.fn), "%s", CHARP(fn));
+    pos = m_binsert( cs, &tmp, cscmp, 0 );
+    return;
+  }
+
+  /* update node */
+  d=mls(cs,pos);
+  d->mtim = sb.st_mtim;
+}
+
+void update_checksum_node( int cs, int node )
+{
+  int p;
+  struct njson_st *j;
+  m_foreach( node,p,j ) {
+    update_checksum_file(cs,j->d);
+  }
+}
+
+void save_checksum( int cs, const char *fn )
+{
+  FILE *fp = fopen(fn, "wb" );
+  ASERR(fp, "could not create/open for writing: %s" );
+  int w = fwrite( m_buf(cs), m_width(cs), m_len(cs), fp );
+  ASERR( w==m_len(cs), "checksum file not written" );
+  ASERR( fclose(fp)==0, "checksum file error on close()");
+}
+
+#define CHECKSUM_FN "TMP.checksum"
+
 void list_nodes( int global_state, int ec )
 {
   int p;
@@ -345,7 +430,11 @@ void list_nodes( int global_state, int ec )
   //  int e  = *d;
   //  TRACE(4, "id:%d e:%d", id, e );
   //}
+
   
+  /* get the nodes in list 'ec' and create checksums for our database, so if we
+     restart we do not have to recompile them */
+  int checksum = read_checksum( CHECKSUM_FN );
   
   /* verify valid nodes and  create unique id entries */
   m_foreach(nodes,p,j) {
@@ -359,13 +448,15 @@ void list_nodes( int global_state, int ec )
     } else {
       int id = fetch_node_int(j->d, "id", -1 );
       int x = get_exit_code(id,ec);
-      if( x>=0 ) set_node( j->d, "exit_code", x );      
+      if( x>=0 ) set_node( j->d, "exit_code", x );
+      update_checksum_node( checksum, search_obj_data("OUT", j->d ));
     }
-    
   }
 
-  /* get the nodes in list 'ec' and create checksums for our database, so if we
-     restart we do not have to recompile them */
+
+  
+
+  
   
   
   int all_out   =  m_create( 100, sizeof(int) );
@@ -386,8 +477,6 @@ void list_nodes( int global_state, int ec )
     }    
   }
 
-  
-  
   
   int in_wo_out = m_create( 100, sizeof(int) );
   m_qsort( all_in, cmp_mstr ); /* we like bsearch */
@@ -491,7 +580,8 @@ void list_nodes( int global_state, int ec )
     int id = search_obj_data( "id", *d  );
     printf( "%s\nstore-result %s $?\n\n", CHARP(lst), CHARP(id) );
   }
-  
+
+  save_checksum( checksum, CHECKSUM_FN );
   
   /* if exit code is zero remove all files in out-list from all_out and rebuild the comp_ready list */
   m_free(all_dep);
@@ -500,7 +590,7 @@ void list_nodes( int global_state, int ec )
   m_free(in_wo_out);
   m_free(comp_ready);
   m_free(all_notgen);
-  
+  m_free(checksum);
 
   
 };
