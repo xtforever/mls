@@ -2070,9 +2070,9 @@ int mstrcmp(int m,int p, const char *s)
   int res = 1;
   if( !s ) return 1;
   while( p < m_len(m) ) {
-    if( *s == 0 ) return 0;
     res = CHAR(m,p) - *s;
     if( res ) break;
+    if( *s == 0 ) return 0;
     p++; s++;
   }
   return res;
