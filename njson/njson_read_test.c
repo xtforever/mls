@@ -3,6 +3,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <time.h>
+
+
+
+
 
 void d_obj2(FILE *fp, int opts, char *c1, char *c2);
 void d_obj(int opts, char *c1, char *c2);
@@ -333,6 +338,14 @@ typedef struct cs_st {
   struct timespec mtim;
 } cs_t;
 
+void dump_checksum(int cs)
+{
+	cs_t *d; int p;
+	m_foreach( cs, p, d ) {
+		printf("%d %s %s\n",p, d->fn, ctime( & d->mtim.tv_sec ) );
+	}
+	printf("-------------\n");
+}
 
 int read_checksum( const char *fn )
 {
@@ -380,6 +393,9 @@ void update_checksum_file( int cs, int fn )
     m_del( cs, pos );
     return;
   }
+
+  TRACE(4, "update cache: %s:%s", CHARP(fn), ctime( & (sb.st_mtim.tv_sec) ));
+  TRACE(4, "update cache: %s:%s", CHARP(fn), ctime( & (sb.st_mtime) ));  
   
   if(pos<0) {			/* if no node then create node */
     cs_t tmp;
@@ -412,7 +428,48 @@ void save_checksum( int cs, const char *fn )
   ASERR( fclose(fp)==0, "checksum file error on close()");
 }
 
+/* return true if there is no entry for fn or modifed date has changed
+   or fn does not exists
 
+   return false if modified date is unchanged
+ */
+int ismodified_checksum( int cs, int fn )
+{
+  struct stat sb = { 0 };
+  int pos = m_bsearch( &fn, cs, cscmpmstr );
+  
+
+  
+  if( pos < 0 ) return 1;
+  cs_t *d = mls(cs,pos);
+  int err = stat( CHARP(fn), &sb );
+  if( err ) return 1;
+  
+
+  
+  err =  memcmp(& d->mtim.tv_sec, & sb.st_mtim, sizeof  sb.st_mtim ) ;
+  if( err ) {	  
+	  TRACE(4,"check: %d %s", pos, CHARP(fn));
+	  TRACE(4,"cache: %s", ctime( &d->mtim.tv_sec));
+	  TRACE(4,"cur:   %s", ctime(&sb.st_mtim.tv_sec));
+  }
+
+  return err;
+}
+
+/* return true if all files in njson list jd are unchanged */
+int filesunchanged_checksum(int cs, int jd )
+{
+  int p;
+  struct njson_st *j;
+  m_foreach( jd,p,j ) {
+	  if(  ismodified_checksum(cs, j->d) ) {
+		  TRACE(4,"changed: %s", CHARP(j->d));
+		  return 0;
+	  }	  
+  }
+  return 1;
+}
 
 #define CHECKSUM_FN "TMP.checksum"
 
@@ -422,7 +479,8 @@ void list_nodes( int global_state, int ec )
   int *d;
   struct njson_st *j;
   int loop_count = 0;
-  
+  int id;
+    
   int nodes = search_obj_data( "nodes", global_state );
   if( !nodes ) {
     ERR("no member named 'nodes'");
@@ -443,7 +501,8 @@ void list_nodes( int global_state, int ec )
   /* get the nodes in list 'ec' and create checksums for our database, so if we
      restart we do not have to recompile them */
   int checksum = read_checksum( CHECKSUM_FN );
-  
+
+  /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
   /* verify valid nodes and  create unique id entries */
   m_foreach(nodes,p,j) {
     if( j->typ < NJSON_ARR ) {
@@ -459,12 +518,26 @@ void list_nodes( int global_state, int ec )
       if( x>=0 ) {
 	set_node( j->d, "exit_code", x );
       }
-      update_checksum_node( checksum, search_obj_data("OUT", j->d ));
+      if( x == 0 ) {
+	      update_checksum_node( checksum, search_obj_data("OUT", j->d ));
+	      update_checksum_node( checksum, search_obj_data("IN", j->d ));
+      }      
     }
   }
 
 
   
+  /* RULE 3) if all IN+DEP in cache is unchanged set exit code to zero */
+  dump_checksum(checksum);
+  m_foreach(nodes,p,j) {
+	  int id = fetch_node_int(j->d, "id", -1 );
+	  if( id < 0 ) continue;
+	  if( filesunchanged_checksum( checksum,  search_obj_data( "IN",j->d  ) ))
+		  if( filesunchanged_checksum( checksum,  search_obj_data( "DEP",j->d  ) )) {
+			  TRACE(4,"cached result; exit_code zero for node %d", id );
+			  set_node( j->d, "exit_code", 0 );
+		  }
+  }
 
   
   
@@ -509,22 +582,27 @@ void list_nodes( int global_state, int ec )
       and 'exit_code' is zero
    */
   int comp_ready =  m_create( 100, sizeof(int) );
-  /* RULE 2) if exit_code in node is zero, skip this node  */    
-  int id;
+  /* RULE 2) if exit_code in node is zero, skip this node  */
+  
+
+
+  
+
+
+
   m_foreach(nodes,p,j) {    
     struct njson_st *j0;
 
     id = fetch_node_int(j->d, "id", 0 );
-    TRACE(2, "checking node %d", id );
+    TRACE(5, "checking node %d", id );
 
+    /* if exit_code is zero or IN/DEP has not change then skip */
     int i,lst = search_obj_data( "exit_code",j->d  );
     if( *(CHARP(lst)) == '0' ) {
       TRACE(2, "exit_code zero: %d", p ); 
       continue;
     }
 
-    
-    
     lst = search_obj_data( "IN",j->d  );
     m_foreach( lst,i,j0) {
 
@@ -562,7 +640,7 @@ void list_nodes( int global_state, int ec )
 
     
     
-    TRACE(2,"adding node %d", id );
+    TRACE(4,"adding node %d", id );
     m_put( comp_ready, & j->d );
   skip_node:
   }
@@ -619,12 +697,30 @@ void test_num(void)
   m_free(s);
 }
 
+int test_bsearch(void)
+{
+	int cs = read_checksum(CHECKSUM_FN);
+	int fn = s_printf( 0,0, "%s", "njson_lex.lex.c" );
+	dump_checksum(cs);
+
+
+	int pos = m_bsearch( &fn, cs, cscmpmstr );
+	TRACE(4,"%d", pos );
+	m_free(fn);
+	
+	exit(1);
+	
+}
+
+
 
 int main(int argc, char **argv)
 {
   trace_level=4;
   m_init();
   TRACE(1,"start");
+
+  
   int opts = njson_from_file(stdin);
   int buf = m_create(1000,1);
 
