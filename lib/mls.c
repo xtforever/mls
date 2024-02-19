@@ -2062,7 +2062,7 @@ void ring_free(int r )
     m_free(r);
 }
 
-/* return 0 if SUBSTRING(m,p,strlen(s)) == s
+/* return 0 if string m[p..] == s 
    else return <0 or >0
  */
 int mstrcmp(int m,int p, const char *s)
