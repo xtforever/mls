@@ -619,7 +619,7 @@ void list_nodes( int global_state, int ec )
     /* if exit_code is zero or IN/DEP has not change then skip */
     int i,lst = search_obj_data( "exit_code",j->d  );
     if( *(CHARP(lst)) == '0' ) {
-      TRACE(4, "skip b/c exit_code zero: %d", p ); 
+      TRACE(4, "skip b/c exit_code zero: %d", id ); 
       continue;
     }
 

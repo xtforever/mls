@@ -153,7 +153,7 @@ read -r -d '' global_state <<- EOM
 EOM
 
 make_all
-
+if (( loop_count == 3 )) ; then echo "ok phase5"; else echo "fail phase5"; ERROR=1; fi
 
 
 exit $ERROR
