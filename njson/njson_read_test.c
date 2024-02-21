@@ -462,6 +462,7 @@ int filesunchanged_checksum(int cs, int jd )
 {
   int p;
   struct njson_st *j;
+  
   m_foreach( jd,p,j ) {
 	  if(  ismodified_checksum(cs, j->d) ) {
 		  TRACE(4,"changed: %s", CHARP(j->d));
@@ -470,6 +471,14 @@ int filesunchanged_checksum(int cs, int jd )
   }
   return 1;
 }
+
+
+int isempty_list(char *name, int jd)
+{
+	int lst = search_obj_data( name, jd  );
+	return (lst==0) || (m_len(lst) == 0); 
+}
+
 
 #define CHECKSUM_FN "TMP.checksum"
 
@@ -502,7 +511,7 @@ void list_nodes( int global_state, int ec )
      restart we do not have to recompile them */
   int checksum = read_checksum( CHECKSUM_FN );
 
-  /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
+   /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
   /* verify valid nodes and  create unique id entries */
   m_foreach(nodes,p,j) {
     if( j->typ < NJSON_ARR ) {
@@ -516,7 +525,8 @@ void list_nodes( int global_state, int ec )
       int id = fetch_node_int(j->d, "id", -1 );
       int x = get_exit_code(id,ec);
       if( x>=0 ) {
-	set_node( j->d, "exit_code", x );
+	      TRACE(4,"set exit code %d on node %d", x, id );
+	      set_node( j->d, "exit_code", x );
       }
       if( x == 0 ) {
 	      update_checksum_node( checksum, search_obj_data("OUT", j->d ));
@@ -527,16 +537,25 @@ void list_nodes( int global_state, int ec )
 
 
   
-  /* RULE 3) if all IN+DEP in cache is unchanged set exit code to zero */
-  dump_checksum(checksum);
+  /* RULE 3) if all IN+DEP+OUT is in cache and is unchanged set exit code to zero
+     special case: if there are no files to check - ignore the node 
+   */
+  // dump_checksum(checksum);
+  TRACE(4,"Check if some nodes do not need to be executed");
   m_foreach(nodes,p,j) {
-	  int id = fetch_node_int(j->d, "id", -1 );
+	  int id = fetch_node_int(j->d, "id", -1 );	  
 	  if( id < 0 ) continue;
-	  if( filesunchanged_checksum( checksum,  search_obj_data( "IN",j->d  ) ))
-		  if( filesunchanged_checksum( checksum,  search_obj_data( "DEP",j->d  ) )) {
-			  TRACE(4,"cached result; exit_code zero for node %d", id );
-			  set_node( j->d, "exit_code", 0 );
-		  }
+	  int err = fetch_node_int(j->d, "exit_code", -1 );
+	  if( err == 0 ) continue;
+	  if( isempty_list("IN",j->d) && isempty_list( "OUT",j->d ) && isempty_list("DEP",j->d) )
+		  continue;
+      
+	  if( filesunchanged_checksum( checksum,  search_obj_data( "IN",j->d  ) ) &&
+	      filesunchanged_checksum( checksum,  search_obj_data( "OUT",j->d  ) ) &&
+	      filesunchanged_checksum( checksum,  search_obj_data( "DEP",j->d  ) ) ) {
+		  TRACE(4,"cached result; set exit_code=0 for node %d", id );
+		  set_node( j->d, "exit_code", 0 );
+	  }
   }
 
   
@@ -577,7 +596,8 @@ void list_nodes( int global_state, int ec )
   m_foreach(all_notgen,p,mstr) {
     TRACE(2,"%s", CHARP( *mstr ) );
   }
-   TRACE(2,"\n-----------------------------\nfind compile ready nodes");  
+
+  TRACE(4,"\n-----------------------------\nfind compile ready nodes");  
    /* find nodes where the 'IN' list does not contain members of 'all_notgen'
       and 'exit_code' is zero
    */
@@ -594,12 +614,12 @@ void list_nodes( int global_state, int ec )
     struct njson_st *j0;
 
     id = fetch_node_int(j->d, "id", 0 );
-    TRACE(5, "checking node %d", id );
+    TRACE(4, "checking node %d", id );
 
     /* if exit_code is zero or IN/DEP has not change then skip */
     int i,lst = search_obj_data( "exit_code",j->d  );
     if( *(CHARP(lst)) == '0' ) {
-      TRACE(2, "exit_code zero: %d", p ); 
+      TRACE(4, "skip b/c exit_code zero: %d", p ); 
       continue;
     }
 
@@ -609,42 +629,41 @@ void list_nodes( int global_state, int ec )
       int filename =  j0->d;
       
       if( m_bsearch( &filename, all_notgen, cmp_mstr ) >= 0 ) {
-	TRACE(2, "%s found in all_notgen", CHARP(filename));
+	TRACE(4, "%s found in all_notgen", CHARP(filename));
 	goto skip_node;
       }
 
       if( !file_exists(filename) ) {
-	TRACE(2, "file %s not found", CHARP(filename));
+	TRACE(4, "file %s not found", CHARP(filename));
 	goto skip_node;
       }
     }
 
-    TRACE(2, "Checking DEP" );
+    TRACE(4, "Checking DEP" );
     lst = search_obj_data( "DEP",j->d  );
     m_foreach( lst,i,j0) {
 
       int filename =  j0->d;
       
       if( m_bsearch( &filename, all_notgen, cmp_mstr ) >= 0 ) {
-	TRACE(2, "%s found in all_notgen", CHARP(filename));
+	TRACE(4, "%s found in all_notgen", CHARP(filename));
 	goto skip_node;
       }
 
       if( !file_exists(filename) ) {
-	TRACE(2, "file %s not found", CHARP(filename));
+	TRACE(4, "file %s not found", CHARP(filename));
 	goto skip_node;
       }
     }
-
-    
-
-    
-    
+   
     TRACE(4,"adding node %d", id );
     m_put( comp_ready, & j->d );
   skip_node:
   }
 
+  /* rule */
+
+  
   /* dump comp ready nodes */
   //m_foreach(comp_ready,p,d) {
   //  d_obj2(stderr, *d,"(",")\n" );
@@ -659,7 +678,7 @@ void list_nodes( int global_state, int ec )
 
   d_obj(global_state, "global_state='(", ")'\n" );
   printf( "nr_jobs=%d\n",  m_len(comp_ready) );
-  
+  TRACE(4,"starting %d jobs", m_len(comp_ready) );
   m_foreach(comp_ready,p,d) {
     int lst;
     dump_string_array( "IN", *d );
