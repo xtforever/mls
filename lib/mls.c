@@ -1341,8 +1341,8 @@ int m_cmp( int a, int b )
 {
   int l1,l2;
   l1=m_len(a); l2=m_len(b);
-  if( l2 != l1 ) return -1;
-  return strncmp( (char*)mls(a,0), (char*)mls(b,0), l1-1 );
+  int len = Max( l2, l1 );
+  return strncmp( (char*)mls(a,0), (char*)mls(b,0), len );
 }
 
 
