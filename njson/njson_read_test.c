@@ -212,6 +212,109 @@ void append_list( int m, char *s, int opts0 )
   }
 }
 
+
+int mscmp(const void *a, const void *b)
+{
+	int k1 = *(const int *)a;
+	int k2 = *(const int *)b;
+	TRACE(1,"cmp %s %s", CHARP(k1), CHARP(k2));
+	
+	return m_cmp(k1,k2);
+}
+
+
+void verify_sort_lookup(int m)
+{
+	
+}
+
+
+int sort_lookup(int m, int key)
+{
+	int key_cp = m_dub(key);
+	int p = m_binsert( m, &key_cp, mscmp, 0 );
+	if( p < 0 ) {
+		m_free(key_cp);
+		p=(-p)-1;
+	}
+	TRACE(1,"%d", p);
+	return p;
+}
+
+void dump_list(char *s, int id, int fn)
+{
+	puts(s);
+	int p,*d;
+	m_foreach(id,p,d) {
+		int s = INT(fn,*d);
+		printf("%s\n", CHARP(s) );
+	}
+	puts("");
+}
+
+void dump_mstrarray(int m)
+{
+	int p,*d;
+	m_foreach(m,p,d) {
+		printf("%d %s\n",p, CHARP(*d) );
+	}
+}
+
+
+#if 0
+void test_sort_lookup(void)
+{
+	int p1,p2;
+	int id = m_create(100,sizeof(int));
+
+	p1 = s_printf(0,0, "test1" );
+	p2 = sort_lookup( id, p1 );
+	TRACE(4,"pos: %d", p2 );
+	dump_list( id);	
+	
+	p1 = s_printf(0,0, "test1" );
+	p2 = sort_lookup( id, p1 );
+	TRACE(4,"pos: %d", p2 );
+	dump_list( id);
+
+	p1 = s_printf(0,0, "test2" );
+	p2 = sort_lookup( id, p1 );
+	TRACE(4,"pos: %d", p2 );
+	dump_list( id);
+	
+	p1 = s_printf(0,0, "test3" );
+	p2 = sort_lookup( id, p1 );
+	TRACE(4,"pos: %d", p2 );
+	dump_list( id);
+	
+	p1 = s_printf(0,0, "aaaaa" );
+	p2 = sort_lookup( id, p1 );
+	TRACE(4,"pos: %d", p2 );
+	dump_list( id);
+
+	exit(1);
+}
+#endif
+
+
+void app_names( int m, int fnid, char *s, int opts0 )
+{
+  struct njson_st *j ;
+  int p;
+  int opts = search_obj_data( s,opts0 );
+  if( opts <= 0 ) {
+    TRACE(2,"not found");
+    return;
+  }
+  
+  m_foreach(opts,p,j) {
+	  if( j->d == 0 ) continue;	  
+	  int id = sort_lookup( fnid, j->d );
+	  TRACE(1, "ADD %s %d %d", CHARP(j->d), id, m_len(fnid) );
+	  m_puti( m, id );
+  }
+}
+
 void dump_string_array(char *s, int opts)
 {
   struct njson_st *j;
@@ -325,7 +428,10 @@ int get_exit_code(int id, int ec)
   int p,*d;
   m_foreach(ec,p,d) {
     p++;
-    if( *d == id ) return INT(ec,p);
+    if( p >= m_len(ec) ) return -1;
+    if( *d == id ) {
+	    return INT(ec,p);
+    }
   }
   return -1;
 }
@@ -394,8 +500,7 @@ void update_checksum_file( int cs, int fn )
     return;
   }
 
-  TRACE(4, "update cache: %s:%s", CHARP(fn), ctime( & (sb.st_mtim.tv_sec) ));
-  TRACE(4, "update cache: %s:%s", CHARP(fn), ctime( & (sb.st_mtime) ));  
+  TRACE(4, "%s:%s", CHARP(fn), ctime( & (sb.st_mtim.tv_sec) ));
   
   if(pos<0) {			/* if no node then create node */
     cs_t tmp;
@@ -473,6 +578,9 @@ int filesunchanged_checksum(int cs, int jd )
 }
 
 
+
+
+
 int isempty_list(char *name, int jd)
 {
 	int lst = search_obj_data( name, jd  );
@@ -480,16 +588,49 @@ int isempty_list(char *name, int jd)
 }
 
 
+
+int filenames_part_of( int nodes, int fnlst )
+{
+  int p;
+  struct njson_st *j;	
+  m_foreach( nodes,p,j) {	  
+      int filename =  j->d;     
+      if( m_bsearch( &filename, fnlst, cmp_mstr ) < 0 ) {
+	      return 0;
+      }
+  }
+  return 1; 
+}
+
 #define CHECKSUM_FN "TMP.checksum"
 
-void list_nodes( int global_state, int ec )
+void export_bash_command(int g, int comp_ready)
 {
   int p;
   int *d;
+  d_obj(g, "global_state='(", ")'\n" );
+  printf( "nr_jobs=%d\n",  m_len(comp_ready) );
+  TRACE(4,"starting %d jobs", m_len(comp_ready) );
+  m_foreach(comp_ready,p,d) {
+    dump_string_array( "IN", *d );
+    dump_string_array( "OUT", *d );    
+    int lst = search_obj_data( "REC", *d  );
+    TRACE(4,"%s", CHARP(lst));
+    int id = search_obj_data( "id", *d  );
+    printf( "%s\nstore-result %s $?\n\n", CHARP(lst), CHARP(id) );
+  }
+}
+
+
+
+
+
+
+void prepare_nodes(int checksum, int global_state, int ec)
+{
+  int p;
   struct njson_st *j;
-  int loop_count = 0;
-  int id;
-    
+  int loop_count;
   int nodes = search_obj_data( "nodes", global_state );
   if( !nodes ) {
     ERR("no member named 'nodes'");
@@ -497,46 +638,158 @@ void list_nodes( int global_state, int ec )
 
   loop_count = fetch_node_int( global_state, "loop_count", 0 );
   set_node(global_state, "loop_count", loop_count+1 );
-
-
-  // m_foreach( ec,p,d ) {
-  //  int id = *d++;
-  //  p++;
-  //  int e  = *d;
-  //  TRACE(4, "id:%d e:%d", id, e );
-  //}
-
-  
-  /* get the nodes in list 'ec' and create checksums for our database, so if we
-     restart we do not have to recompile them */
-  int checksum = read_checksum( CHECKSUM_FN );
-
-   /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
+  /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
   /* verify valid nodes and  create unique id entries */
   m_foreach(nodes,p,j) {
-    if( j->typ < NJSON_ARR ) {
-      TRACE(2, "Node %d invalid", p );
-      return;
-    }
-    if( loop_count == 0 ) {
-      set_node( j->d, "exit_code", 9 );
-      set_node( j->d, "id", p+1 );
-    } else {
-      int id = fetch_node_int(j->d, "id", -1 );
-      int x = get_exit_code(id,ec);
-      if( x>=0 ) {
-	      TRACE(4,"set exit code %d on node %d", x, id );
-	      set_node( j->d, "exit_code", x );
-      }
-      if( x == 0 ) {
-	      update_checksum_node( checksum, search_obj_data("OUT", j->d ));
-	      update_checksum_node( checksum, search_obj_data("IN", j->d ));
-      }      
-    }
+	  if( j->typ < NJSON_ARR ) {
+		  TRACE(2, "Node %d invalid", p );
+		  return;
+	  }
+	  if( loop_count == 0 ) {
+		  set_node( j->d, "exit_code", 9 );
+		  set_node( j->d, "id", p+1 );
+	  } else {
+		  int id = fetch_node_int(j->d, "id", -1 );
+		  int x = get_exit_code(id,ec);
+		  if( x>=0 ) {
+			  TRACE(4,"set exit code %d on node %d", x, id );
+			  set_node( j->d, "exit_code", x );
+		  }
+		  if( x == 0 ) {
+			  update_checksum_node( checksum, search_obj_data("OUT", j->d ));
+			  update_checksum_node( checksum, search_obj_data("IN", j->d ));
+		  }      
+	  }
   }
+}
 
 
-  
+void dump_int(int a)
+{
+	int p,*d;
+	m_foreach(a,p,d) {
+		printf("%d, \n", *d );	
+	}
+	puts("");
+}
+
+
+int intersection_empty(int a, int b)
+{
+	void *obj1, *obj2;
+	int p;
+	int u;
+
+	m_foreach(a,p,obj1) {
+		m_foreach(b,u,obj2)
+			if( memcmp(obj1,obj2,m_width(a)) == 0 ) {
+				return 0;
+			}
+	}
+	return 1;		
+}
+
+void find_nodes( int global_state, int ec )
+{
+	
+	struct njson_st *j;
+	int p,nodes = search_obj_data( "nodes", global_state );
+	int *d;
+	int fnid = m_create(100,sizeof(int));
+	int cnt = m_len(nodes);
+	int prep = m_create(cnt,sizeof(int));
+
+	/* INIT
+	 * --------------------------------
+	 * create a list of all filenames to
+	 * get an uuid, read checksums and
+	 * update nodes
+	 */ 
+	TRACE(3, "UUID STRING FOR STRINGS" );
+	int p1 = m_create(5,sizeof(int));
+	m_foreach(nodes,p,j) {
+		app_names(p1, fnid, "IN",  j->d);
+		app_names(p1, fnid, "DEP", j->d);
+		app_names(p1, fnid, "OUT", j->d);
+	}
+	m_free(p1);
+	int checksum = read_checksum( CHECKSUM_FN );
+	prepare_nodes(checksum,global_state,ec);
+
+	/* START
+	 * --------------------------------
+	 * ndep : { node.out | node.ec!=0 }
+	 * comp_ready: { node | node.in+node.dep not
+	 * in(ndep)}
+	 */
+	/*OPTIMIZE: all filenames in IN+DEP */
+	TRACE(3, "BUILD IN+DEP LIST" );
+	m_foreach(nodes,p,j) {
+		int p1 = m_create(5,sizeof(int));
+		m_puti(prep,p1);
+		app_names(p1, fnid, "IN",  j->d);
+		app_names(p1, fnid, "DEP", j->d);
+	}	
+	/*OPTIMIZE: set exit code to zero on each node with checksum
+	 * unchanged for IN+OUT+not Empty(IN) */
+	m_foreach(nodes,p,j) {
+		if( fetch_node_int(j->d,"exit_code",-1) == 0 ) continue;
+		int lst_in = search_obj_data( "IN", j->d);
+		int lst_out = search_obj_data( "OUT", j->d);
+		if( lst_in && m_len(lst_in)
+		    && filesunchanged_checksum(checksum, lst_in)
+		    && filesunchanged_checksum(checksum, lst_out ) )
+		{
+			TRACE(4,"node %d cached", p);
+			set_node( j->d, "exit_code", 0 );  
+		}		    
+	}
+	/* ndep: all OUT-files with exit_code != 0 */
+	int ndep = m_create(100,sizeof(int));
+	m_foreach(nodes,p,j) {
+		int err = fetch_node_int(j->d, "exit_code", -1 );
+		if( ! err ) continue;
+		app_names(ndep, fnid, "OUT",  j->d);
+	}
+	/* RULE1) comp_ready:= for all nodes with:
+	   1) prep list contains nothing from ndep and
+	   2) exit_code != 0
+	*/
+	int comp_ready = m_create(100,sizeof(int));
+	m_foreach(nodes,p,j) {
+		if( fetch_node_int(j->d, "exit_code", -1 ) == 0 ) continue;
+		int p1 = INT(prep,p);
+		if( intersection_empty( p1, ndep ) ) {
+			m_puti(comp_ready,j->d);
+			TRACE(4,"Ready: %d", p );
+		}
+	}
+
+	export_bash_command(global_state,comp_ready);
+	save_checksum( checksum, CHECKSUM_FN );
+	m_free(ndep);
+	m_free(comp_ready);
+	m_foreach( prep, p, d ) m_free(*d);
+	m_free(prep);
+
+	m_foreach( fnid, p, d ) m_free(*d);
+	m_free(fnid);	
+
+	m_free(checksum);
+}
+
+
+
+
+void list_nodes( int global_state, int ec )
+{
+	int *d, id, p;
+	struct njson_st *j;
+	int checksum = read_checksum( CHECKSUM_FN );
+	prepare_nodes(checksum,global_state,ec);
+	int nodes = search_obj_data( "nodes", global_state );
+	
+
   /* RULE 3) if all IN+DEP+OUT is in cache and is unchanged set exit code to zero
      special case: if there are no files to check - ignore the node 
    */
@@ -560,7 +813,7 @@ void list_nodes( int global_state, int ec )
 
   
   
-  
+  int all_gen = m_create( 100, sizeof(int) );
   int all_out   =  m_create( 100, sizeof(int) );
   int all_notgen   =  m_create( 100, sizeof(int) );
   int all_dep   =  m_create( 100, sizeof(int) );
@@ -576,7 +829,8 @@ void list_nodes( int global_state, int ec )
     /* explicit declared not generated content */
     if( fetch_node_int( j->d, "exit_code", 1 ) ) {
       append_list( all_notgen, "OUT", j->d );
-    }    
+    }
+    else append_list( all_gen, "OUT", j->d );
   }
 
   
@@ -624,6 +878,8 @@ void list_nodes( int global_state, int ec )
     }
 
     lst = search_obj_data( "IN",j->d  );
+    /* not all files IN are in the list of allready generated files */
+    if(! filenames_part_of( lst, all_gen ) ) {	    
     m_foreach( lst,i,j0) {
 
       int filename =  j0->d;
@@ -638,9 +894,12 @@ void list_nodes( int global_state, int ec )
 	goto skip_node;
       }
     }
-
+    }
+    
     TRACE(4, "Checking DEP" );
     lst = search_obj_data( "DEP",j->d  );
+    if(! filenames_part_of( lst, all_gen ) ) {	    
+
     m_foreach( lst,i,j0) {
 
       int filename =  j0->d;
@@ -655,14 +914,26 @@ void list_nodes( int global_state, int ec )
 	goto skip_node;
       }
     }
-   
+    }
+    
     TRACE(4,"adding node %d", id );
     m_put( comp_ready, & j->d );
   skip_node:
   }
 
-  /* rule */
+  /* if exit_code!=0 and all in IN+DEP are in all_gen then add this node */ 
 
+
+  
+  /* rule: if there is nothing to do, retry nodes with exit_code!=0 */
+  if( m_len(comp_ready) == 0 ) {
+	  m_foreach(nodes,p,j) {
+		  int err = fetch_node_int(j->d, "exit_code", -1 );
+		  if( err == 0 ) continue;
+		  TRACE(4,"adding node b/c exit_code!=0" );
+		  m_put( comp_ready, & j->d );
+	  }
+  }
   
   /* dump comp ready nodes */
   //m_foreach(comp_ready,p,d) {
@@ -672,22 +943,11 @@ void list_nodes( int global_state, int ec )
   /* compile with rec and save the exit code, keep trying until exit code is zero or max_try_count exceeded */
 
 
-  /* OPTIMIZE RULE: if files in out exists and files in in+dep have not changed, do not compile */
+  /* OPTIMIZE RULE: if files in out exists and files in in+dep+out have not changed, do not compile */
 
 
-
-  d_obj(global_state, "global_state='(", ")'\n" );
-  printf( "nr_jobs=%d\n",  m_len(comp_ready) );
-  TRACE(4,"starting %d jobs", m_len(comp_ready) );
-  m_foreach(comp_ready,p,d) {
-    int lst;
-    dump_string_array( "IN", *d );
-    dump_string_array( "OUT", *d );    
-    lst = search_obj_data( "REC", *d  );
-    int id = search_obj_data( "id", *d  );
-    printf( "%s\nstore-result %s $?\n\n", CHARP(lst), CHARP(id) );
-  }
-
+  export_bash_command(global_state,comp_ready);
+  
   save_checksum( checksum, CHECKSUM_FN );
   
   /* if exit code is zero remove all files in out-list from all_out and rebuild the comp_ready list */
@@ -697,6 +957,7 @@ void list_nodes( int global_state, int ec )
   m_free(in_wo_out);
   m_free(comp_ready);
   m_free(all_notgen);
+  m_free(all_gen);
   m_free(checksum);
 
   
@@ -749,7 +1010,13 @@ int main(int argc, char **argv)
   
   int ec = parse_number_list(buf);
   m_free(buf);
-  list_nodes(opts,ec);
+
+
+  // test_sort_lookup();
+  find_nodes(opts,ec);
+  // list_nodes(opts,ec);
+
+  
   m_free(ec);
   njson_free(opts);
   m_destruct();

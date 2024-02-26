@@ -24,20 +24,21 @@ EOM
 
 clean()
 {
-  rm test1/*.test
+  mkdir test1 &>/dev/null
+  rm test1/*.test &>/dev/null
 }
 
 
 make_b()
 {
-    echo >&2 "create b"
+    echo "create b"
 	touch test1/b.test
 }
 
 
 make_c()
 {
-        echo >&2 "create c"
+        echo  "create c"
 	touch test1/c.test
 }
 
@@ -69,6 +70,7 @@ loop_count=0
 while (( loop_count < 10 )) 
 do
     ((loop_count++))
+    echo "LOOP: $loop_count"
     
     prog=$( echo "$global_state" | ${MAKE} "${ec[*]}" | tee -a $LOGF )
     X=(); P=()
@@ -156,7 +158,46 @@ make_all
 if (( loop_count == 3 )) ; then echo "ok phase5"; else echo "fail phase5"; ERROR=1; fi
 
 
+showname()
+{
+    
+    echo "Node: ${OUT[*]}  ( ${IN[*]}  )"
+    
+}
+
+echo -e "\n\nTEST-DEPS"
+read -r -d '' global_state <<- EOM 
+( nodes: (
+
+(
+	OUT: ( phony ),
+    	REC: "run showname "
+),
+
+(
+	IN: ( phony ),
+	OUT: ( dep2 ),
+    	REC: "run  showname "
+),
+
+(
+	IN: ( phony,dep2 ),
+	OUT: ( dep3 ),
+    	REC: "run  showname "
+)
+
+
+
+) )
+EOM
+
+make_all
+
+
+
 exit $ERROR
+
+
 
 
 
