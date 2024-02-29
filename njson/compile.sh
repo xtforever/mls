@@ -8,6 +8,12 @@ LEX=flex
 CC=gcc
 
 
+depmake()
+{
+	$CC -c $CFLAGS -MMD ${IN[*]}
+}
+
+
 ccompile_build()
 {
     inf=${IN[0]}

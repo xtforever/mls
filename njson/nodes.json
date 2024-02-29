@@ -1,10 +1,17 @@
  ( nodes: (
+
+(
+     IN: ( 'njson_parse.tab.c', 'njson_lex.lex.c', 'njson_read.c', 'njson_read_test.c' , '../lib/mls.c' ),
+     OUT: ( 'njson_parse.tab.d' ),
+     REC: "run depmake"
+),
+
 (
 OUT: ( 'njson_lex.lex.h', 'njson_lex.lex.c' ), 
 IN:  ( 'njson_lex.l' ),
     REC: "run flex_build"
 ),
-     
+
      (
 	 OUT: ( 'njson_parse.tab.c', 'njson_parse.tab.h' ),
 	 IN:  ( 'njson_parse.y' ),

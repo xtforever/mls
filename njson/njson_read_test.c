@@ -4,7 +4,263 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+#include <glob.h>
 
+/*
+  ( loop_count:0,
+    importmm:"true"
+    nodes:(...),
+  )
+ 
+ */
+
+
+void m_free_list(int m)
+{
+	int p,*d;
+	m_foreach( m, p, d ) m_free(*d);
+	m_free(m);
+}
+
+void m_put_cstr(int m, const char *s)
+{
+	if( s==0 || *s==0 ) {
+		int w=m_create(1,1);
+		m_putc(w,0);
+		m_put(m,&w);
+		return;
+	}
+	
+	int len=strlen(s)+1;
+	int w=m_create(len,1);
+	m_write(w,0,s,len);
+	m_put(m,&w);
+}
+
+
+int glob_files( const char *s)
+{
+	int fl = m_create(50,sizeof(int));
+	glob_t glob_result;
+	int return_value;
+
+	// Perform globbing
+	return_value = glob(s, 0, NULL, &glob_result);
+	if (return_value != 0) {
+		if (return_value == GLOB_NOMATCH) {
+			TRACE(1, "No matches found." );
+		} else {
+			WARN("Error in globbing." );
+		}
+		return fl;
+	}
+
+	// Iterate through the matched files
+	for (size_t i = 0; i < glob_result.gl_pathc; i++) {
+		m_put_cstr(fl,glob_result.gl_pathv[i]);
+	}
+
+	// Free the memory allocated for the glob structure
+	globfree(&glob_result);
+	return fl;
+}
+
+int m_read_file(int m, int max, int fn )
+{
+	int buf;
+	if( m > 0 ) {
+		buf=m;
+		m_clear(buf);
+	} else {
+		buf =  m_create( max, 1); 
+	}
+	TRACE(3,"read %s",  CHARP(fn) );
+	FILE *fp = fopen( CHARP(fn), "r" );
+	if(!fp) return buf;
+	int len = fread( m_buf(buf), 1, max, fp );
+	if( len <= 0 ) {
+		fclose(fp);
+		return buf;
+	}
+	m_setlen(buf,len);
+	fclose(fp);
+	return buf;		
+}
+
+
+int p_word(int out, int buf, int *p, char *delim )
+{
+	while( *p < m_len(buf) ) {
+		int ch = CHAR(buf,*p);
+		if( strchr( delim, ch ) ) {
+			m_putc(out,0);
+			return 0;
+		}
+		m_putc(out,ch);
+		(*p)++;
+	}
+	m_putc(out,0);
+	return 1;
+}
+
+/* right compare mstr */
+int mcmpr(int m, const char *s)
+{
+	if( !s || ! *s ) return 0;
+	int mlen = m_len(m) -1;
+	int slen = strlen(s);
+	if( slen > mlen ) return 1;
+	for( int p = mlen - slen; p<=mlen; p++, s++ ) {
+		if( *s != CHAR(m,p) ) return 1;
+	}
+	return 0;
+}
+
+
+
+int memberof_list(int nodes, char *s, int m );
+int search_obj_data( const char *s, int opts );
+void add_member_to_list(int node, char *s, int m );
+
+void add_deps(int nodes, int out, int deps, int fnid )
+{
+	int p,x,*d, outp,*outd;
+	struct njson_st *j,*j1;
+	int found=0;
+
+	if( m_len(deps) == 0 || m_len(out)==0 ) return;
+	
+	m_foreach( nodes,p,j ) {
+		m_foreach( out, outp, outd ) {
+			if( memberof_list( j->d, "OUT", *outd ) ) {
+				found=1;
+				m_foreach( deps,x,d ) {
+					add_member_to_list( j->d, "DEP", *d );
+				}
+			}
+		}
+	}
+
+	if( found ) return;
+
+	/* if .xxx ending generate xxxcompile rule */
+	int d0 = INT(deps,0); int out0 = INT(out,0);
+	TRACE(4,"ADD %s %s", CHARP(d0), CHARP(out0) );
+
+	char*cp;
+	int ext=0;
+	m_foreach(d0,p,cp) {
+		if( *cp == '.' ) {
+			ext=p+1;
+		}
+	}
+	if( !ext ) return;
+	int rec = s_printf(0,0, "run %scompile", (char*) mls(d0,ext) );
+	
+	j1 = m_add(nodes);
+	j1->name = 0;
+	j1->typ = NJSON_OBJ;
+	j1->d = m_create(3,sizeof(struct njson_st));
+
+	j = m_add(j1->d);
+	j->name = s_printf(0,0, "REC" );
+	j->typ = NJSON_STRING;
+	j->d = rec;
+
+	j = m_add(j1->d);
+	j->name = s_printf(0,0, "OUT" );
+	j->typ = NJSON_OBJ;
+	j->d = m_create(m_len(out),sizeof(struct njson_st));
+
+	for(int i=0;i<m_len(out);i++) {
+		struct njson_st *j0 = m_add(j->d);
+		j0->name = 0;
+		j0->typ = NJSON_STRING;
+		j0->d = m_dub( INT(out,i) );
+	}
+	
+	j = m_add(j1->d);
+	j->name = s_printf(0,0, "IN" );
+	j->typ = NJSON_OBJ;
+	j->d = m_create(1,sizeof(struct njson_st));
+	
+	j = m_add(j->d);
+	j->name = 0;
+	j->typ = NJSON_STRING;
+	j->d = m_dub( INT(deps,0) );
+		
+	m_foreach( deps,x,d ) {
+		add_member_to_list( j1->d, "DEP", *d );
+	}
+}
+
+
+int get_word_list(int m, int buf, int *p0)
+{
+	int p;
+	int err=0;
+	int w=0;
+ 
+	for(p=*p0; p < m_len(buf) && !err; p++ ) {		
+		int ch =  CHAR(buf,p);
+		if( isspace(ch) || ch == 0x5c ) continue;
+		if( ch == 0 ) break;
+		
+		if(!w) w = m_create(20,1);
+		err = p_word(w, buf,&p, ": \n" );
+		if( m_len(w) > 1 ) {
+			m_puti(m,w); w=0;
+		}
+		if(CHAR(buf,p) == ':' ) break; 
+	}
+	if(w) m_free(w);
+	*p0=p;
+	return m_len(m);
+}
+
+
+
+void get_depfile(int nodes, int fn, int fnid )
+{
+	int buf = m_read_file(0,16384,fn);
+	int p=0;
+	int out, in;
+	out = m_create( 1, sizeof(int) );
+	in = m_create(5,sizeof(int)) ;
+
+	get_word_list(out,buf,&p);
+	p++;
+	get_word_list(in,buf,&p);
+
+	int *d;
+	m_foreach( in,p,d) {
+		TRACE(4, "IN: %s", CHARP(*d));
+	}
+	m_foreach( out,p,d) {
+		TRACE(4, "OUT: %s", CHARP(*d));
+	}
+	
+	add_deps( nodes, out, in, fnid );
+
+	m_free_list(out);
+	m_free_list(in);
+	m_free(buf);
+}
+
+
+
+void importmm(int nodes, int fnid, const char *pattern )
+{
+
+	int files = glob_files( pattern );
+
+	int p,*fn;
+	m_foreach(files,p,fn) {
+		get_depfile( nodes, *fn, fnid );
+	}
+	
+	m_free_list(files);
+}
 
 
 
@@ -211,6 +467,58 @@ void append_list( int m, char *s, int opts0 )
     }
   }
 }
+
+int memberof_list(int nodes, char *s, int m )
+{
+  struct njson_st *j ;
+  int p;
+
+  /* seek for member s in this node obj data */
+  int opts = search_obj_data( s,nodes );
+  if( opts <= 0 ) {
+    TRACE(2,"not found");
+    return 0;
+  }
+  
+  m_foreach(opts,p,j) {
+    if( j->d ) {
+	    if( m_cmp( j->d, m ) == 0 ) return 1;
+    }
+  }
+  return 0;
+}
+
+
+void add_member_to_list(int node, char *s, int m )
+{
+  struct njson_st *j ;
+  int p;
+
+  /* seek for member s in this node obj data */
+  int opts = search_obj_data( s,node );
+  if( opts <= 0 ) {
+	  /* keine deps vorhanden, dann erstellen */
+	  j = m_add(node);
+	  j->name = s_printf(0,0, s);			     
+	  j->typ = NJSON_OBJ;
+	  j->d = m_create(2,sizeof(struct njson_st));	  
+	  opts = j->d;
+  }
+
+  /* keine vorhandenen einsetzen */
+  m_foreach(opts,p,j) {
+    if( j->d ) {
+	    if( m_cmp( j->d, m ) == 0 ) return;
+    }
+  }
+
+  j = m_add(opts);
+  j->name = 0;
+  j->typ = NJSON_STRING;
+  j->d = m_dub(m);
+}
+
+
 
 
 int mscmp(const void *a, const void *b)
@@ -626,7 +934,7 @@ void export_bash_command(int g, int comp_ready)
 
 
 
-void prepare_nodes(int checksum, int global_state, int ec)
+void prepare_nodes(int checksum, int global_state, int ec, int fnid )
 {
   int p;
   struct njson_st *j;
@@ -638,6 +946,22 @@ void prepare_nodes(int checksum, int global_state, int ec)
 
   loop_count = fetch_node_int( global_state, "loop_count", 0 );
   set_node(global_state, "loop_count", loop_count+1 );
+
+  int mm = fetch_node_int( global_state, "importmm", 0 );
+  if( mm ) {
+	  importmm(nodes, fnid, "*.d" );
+	  set_node( global_state, "importmm", 0 );
+  }
+  int ci = search_obj_data( "import", global_state );
+  if( ci ) {
+	  if(CHAR(ci,0)) {
+		  importmm(nodes, fnid, CHARP(ci) );
+		  m_clear(ci);
+		  m_putc(ci,0);
+	  }
+  }
+  
+  
   /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
   /* verify valid nodes and  create unique id entries */
   m_foreach(nodes,p,j) {
@@ -714,8 +1038,10 @@ void find_nodes( int global_state, int ec )
 	}
 	m_free(p1);
 	int checksum = read_checksum( CHECKSUM_FN );
-	prepare_nodes(checksum,global_state,ec);
+	prepare_nodes(checksum,global_state,ec, fnid);
 
+	
+	
 	/* START
 	 * --------------------------------
 	 * ndep : { node.out | node.ec!=0 }
@@ -786,7 +1112,7 @@ void list_nodes( int global_state, int ec )
 	int *d, id, p;
 	struct njson_st *j;
 	int checksum = read_checksum( CHECKSUM_FN );
-	prepare_nodes(checksum,global_state,ec);
+	prepare_nodes(checksum,global_state,ec,0);
 	int nodes = search_obj_data( "nodes", global_state );
 	
 
@@ -1000,7 +1326,6 @@ int main(int argc, char **argv)
   m_init();
   TRACE(1,"start");
 
-  
   int opts = njson_from_file(stdin);
   int buf = m_create(1000,1);
 
