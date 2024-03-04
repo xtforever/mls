@@ -1,5 +1,14 @@
+/*
+  missing cmd line parser
+  read error codes first from stdin then global state
+*/
+
+
+
 #include "njson_read.h"
 #include "mls.h"
+#include "conststr.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -14,13 +23,40 @@
  
  */
 
+/*
+  strings, ...
+  index,...
+  access
+ */
 
-void m_free_list(int m)
+
+
+static void m_free_list(int m)
 {
 	int p,*d;
 	m_foreach( m, p, d ) m_free(*d);
 	m_free(m);
 }
+
+
+
+
+int cscmpmstr( const void *a,const void *b )
+{
+  const int *fn = a;
+  const cs_t *d = b;
+  return mstrcmp( *fn, 0, d->fn );
+}
+int cscmp( const void *a,const void *b )
+{
+  const cs_t *a0 = a;
+  const cs_t *b0  = b;
+  return strncmp(a0->fn,b0->fn,sizeof( a0->fn) );
+}
+
+
+
+
 
 void m_put_cstr(int m, const char *s)
 {
@@ -86,6 +122,33 @@ int m_read_file(int m, int max, int fn )
 	fclose(fp);
 	return buf;		
 }
+
+
+void nj_add_string( int node, char *name, int data )
+{
+	struct njson_st *j;
+	j = m_add(node);
+	if( is_empty(name) )
+		j->name = 0;
+	else
+		j->name = conststr_lookup_c( name );
+	j->typ = NJSON_STRING;
+	j->d = data;
+}
+
+void nj_add_obj( int node, char *name, int len )
+{
+	struct njson_st *j;
+	j = m_add(node);
+	if( is_empty(name) )
+		j->name = 0;
+	else
+		j->name =conststr_lookup_c( name );  
+	j->typ = NJSON_OBJ;
+	j->d = m_create(len,sizeof(struct njson_st));
+}
+
+
 
 
 int p_word(int out, int buf, int *p, char *delim )
@@ -499,7 +562,7 @@ void add_member_to_list(int node, char *s, int m )
   if( opts <= 0 ) {
 	  /* keine deps vorhanden, dann erstellen */
 	  j = m_add(node);
-	  j->name = s_printf(0,0, s);			     
+	  j->name = conststr_lookup_c(s);
 	  j->typ = NJSON_OBJ;
 	  j->d = m_create(2,sizeof(struct njson_st));	  
 	  opts = j->d;
@@ -515,19 +578,18 @@ void add_member_to_list(int node, char *s, int m )
   j = m_add(opts);
   j->name = 0;
   j->typ = NJSON_STRING;
-  j->d = m_dub(m);
+  j->d = conststr_lookup  (m);
 }
 
 
 
 
-int mscmp(const void *a, const void *b)
+static int cmp_int(const void *a, const void *b)
 {
 	int k1 = *(const int *)a;
 	int k2 = *(const int *)b;
-	TRACE(1,"cmp %s %s", CHARP(k1), CHARP(k2));
-	
-	return m_cmp(k1,k2);
+	TRACE(1,"cmp %d %d", k1,k2);	
+	return k1 - k2;
 }
 
 
@@ -537,15 +599,17 @@ void verify_sort_lookup(int m)
 }
 
 
+/* einfuegen von key in das array m falls key noch nicht
+   existiert
+   return: pos von key
+*/
 int sort_lookup(int m, int key)
 {
-	int key_cp = m_dub(key);
-	int p = m_binsert( m, &key_cp, mscmp, 0 );
+	int p = m_binsert( m, &key, cmp_int, 0 );
 	if( p < 0 ) {
-		m_free(key_cp);
-		p=(-p)-1;
+		return (-p)-1;
 	}
-	TRACE(1,"%d", p);
+	TRACE(4,"ADD pos:%d key:%d", p, key );
 	return p;
 }
 
@@ -569,12 +633,42 @@ void dump_mstrarray(int m)
 }
 
 
-#if 0
+
 void test_sort_lookup(void)
 {
 	int p1,p2;
 	int id = m_create(100,sizeof(int));
+	int k = m_create(100,sizeof(int));
+	
+	char *s[] = { "prepare","test10.b", "test1.a", "test1.b" };
+	p1=0;
+	for(int i=0;i<4;i++) {
+		p1 = s_printf(0,0, "%s", s[i] );
+		m_puti(k,p1);
+	}
 
+	for(int i=0;i<4;i++) {
+		p1 = INT(k,i);
+		sort_lookup( id, p1 );
+	}
+
+	TRACE(1,"DOUBLE %d", m_len(id) );
+     
+	for(int i=0;i<4;i++) {
+		p1 = INT(k,i);
+		sort_lookup( id, p1 );
+	}
+
+
+	dump_mstrarray( id);
+	
+	
+	m_free_list(k);
+	(void) p2;
+	exit(1);
+	
+	
+#if 0
 	p1 = s_printf(0,0, "test1" );
 	p2 = sort_lookup( id, p1 );
 	TRACE(4,"pos: %d", p2 );
@@ -599,13 +693,14 @@ void test_sort_lookup(void)
 	p2 = sort_lookup( id, p1 );
 	TRACE(4,"pos: %d", p2 );
 	dump_list( id);
-
-	exit(1);
-}
 #endif
+	exit(1);
+	
+}
 
 
-void app_names( int m, int fnid, char *s, int opts0 )
+
+void app_names( int m, char *s, int opts0 )
 {
   struct njson_st *j ;
   int p;
@@ -617,9 +712,8 @@ void app_names( int m, int fnid, char *s, int opts0 )
   
   m_foreach(opts,p,j) {
 	  if( j->d == 0 ) continue;	  
-	  int id = sort_lookup( fnid, j->d );
-	  TRACE(1, "ADD %s %d %d", CHARP(j->d), id, m_len(fnid) );
-	  m_puti( m, id );
+	  int id = conststr_lookup( j->d );
+	  sort_lookup( m, id );
   }
 }
 
@@ -656,9 +750,12 @@ int cmp_mstr( const void *a0, const void *b0 )
 static int create_node_str(  int obj, const char *key, int val )
 {
   struct njson_st nj;
+  
   nj.typ = NJSON_STRING;
-  nj.name = s_printf(0,0,"%s", key );
-  nj.d = s_printf(0,0,"%d", val );
+  nj.name = is_empty(key) ? 0 : conststr_lookup_c( key );
+  char buf[20];
+  snprintf(buf,sizeof buf,"%d", val );
+  nj.d = conststr_lookup_c (buf );
   m_put( obj, &nj );
   return nj.d;
 }
@@ -684,12 +781,17 @@ int fetch_node_int( int obj, const char *key, int default_val )
 /* if the node does not exists, create the node */
 int set_node( int obj, const char *key, int val )
 {
-  int d =  search_obj_data( key, obj  );
-  if( !d ) {
-    return create_node_str(obj,key, val );
+  char buf[20];
+  snprintf(buf,sizeof buf,"%d", val );	
+  struct njson_st *j;
+  int p;
+  m_foreach(opts,p,j) {
+    if( njson_cmp( s, j ) == 0 ) {
+	    j->d = conststr_lookup_c(buf);
+	    return j->d;
+    }
   }
-  s_printf(d,0,"%d", val );
-  return d;
+  return create_node_str(obj,key, val );
 }
 
 
@@ -779,20 +881,6 @@ int read_checksum( const char *fn )
   len+=rd; 
   m_setlen( cs,len );
   return cs;
-}
-
-
-int cscmpmstr( const void *a,const void *b )
-{
-  const int *fn = a;
-  const cs_t *d = b;
-  return mstrcmp( *fn, 0, d->fn );
-}
-int cscmp( const void *a,const void *b )
-{
-  const cs_t *a0 = a;
-  const cs_t *b0  = b;
-  return strncmp(a0->fn,b0->fn,sizeof( a0->fn) );
 }
 
 
@@ -934,7 +1022,7 @@ void export_bash_command(int g, int comp_ready)
 
 
 
-void prepare_nodes(int checksum, int global_state, int ec, int fnid )
+void prepare_nodes(int checksum, int global_state, int ec )
 {
   int p;
   struct njson_st *j;
@@ -949,18 +1037,15 @@ void prepare_nodes(int checksum, int global_state, int ec, int fnid )
 
   int mm = fetch_node_int( global_state, "importmm", 0 );
   if( mm ) {
-	  importmm(nodes, fnid, "*.d" );
+	  importmm(nodes, "*.d" );
 	  set_node( global_state, "importmm", 0 );
   }
   int ci = search_obj_data( "import", global_state );
-  if( ci ) {
-	  if(CHAR(ci,0)) {
-		  importmm(nodes, fnid, CHARP(ci) );
-		  m_clear(ci);
-		  m_putc(ci,0);
-	  }
+  if( ci && CHAR(ci,0) ) {
+	  importmm(nodes, CHARP(ci) );
+	  m_clear(ci);
+	  m_putc(ci,0);
   }
-  
   
   /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
   /* verify valid nodes and  create unique id entries */
@@ -998,6 +1083,17 @@ void dump_int(int a)
 }
 
 
+void dump_fnid(const char *head, int a, int fnid)
+{
+	fprintf(stderr,"%s", head );
+	int p,*d;
+	m_foreach(a,p,d) {
+		fprintf(stderr,"%s, ", CHARP( INT(fnid,*d)) );	
+	}
+	fprintf(stderr,"\n");
+}
+
+
 int intersection_empty(int a, int b)
 {
 	void *obj1, *obj2;
@@ -1019,29 +1115,17 @@ void find_nodes( int global_state, int ec )
 	struct njson_st *j;
 	int p,nodes = search_obj_data( "nodes", global_state );
 	int *d;
-	int fnid = m_create(100,sizeof(int));
 	int cnt = m_len(nodes);
 	int prep = m_create(cnt,sizeof(int));
 
-	/* INIT
-	 * --------------------------------
-	 * create a list of all filenames to
-	 * get an uuid, read checksums and
-	 * update nodes
-	 */ 
-	TRACE(3, "UUID STRING FOR STRINGS" );
-	int p1 = m_create(5,sizeof(int));
-	m_foreach(nodes,p,j) {
-		app_names(p1, fnid, "IN",  j->d);
-		app_names(p1, fnid, "DEP", j->d);
-		app_names(p1, fnid, "OUT", j->d);
-	}
-	m_free(p1);
-	int checksum = read_checksum( CHECKSUM_FN );
-	prepare_nodes(checksum,global_state,ec, fnid);
 
-	
-	
+	/* load checksum database */
+	int checksum = read_checksum( CHECKSUM_FN );
+
+	/* import nodes, find cached nodes */
+	prepare_nodes(checksum,global_state,ec );
+
+ 	
 	/* START
 	 * --------------------------------
 	 * ndep : { node.out | node.ec!=0 }
@@ -1053,9 +1137,11 @@ void find_nodes( int global_state, int ec )
 	m_foreach(nodes,p,j) {
 		int p1 = m_create(5,sizeof(int));
 		m_puti(prep,p1);
-		app_names(p1, fnid, "IN",  j->d);
-		app_names(p1, fnid, "DEP", j->d);
-	}	
+		app_names(p1, "IN",  j->d);
+		app_names(p1, "DEP", j->d);
+	}
+
+	
 	/*OPTIMIZE: set exit code to zero on each node with checksum
 	 * unchanged for IN+OUT+not Empty(IN) */
 	m_foreach(nodes,p,j) {
@@ -1070,21 +1156,36 @@ void find_nodes( int global_state, int ec )
 			set_node( j->d, "exit_code", 0 );  
 		}		    
 	}
-	/* ndep: all OUT-files with exit_code != 0 */
+
+
+	if(0) {
+		int n,*d;
+		m_foreach(prep,n,d) {
+		   dump_fnid("PREP:", *d,fnid);
+		}
+	}
+
+       	/* ndep: all OUT-files with exit_code != 0 */
 	int ndep = m_create(100,sizeof(int));
 	m_foreach(nodes,p,j) {
 		int err = fetch_node_int(j->d, "exit_code", -1 );
 		if( ! err ) continue;
 		app_names(ndep, fnid, "OUT",  j->d);
 	}
-	/* RULE1) comp_ready:= for all nodes with:
+
+
+
+         /* RULE1) comp_ready:= for all nodes with:
 	   1) prep list contains nothing from ndep and
 	   2) exit_code != 0
 	*/
 	int comp_ready = m_create(100,sizeof(int));
+	if(0) dump_fnid("ALL: ", ndep,fnid);
 	m_foreach(nodes,p,j) {
 		if( fetch_node_int(j->d, "exit_code", -1 ) == 0 ) continue;
 		int p1 = INT(prep,p);
+		if(0) dump_fnid("PREP:", p1,fnid);
+		
 		if( intersection_empty( p1, ndep ) ) {
 			m_puti(comp_ready,j->d);
 			TRACE(4,"Ready: %d", p );
@@ -1319,16 +1420,34 @@ int test_bsearch(void)
 }
 
 
+/* 1) read exit codes and global state
+   2) find nodes, print nodes to stdout
+   3) create shell script to run
+
+   -b : build makefile
+   
+*/
+
+
 
 int main(int argc, char **argv)
 {
-  trace_level=4;
+  trace_level=1;
   m_init();
+  conststr_init();
+  
   TRACE(1,"start");
 
+  
+  // int x; while( scanf("%u", &x)==1 ) printf("%d\n", x );
+  //  test_sort_lookup();
+  
+  
   int opts = njson_from_file(stdin);
   int buf = m_create(1000,1);
 
+
+  
   if( argc > 1 ) {
     s_printf( buf,0, "%s", argv[1] );
   }
@@ -1344,6 +1463,7 @@ int main(int argc, char **argv)
   
   m_free(ec);
   njson_free(opts);
+  conststr_free();
   m_destruct();
   return EXIT_SUCCESS;
 }
