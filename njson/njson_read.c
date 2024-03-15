@@ -7,6 +7,7 @@
 #include "njson_read.h"
 #include "njson_parse.tab.h"
 #include "njson_lex.lex.h"
+#include "conststr.h"
 #include <limits.h>
 #include <stdlib.h>
 int yyparse(void);
@@ -29,6 +30,9 @@ inline static struct njson_st *add_element(int list, int typ)
   return e;
 }
 
+
+
+
 void njson_new(char *value, int typ)
 {
     TRACE(3,"NEW %s", value );
@@ -47,7 +51,7 @@ void njson_new(char *value, int typ)
     /* number, boolean, null, string --  */
     /* It's all the same, only the names will change */
     /* Every day, it seems we're wastin' away */
-    njson->d = s_printf(0,0,"%s", value );
+    njson->d = conststr_lookup_c(value);
 }
 
 void njson_close(void)
@@ -63,7 +67,7 @@ void njson_close(void)
 void njson_name(char*name)
 {
   struct njson_st *j = m_last(current);
-  j->name = s_printf(0,0,"%s", name );
+  j->name = conststr_lookup_c(name);
 }
 
 int njson_from_file( FILE *fp )
@@ -96,10 +100,8 @@ void njson_free(int opt)
   if(!opt) return;
   int p;  struct njson_st *j; 
   m_foreach( opt, p, j ) {
-    m_free(j->name);
     if( (j->typ == NJSON_OBJ) || (j->typ == NJSON_ARR) )
       njson_free(j->d);
-    else m_free(j->d);
   }
   m_free(opt);
 }

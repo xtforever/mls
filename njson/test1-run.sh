@@ -1,7 +1,13 @@
 #!/bin/bash
 
-MAKE=./njson_read_test
+MAKE="./njson_read_test"
 LOGF=state.log
+echo "" >$LOGF
+
+LOG()
+{
+    echo >>$LOGF "$*"
+}
 
 
 read -r -d '' global_state <<- EOM 
@@ -72,7 +78,7 @@ do
     ((loop_count++))
     echo "LOOP: $loop_count"
     
-    prog=$( echo "$global_state" | ${MAKE} "${ec[*]}" | tee -a $LOGF )
+    prog=$( echo "${ec[*]} + $global_state" | ${MAKE} 2>/dev/null | tee -a $LOGF )
     X=(); P=()
     eval "$prog"
 
@@ -84,6 +90,8 @@ do
 	wait "$pid"; ec+=($?)
     done
 
+    LOG "exit_codes: ${ec[*]}"
+    
 done
 }
 
@@ -98,6 +106,7 @@ ERROR=0
 clean
 make_all
 print_verify "phase1"
+
 
 make_all
 print_verify "phase2"
@@ -171,6 +180,11 @@ read -r -d '' global_state <<- EOM
 
 (
 	OUT: ( phony ),
+    	REC: "run showname "
+),
+
+(
+	OUT: ( prepare ),
     	REC: "run showname "
 ),
 
