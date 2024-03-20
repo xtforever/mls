@@ -6,7 +6,7 @@ LOGF=state.log
 read -r -d '' global_state <<- EOM 
 ( nodes: (
 
-(   IN:  ( '$MAKE' ),
+(   IN:  ( "$MAKE" ),
     OUT: ( 'test1/b.test' ), 
     REC: "run make_b"
 ),
@@ -67,7 +67,7 @@ make_all()
 ec=()
 loop_count=0
 
-while (( loop_count < 10 )) 
+while (( loop_count < 4 )) 
 do
     ((loop_count++))
     echo "LOOP: $loop_count"
@@ -99,6 +99,8 @@ clean
 gs1="$global_state"
 make_all
 print_verify "phase1"
+
+exit 1
 
 global_state="$gs1"
 make_all

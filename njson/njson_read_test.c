@@ -1035,7 +1035,7 @@ void prepare_nodes(int checksum, int global_state, int ec )
   TRACE(2, "import/importmm" );
   
   int k = conststr_lookup_c("import");
-   m_foreach(nodes,p,j) {
+  m_foreach(nodes,p,j) {
 	   if( j->name == k && CHAR(j->d,0) != 0 ) {
 		   char* glob = CHARP(j->d);
 		   j->d = conststr_lookup_c("");

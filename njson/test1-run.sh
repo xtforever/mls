@@ -1,5 +1,7 @@
 #!/bin/bash
 
+. compile.lib
+
 MAKE="./njson_read_test"
 LOGF=state.log
 echo "" >$LOGF
@@ -55,45 +57,6 @@ verify()
 
 
 
-store-result()
-{
-    P+=($!)     
-    X+=($1)
-}
-
-run()
-{
-    p=$1
-    shift
-    $p $* &
-}
-
-make_all()
-{
-ec=()
-loop_count=0
-
-while (( loop_count < 10 )) 
-do
-    ((loop_count++))
-    echo "LOOP: $loop_count"
-    
-    prog=$( echo "${ec[*]} + $global_state" | ${MAKE} 2>/dev/null | tee -a $LOGF )
-    X=(); P=()
-    eval "$prog"
-
-    if (( ${#P[@]} == 0 )); then break; fi
-
-    i=0;  ec=()
-    for pid in "${P[@]}"; do
-	ec+=(${X[i++]})
-	wait "$pid"; ec+=($?)
-    done
-
-    LOG "exit_codes: ${ec[*]}"
-    
-done
-}
 
 print_verify()
 {

@@ -40,7 +40,8 @@ static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jen
 // 2019-03-13 BUG: buffer overflow in deb_xxx better use vsnprintf :-)
 // 2021-05-11 m_next do nothing if list==0 
 // 2021-11-22 BUG: lst_resize - fill new memory with zero
-// 2023-12-18 FEATURE: m_next : allow data==NULL 
+// 2023-12-18 FEATURE: m_next : allow data==NULL
+// 2024-03-20 m_free_list( (void) user_free( void*, void* ), void *user_data )
 // -----------------------------------------------------------------------------------------------------
 
 struct lst_owner_st {
