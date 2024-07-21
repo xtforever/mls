@@ -1,0 +1,20 @@
++ (
+
+ rules: (
+   sbison: ".y .tab.c .tab.h"
+   sflex: ".l .c .h"
+   ccompile: ".c .o"
+ )
+
+ files:"njson_lex.l njson_parse.y mls.c njson_read.c bash-make.c conststr.c bash-make.c"
+ 
+
+ nodes: (
+
+(   OUT: ( 'bash-make' ), 
+    IN: ( bash-make.o mls.o njson_read.o njson_lex.o njson_parse.tab.o conststr.o  )
+    REC: "slink"
+)
+
+ ) )
+

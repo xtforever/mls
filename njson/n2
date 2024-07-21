@@ -1,0 +1,6 @@
+| gen-each: run ccompile:.c .o test1.o test2.c test3.x.y 
+  gen-node: run linker: test-main: test5.o test6.o test7-main.o:icon.png
+  import: *.d
+| + ( 
+
+)

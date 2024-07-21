@@ -1,0 +1,14 @@
+dependecies:
+  bash
+  gcc
+  bison
+  flex
+  
+run with
+  ./build.sh
+
+exe:
+   ./build/bash-make
+
+
+

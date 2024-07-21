@@ -2,6 +2,7 @@
 #include <stdarg.h>
 /* alphabetisch sortierte liste von mstr */
 static int CONSTSTR_DATA=0;
+static int CS_ZERO = -1;
 
 static void m_free_list(int m)
 {
@@ -21,8 +22,12 @@ void  conststr_free(void)
 
 void conststr_init(void)
 {
-  if( !  CONSTSTR_DATA )
+  if( !  CONSTSTR_DATA ) {
     CONSTSTR_DATA=m_create(10,sizeof(int));
+    CS_ZERO = m_create(1,1);
+    m_putc(CS_ZERO,0);
+    m_puti(CONSTSTR_DATA,CS_ZERO);
+  }
 }
 
 static int mscmp(const void *a, const void *b)
@@ -44,6 +49,7 @@ static int mscmpc( const void *a,const void *b )
  */
 int conststr_lookup(int s)
 {
+  if( s_empty(s) ) return CS_ZERO;
   int p = m_binsert( CONSTSTR_DATA, &s, mscmp, 0 );
   if( p < 0 ) { // schon vorhanden
     return INT( CONSTSTR_DATA, (-p)-1 );
@@ -54,6 +60,7 @@ int conststr_lookup(int s)
 
 int conststr_lookup_c(const char *s)
 {
+  if( is_empty(s) ) return CS_ZERO;
   union { const char *s; int key; } key;
   key.s = s;
   int p = m_binsert( CONSTSTR_DATA, &key, mscmpc, 0 );

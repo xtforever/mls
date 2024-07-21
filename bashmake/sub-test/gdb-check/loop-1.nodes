@@ -1,0 +1,1 @@
+1 0 + (nodes: (  ( OUT: ( "test1/b.test" ) ,REC:"run make_b",exit_code:"1",id:"1" ) , ( OUT: ( "test1/c.test" ) ,DEP: ( "test1/b.test" ) ,REC:"run make_c",exit_code:"1",id:"2" ) , ( DEP: ( "test1/b.test","test1/c.test" ) ,REC:"verify",exit_code:"1",id:"3" )  ) ,loop_count:"")

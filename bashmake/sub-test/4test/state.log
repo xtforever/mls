@@ -1,0 +1,73 @@
+global_state='(nodes: (  ( OUT: ( "prepare" ) ,REC:"run itworks",exit_code:"9",id:"1" )  ) ,loop_count:"1",importmm:"0")'
+nr_jobs=1
+IN=()
+OUT=(prepare )
+run itworks
+store-result 1 $?
+
+global_state='(nodes: (  ( OUT: ( "prepare" ) ,REC:"run itworks",exit_code:"0",id:"1" )  ) ,loop_count:"2",importmm:"0")'
+nr_jobs=0
+global_state='(import:"",nodes: (  ( OUT: ( "prepare" ) ,REC:"run itworks",exit_code:"9",id:"1" ) , ( REC:"run bcompile",OUT: ( "test1.a" ) ,IN: ( "test1.b" ) ,DEP: ( "test1.b" ) ,exit_code:"9",id:"2" ) , ( REC:"run bcompile",OUT: ( "test10.a" ) ,IN: ( "test10.b" ) ,DEP: ( "test10.b" ) ,exit_code:"9",id:"3" ) , ( REC:"run bcompile",OUT: ( "test2.a" ) ,IN: ( "test2.b" ) ,DEP: ( "test2.b" ) ,exit_code:"9",id:"4" ) , ( REC:"run bcompile",OUT: ( "test3.a" ) ,IN: ( "test3.b" ) ,DEP: ( "test3.b" ) ,exit_code:"9",id:"5" ) , ( REC:"run bcompile",OUT: ( "test4.a" ) ,IN: ( "test4.b" ) ,DEP: ( "test4.b" ) ,exit_code:"9",id:"6" ) , ( REC:"run bcompile",OUT: ( "test5.a" ) ,IN: ( "test5.b" ) ,DEP: ( "test5.b" ) ,exit_code:"9",id:"7" ) , ( REC:"run bcompile",OUT: ( "test6.a" ) ,IN: ( "test6.b" ) ,DEP: ( "test6.b" ) ,exit_code:"9",id:"8" ) , ( REC:"run bcompile",OUT: ( "test7.a" ) ,IN: ( "test7.b" ) ,DEP: ( "test7.b" ) ,exit_code:"9",id:"9" ) , ( REC:"run bcompile",OUT: ( "test8.a" ) ,IN: ( "test8.b" ) ,DEP: ( "test8.b" ) ,exit_code:"9",id:"10" ) , ( REC:"run bcompile",OUT: ( "test9.a" ) ,IN: ( "test9.b" ) ,DEP: ( "test9.b" ) ,exit_code:"9",id:"11" ) , ( REC:"run flexcompile",OUT: ( "scan.c","scan.h" ) ,IN: ( "scan.flex" ) ,DEP: ( "scan.flex" ) ,exit_code:"9",id:"12" )  ) ,loop_count:"1",importmm:"0")'
+nr_jobs=12
+IN=()
+OUT=(prepare )
+run itworks
+store-result 1 $?
+
+IN=(test1.b )
+OUT=(test1.a )
+run bcompile
+store-result 2 $?
+
+IN=(test10.b )
+OUT=(test10.a )
+run bcompile
+store-result 3 $?
+
+IN=(test2.b )
+OUT=(test2.a )
+run bcompile
+store-result 4 $?
+
+IN=(test3.b )
+OUT=(test3.a )
+run bcompile
+store-result 5 $?
+
+IN=(test4.b )
+OUT=(test4.a )
+run bcompile
+store-result 6 $?
+
+IN=(test5.b )
+OUT=(test5.a )
+run bcompile
+store-result 7 $?
+
+IN=(test6.b )
+OUT=(test6.a )
+run bcompile
+store-result 8 $?
+
+IN=(test7.b )
+OUT=(test7.a )
+run bcompile
+store-result 9 $?
+
+IN=(test8.b )
+OUT=(test8.a )
+run bcompile
+store-result 10 $?
+
+IN=(test9.b )
+OUT=(test9.a )
+run bcompile
+store-result 11 $?
+
+IN=(scan.flex )
+OUT=(scan.c scan.h )
+run flexcompile
+store-result 12 $?
+
+global_state='(import:"",nodes: (  ( OUT: ( "prepare" ) ,REC:"run itworks",exit_code:"0",id:"1" ) , ( REC:"run bcompile",OUT: ( "test1.a" ) ,IN: ( "test1.b" ) ,DEP: ( "test1.b" ) ,exit_code:"0",id:"2" ) , ( REC:"run bcompile",OUT: ( "test10.a" ) ,IN: ( "test10.b" ) ,DEP: ( "test10.b" ) ,exit_code:"0",id:"3" ) , ( REC:"run bcompile",OUT: ( "test2.a" ) ,IN: ( "test2.b" ) ,DEP: ( "test2.b" ) ,exit_code:"0",id:"4" ) , ( REC:"run bcompile",OUT: ( "test3.a" ) ,IN: ( "test3.b" ) ,DEP: ( "test3.b" ) ,exit_code:"0",id:"5" ) , ( REC:"run bcompile",OUT: ( "test4.a" ) ,IN: ( "test4.b" ) ,DEP: ( "test4.b" ) ,exit_code:"0",id:"6" ) , ( REC:"run bcompile",OUT: ( "test5.a" ) ,IN: ( "test5.b" ) ,DEP: ( "test5.b" ) ,exit_code:"0",id:"7" ) , ( REC:"run bcompile",OUT: ( "test6.a" ) ,IN: ( "test6.b" ) ,DEP: ( "test6.b" ) ,exit_code:"0",id:"8" ) , ( REC:"run bcompile",OUT: ( "test7.a" ) ,IN: ( "test7.b" ) ,DEP: ( "test7.b" ) ,exit_code:"0",id:"9" ) , ( REC:"run bcompile",OUT: ( "test8.a" ) ,IN: ( "test8.b" ) ,DEP: ( "test8.b" ) ,exit_code:"0",id:"10" ) , ( REC:"run bcompile",OUT: ( "test9.a" ) ,IN: ( "test9.b" ) ,DEP: ( "test9.b" ) ,exit_code:"0",id:"11" ) , ( REC:"run flexcompile",OUT: ( "scan.c","scan.h" ) ,IN: ( "scan.flex" ) ,DEP: ( "scan.flex" ) ,exit_code:"0",id:"12" )  ) ,loop_count:"2",importmm:"0")'
+nr_jobs=0

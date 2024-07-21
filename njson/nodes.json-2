@@ -1,0 +1,56 @@
+ ( nodes: (
+(
+OUT: ( 'njson_lex.lex.h', 'njson_lex.lex.c' ), 
+IN:  ( 'njson_lex.l' ),
+REC: flex_build
+),
+     
+     (
+	 OUT: ( 'njson_parse.tab.c', 'njson_parse.tab.h' ),
+	 IN:  ( 'njson_parse.y' ),
+	 DEP: ( 'njson_lex.lex.c',  'njson_lex.lex.h' ),
+	 REC: bison_build
+     ),
+
+     (
+	 OUT:  ( 'njson_read_test' ),
+	 IN:   ( 'njson_read_test.o', 'njson_parse.tab.o', 'mls.o', 'njson_read.o', 'njson_lex.lex.o' ),
+	 REC: 'link_build'
+      ),
+
+(
+OUT:  ( 'mls.o' ),
+IN:   ( '../lib/mls.c' ),
+REC: ccompile_build
+),
+
+(
+OUT:  ( 'njson_read.o' ),
+IN:   ( 'njson_read.c' ),
+REC: ccompile_build
+),
+
+(
+
+    OUT:  ( 'njson_read_test.o' ),
+    IN:   ( 'njson_read_test.c' ),
+    DEP:  ( 'njson_parse.tab.c',  'njson_parse.tab.h',  'njson_lex.lex.c',  'njson_lex.lex.h' )    
+    REC: ccompile_build
+),
+
+     (
+OUT:  ( 'njson_lex.lex.o' ),
+IN:   ( 'njson_lex.lex.c' ),
+REC: ccompile_build
+),
+
+(
+OUT:  ( 'njson_parse.tab.o' ),
+IN:   ( 'njson_parse.tab.c' ),
+REC: ccompile_build
+)
+)
+)
+
+
+

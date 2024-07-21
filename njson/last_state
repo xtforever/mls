@@ -1,0 +1,25 @@
+ + (
+nodes: (
+
+     ( REC: "icompile",
+       OUT: ( "luaxt_wrap.c" ),
+       IN: ( "luaxt.i" ),
+       DEP: ( "luaxt.c" )
+     ),
+
+      ( REC: "lcompile",
+       OUT: ( "njson_lex.lex.c" ),
+       IN: ( "njson_lex.l" )
+      ),
+
+      ( REC: "ycompile",
+       OUT: ( "njson_parse.tab.c" ),
+       IN: ( "njson_parse.y" ),
+       DEP: ( "njson_lex.lex.c" )
+      ),
+
+      ( REC: "widreg",
+        OUT: ( widreg.c, widreg.h ),
+	IN: ( Dartboard.widget HSlider.widget IconSVG.widget MessageBox.widget Radio2.widget ScrolledCanvas.widget VSlider.widget Wcombo.widget WeditMV.widget Wlist.widget Wls.widget WmenuPopup.widget Woptc.widget Woption.widget )
+      )
+ ) )

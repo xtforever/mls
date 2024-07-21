@@ -1,0 +1,19 @@
+(
+ rule:"bison .y .tab.c .tab.h",
+ rule:"flex .l .c .h",
+
+ nodes: (
+
+(   OUT: ( 'test1/b.test' ), 
+    REC: "run make_b"
+),
+
+(   OUT: ( 'test1/c.test' ),
+    DEP: ( 'test1/b.test' ), 
+    REC: "run make_c"
+),
+
+(   DEP: ( 'test1/b.test', 'test1/c.test' ),
+    REC: "verify"
+) ) )
+

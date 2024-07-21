@@ -26,6 +26,7 @@ extern "C" {
 #define is_empty(s) (!((s) && *(s)))
 #endif
 
+  
 #ifndef ALEN
 #define ALEN(x) (sizeof(x)/sizeof(*x))
 #endif
@@ -199,30 +200,33 @@ void* _m_buf(int ln, const char *fn, const char *fun,
 //
 // ********************************************
 
-typedef char utf8_char_t[6];
-void m_bzero( int m );
-void m_free_strings(int list, int CLEAR_ONLY );
-void m_bzero( int m );
-void m_skip(int m, int n);
-int m_split(int m, const char *s, int c, int remove_wspace);
-int m_regex( int m, const char *regex, const char *s );
-int m_dub(int m);
-int m_fscan2( int m, char delim, FILE *fp);
-int m_fscan( int m, char delim, FILE *fp);
-int m_cmp( int a, int b );
-int m_lookup( int m, int key );
-int m_lookup_obj( int m, void *obj, int size );
-int utf8_getchar(FILE *fp, utf8_char_t buf );
-void m_putc(int m, char c);
-void m_puti(int m, int  c);
-int m_lookup_str(int m, const char *key, int NOT_INSERT);
-int utf8char(char **s);
-int m_utf8char(int buf, int *p);
+	typedef char utf8_char_t[6];
+	void m_bzero( int m );
+	void m_free_strings(int list, int CLEAR_ONLY );
+	void m_bzero( int m );
+	void m_skip(int m, int n);
+	int m_split(int m, const char *s, int c, int remove_wspace);
+	int s_split(int m, const char *s, int c, int remove_wspace);
 
-void m_qsort( int list, int(*compar)(const void *, const void *));
-int m_bsearch( const void *key, int list, int (*c)(const void *, const void *));
-int m_lfind(const void *key, int list, int (*c)(const void *, const void *));
-int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ), int with_duplicates );
+	int m_regex( int m, const char *regex, const char *s );
+	int m_dub(int m);
+	int m_fscan2( int m, char delim, FILE *fp);
+	int m_fscan( int m, char delim, FILE *fp);
+	int m_cmp( int a, int b );
+	int m_lookup( int m, int key );
+	int m_lookup_obj( int m, void *obj, int size );
+	int utf8_getchar(FILE *fp, utf8_char_t buf );
+	void m_putc(int m, char c);
+	void m_puti(int m, int  c);
+	int m_lookup_str(int m, const char *key, int NOT_INSERT);
+	int utf8char(char **s);
+	int m_utf8char(int buf, int *p);
+	
+	void m_qsort( int list, int(*compar)(const void *, const void *));
+	int m_bsearch( const void *key, int list, int (*c)(const void *, const void *));
+	int m_lfind(const void *key, int list, int (*c)(const void *, const void *));
+	int m_binsert( int buf, const void *data, int (*cmpf) (const void *a,const void *b ), int with_duplicates );
+	
 // ********************************************
 //
 // UTILITIES, vars
@@ -288,6 +292,17 @@ int mstrcmp(int m,int p, const char *s);
 int mstr_to_long(int buf, int *p, long int *ret_val);
 int s_lastchar(int m);
 int s_copy( int m, int first_char, int last_char  );
+
+  /* array m is an empty string if:
+   1) no array given
+   2) array length is zero
+   3) first byte is zero
+*/
+static inline int s_empty(int m)
+{
+	return ! (m && m_len(m) && CHAR(m,0));
+}
+
 
 
 enum {

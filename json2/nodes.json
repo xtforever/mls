@@ -1,0 +1,47 @@
+comp1: 
+ (
+OUT: ( 'json_lex.lex.h', 'json_lex.lex.c' ), 
+IN:  ( 'json_lex.l' ),
+REC: flex_build
+),
+ (
+OUT: ( 'json_parse.tab.c', 'json_parse.tab.h' ),
+IN:  ( 'json_parse.y' )
+DEP: ( 'json_lex.lex.c',  'json_lex.lex.h' ),
+REC: bison_build
+),
+
+(
+OUT:  ( 'json_read_test' ),
+IN:   ( 'json_parse.tab.o', 'mls.o', 'json_read.o', 'json_lex.lex.o' )
+REC: link_build
+),
+
+(
+OUT:  ( 'mls.o' ),
+IN:   ( '../lib/mls.c' ),
+REC: ccompile_build
+)
+
+(
+OUT:  ( 'json_read.o' ),
+IN:   ( 'json_read.c' ),
+REC: ccompile_build
+)
+
+(
+OUT:  ( 'json_lex.lex.o' ),
+IN:   ( 'json_lex.len.c' ),
+REC: ccompile_build
+)
+
+(
+OUT:  ( 'json_parse.tab.o' ),
+IN:   ( 'json_parse.tab.c' ),
+REC: ccompile_build
+)
+
+)
+
+
+

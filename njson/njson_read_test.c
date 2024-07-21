@@ -1,6 +1,17 @@
 /*
-  missing cmd line parser
-  read error codes first from stdin then global state
+  types:
+  cstr   - pointer to memory with c-type string (char*)
+  ms     - Handle for char-array, zero terminated, length include zero
+  msc    - Handle for char-array, zero terminated, length include zero
+           This handle is unique for each String (like XrmQuark)
+	   This string must not be freed.
+	   If you convert mch or cstr to mcc you can free the cstr or mch.
+	   all mcc are internaly memory managed
+
+  ml     - list of Handles or Integers
+  mll    - list of list of integers
+  m      - list of unspecified
+  
 */
 
 
@@ -14,8 +25,10 @@
 #include <unistd.h>
 #include <time.h>
 #include <glob.h>
+#include <stdarg.h>
 
-
+void d_obj2(FILE *fp, int opts, char *c1, char *c2);
+void d_obj(int opts, char *c1, char *c2);
 
 typedef struct cs_st {
   char fn[256];
@@ -23,7 +36,39 @@ typedef struct cs_st {
 } cs_t;
 
 
+static inline int s_new(int len)
+{
+	return m_create(len,1);
+}
+
 /*
+     
+  int s_cstr(const char*s)   - s wird kopiert, falls noch nicht vorhanden 
+  int s_mstr(int m)          - m wird kopiert, falls noch nicht vorhanden
+  int s_new(int length)      - create/alloc a string 
+  
+  s_regex( m, pattern )      - regex search, returns list if matched subexpr
+                             - pattern=s_cstr( "^(.*).c$" )
+			     - wl = s_regex( m, pattern )
+			     - m_len(wl) > 1?  new_str = INT(wl,1); INT(wl,1)=0; s_app(new_str,s_cstr( ".h" ));
+                             - pattern=s_cstr( "^.*\.(.*)$" )
+			     - wl = s_regex( m, pattern )
+			     - m_len(wl) > 1?  ext = s_mstr( INT(wl,1) );
+			     - m_free_list( wl );
+			     
+  int s_strchr(int m, int c)  - -1 or pos
+  int s_strrchr(int m, int c) - -1 or pos
+
+  int s_split(int w, int m, int delim)
+                                - If m is empty the s_split() function returns 0 and does nothing else.
+				  Otherwise, this function finds all tokens in the string m, that are delimited by one of the
+				  bytes in the string delim. This tokens are put into the string list w.
+				  if w is 0 a new string list will be created
+				  returns: w
+				  
+
+  
+
   ( loop_count:0,
     importmm:"true"
     nodes:(...),
@@ -35,7 +80,11 @@ typedef struct cs_st {
   strings, ...
   index,...
   access
- */
+
+  gen: wbuild out out out: in in in in
+
+  gen: rec out-list, dep-list: in-list  
+*/
 
 
 
@@ -154,46 +203,40 @@ int m_read_file(int m, int max, int fn )
 }
 
 
-void nj_add_string( int node, char *name, int data )
+void nj_add_string( int node, int name_cs, int data )
 {
 	struct njson_st *j;
 	j = m_add(node);
-	if( is_empty(name) )
-		j->name = 0;
-	else
-		j->name = conststr_lookup_c( name );
+	j->name = name_cs;
 	j->typ = NJSON_STRING;
-	j->d = data;
+	j->d =  conststr_lookup( data );
 }
 
-void nj_add_obj( int node, char *name, int len )
+int nj_add_obj( int node, char name_cs, int len )
 {
 	struct njson_st *j;
 	j = m_add(node);
-	if( is_empty(name) )
-		j->name = 0;
-	else
-		j->name =conststr_lookup_c( name );  
+	j->name = name_cs;
 	j->typ = NJSON_OBJ;
+	if( len == 0 ) len=1;
 	j->d = m_create(len,sizeof(struct njson_st));
+	return j->d;
 }
 
 
 
-
+/* copy characters from buf[p..] to out until one of *delim is found
+   returns: last parsed character
+   out will be a zero terminated string
+   parsed word will be appended to out
+*/
 int p_word(int out, int buf, int *p, char *delim )
 {
-	while( *p < m_len(buf) ) {
-		int ch = CHAR(buf,*p);
-		if( strchr( delim, ch ) ) {
-			m_putc(out,0);
-			return 0;
-		}
-		m_putc(out,ch);
-		(*p)++;
-	}
+	int ch=0;
+	while( *p < m_len(buf) && isspace(ch=CHAR(buf,*p)) ) { (*p)++; }
+	while( *p < m_len(buf) && !strchr( delim, ch=CHAR(buf,*p) ) && ch ) { m_putc(out,ch); (*p)++; }
 	m_putc(out,0);
-	return 1;
+	return ch;
 }
 
 /* right compare mstr */
@@ -289,25 +332,250 @@ void add_deps(int nodes, int out, int deps )
 
 int get_word_list(int m, int buf, int *p0)
 {
-	int p;
-	int err=0;
-	int w = m_create(20,1);
- 
-	for(p=*p0; p < m_len(buf) && !err; p++ ) {		
-		int ch =  CHAR(buf,p);
-		if( isspace(ch) || ch == 0x5c ) continue;
-		if( ch == 0 ) break;
-		err = p_word(w, buf,&p, ": \n" );
-		if( m_len(w) > 1 ) {
-			m_puti(m, conststr_lookup(w));
+	int ch, str = s_new(20);
+	int p=*p0;
+	while(p < m_len(buf)) {
+		TRACE(2,"%d scan: %s",p, (char*)mls(buf,p));
+		ch = p_word(str, buf,&p, ": \n\\" );
+		if( ! s_empty(str) ) {
+			m_puti(m, s_mstr(str) );
 		}
-		m_clear(w);			
-		if(CHAR(buf,p) == ':' ) break; 
+		m_clear(str);
+		if( ch == ':' || ch == 0 ) break;
+		p++;
 	}
-	m_free(w);
+	m_free(str);
 	*p0=p;
 	return m_len(m);
 }
+
+int m_strrchr(int s, int c)
+{
+	int p = m_len(s);
+	while( p-- ) 
+		if( CHAR(s,p) == c ) break;
+	return p;
+}
+
+int m_cmp_part( int w1, int p1, int w2, int p2 )
+{
+	int ch=0, i=0;
+	while( !ch && i+p1 < m_len(w1) && i+p2 < m_len(w2) ) {
+		ch = CHAR(w1,p1+i) - CHAR(w2,p2+i);
+		i++;
+	}
+	return ch;		
+}
+
+void gen_rec( int nodes, int name, int in_fn, int out_fn )
+{
+	TRACE(5,"%s %s %s",
+	      CHARP(name),CHARP(in_fn),CHARP(out_fn) );	
+	int obj;
+	
+	nodes = nj_add_obj( nodes, 0, 3 );
+	nj_add_string( nodes, s_cstr("REC"),  name );
+	obj = nj_add_obj(nodes, s_cstr("IN"), 1 );
+	nj_add_string( obj, 0, in_fn );
+	obj = nj_add_obj(nodes, s_cstr("OUT"), 1 );
+	nj_add_string( obj, 0, out_fn );	
+}
+
+
+void syntax_error( const char *format, ... )
+{
+	va_list argptr;
+	printf("SYNTAX ERROR\n");
+	va_start(argptr, format);
+	vprintf(format, argptr);
+	va_end(argptr);
+	printf("\n\n");
+}
+
+
+
+/* gen-each:
+ * recept:pat-in pat-out file-list
+
+ file end with .c -> add to infile
+         remove extension append .o
+	 add to outfile
+
+ file end with .o -> add to outfile 
+          remove extension append .c
+	  add to infile
+	 
+ for a in 0,1
+ 
+ do            
+     w[a] = copy f
+     f remove ext[a]
+     f add ext[1-a]
+     w[1-a]=f
+     goto ready
+     a++
+while a < 2
+w[0] = copy f, add extension ext[0]
+w[1] =      f, add extension ext[1]
+
+
+ 
+ a=1
+ f match ext[a]:
+     w[a] = f
+ 
+     
+	  
+ */
+void gen_nodes(int nodes, int cmd )
+{
+	TRACE(5,"start");
+	/* cc:.c .o t1.c t2.c */ 
+	int out = m_create( 1, sizeof(int) );
+	int p=0,ext,w;
+	int buf = m_create( 20, 1 );	
+	if( p_word(buf, cmd, &p, ":" ) != ':' ) {
+	  m_free(out);
+	  m_free(buf);
+	  syntax_error( "can not parse gen-each rule '%s'", CHARP(cmd) );
+	}
+	m_puti(out,buf);
+	p++;
+	get_word_list(out,cmd,&p);
+
+
+	for( p=3;p<m_len(out);p++ ) {
+		int in_fn=0;
+		int out_fn = 0;
+		int b1 = 0;
+		int b2 = 0;
+		int t;
+		w=INT(out,p);
+		ext = m_strrchr(w,'.');
+		if( ext ) {
+			/* hat die endung fuer in */ 
+			if( m_cmp_part( w,ext, INT(out,1), 0 ) == 0 ) {
+				in_fn = w;
+
+
+				b2 = out_fn = m_dub(w);
+				t = INT(out,2);
+				m_write( b2,ext, CHARP(t), m_len(t) );
+				goto produce;				
+			}
+			else if( m_cmp_part( w,ext, INT(out,2), 0 ) == 0 ) {
+				out_fn = w;
+				b1 = in_fn = m_dub(w);
+				t = INT(out,1);
+				m_write( b1,ext, CHARP(t), m_len(t) );
+				goto produce;
+			}
+		}
+		b1 = in_fn = m_dub(w);
+		t = INT(out,1);
+		m_write( b1, m_len(b1)-1, CHARP(t), m_len(t) );
+
+		b2 = out_fn = m_dub(w);
+		t = INT(out,2);
+		m_write( b2, m_len(b2)-1, CHARP(t), m_len(t) );
+	
+	produce:
+		gen_rec( nodes, INT(out,0), in_fn, out_fn );
+		m_free(b1);
+		m_free(b2);
+	}
+	m_free(out);
+	m_free(buf);
+}
+
+inline static void gen_string_list(int nodes, int name, int list)
+{
+	int len = list ? m_len(list) : 1;
+	int p,*d,obj = nj_add_obj(nodes, name, len );
+	m_foreach( list, p, d ) nj_add_string( obj, 0, *d );
+}
+
+void gen_nodex( int nodes, int name, int in_list, int out_list, int dep_list )
+{
+	nodes = nj_add_obj( nodes, 0, 3 );     
+	nj_add_string( nodes, s_cstr("REC"),  name );
+	gen_string_list( nodes, s_cstr("IN"),  in_list );
+	gen_string_list( nodes, s_cstr("OUT"), out_list );
+	gen_string_list( nodes, s_cstr("DEP"), dep_list );
+}
+
+/* parse:
+   recname target: file1 file2 file3
+
+   output a node:
+   ( rec: recname
+     out: target
+     in: file1 file2 file3
+   )
+
+
+*/
+
+void apply_rule(int nodes, int rule)
+{
+	if( s_empty(rule) ) return;
+	TRACE(5,"rule: %s", CHARP(rule));
+	int in=0;
+	int out = m_create( 1, sizeof(int) );
+	int p=0;
+	if( ! get_word_list(out, rule, &p) ) goto cleanup;
+	if( CHAR(rule,p) != ':' ) goto cleanup;
+	
+	in = m_create( 1, sizeof(int) );
+	p++;
+	if( ! get_word_list(in, rule, &p) ) goto cleanup;
+
+	int name = INT( out, 0 );
+	m_del(out,0);
+	gen_nodex( nodes, name, in, out, 0 );
+	
+	TRACE(5,"ready");
+	
+cleanup:
+	m_free(out);
+	m_free(in);
+}
+
+
+static inline int int_get(int m, int p)
+{
+	if(!m || m_len(m) <= p ) return 0;
+	return INT(m,p);
+}
+
+
+
+/* rec:out:in:dep */
+void gen_node_from_list(int nodes, int rule)
+{
+	if( s_empty(rule) ) return;
+	int p=0,m[4] = {0};
+
+	m[0] = s_new(20);
+	if( p_word( m[0], rule, &p, ":" ) != ':'  || s_empty(m[0]) ) {
+		syntax_error( "missing colon or empty name: '%s'", CHARP(rule) );
+		goto cleanup;
+	}
+	TRACE(2,"rec: %s", CHARP(m[0]));
+	for(int i=1; i < ALEN(m) && p < m_len(rule) && ( CHAR(rule,p++) == ':' ); i++) {
+		TRACE(2,"scan %s", (char*)mls(rule,p)); 
+		m[i] = m_create(1,sizeof(int));
+		get_word_list(m[i], rule, &p);
+	} 
+	TRACE(2,"scan stopped at %d", p );
+	gen_nodex( nodes, m[0], m[2], m[1], m[3] );
+
+cleanup:
+	for(int i=0;i< ALEN(m); i++) {
+		m_free(m[i]);
+	}
+}
+
 
 
 
@@ -340,9 +608,10 @@ void get_depfile(int nodes, int fn )
 
 
 
-void importmm(int nodes, const char *pattern )
+void importmm(int nodes, int s_pattern )
 {
-	int files = glob_files( pattern );
+	TRACE(2,"pattern %s", CHARP(s_pattern));
+	int files = glob_files( CHARP(s_pattern) );
 
 	int p,*fn;
 	m_foreach(files,p,fn) {
@@ -353,10 +622,6 @@ void importmm(int nodes, const char *pattern )
 }
 
 
-
-
-void d_obj2(FILE *fp, int opts, char *c1, char *c2);
-void d_obj(int opts, char *c1, char *c2);
 void dump_element(struct njson_st *obj)
 {
   if( obj->name )
@@ -626,9 +891,18 @@ int sort_lookup(int m, int key)
 	if( p < 0 ) {
 		return (-p)-1;
 	}
-	TRACE(4,"ADD pos:%d key:%d", p, key );
+	TRACE(1,"ADD pos:%d key:%d", p, key );
 	return p;
 }
+
+
+/* add element to array of unique int */
+void ulist_int( int m, int key )
+{
+	sort_lookup(m,key);
+}
+
+
 
 void dump_list(char *s, int id, int fn)
 {
@@ -716,7 +990,9 @@ void test_sort_lookup(void)
 }
 
 
-
+/* search for entry 's' in tree opts0 and append all string member
+   to the list conststr-list m
+*/
 void app_names( int m, char *s, int opts0 )
 {
   struct njson_st *j ;
@@ -728,7 +1004,7 @@ void app_names( int m, char *s, int opts0 )
   }
   
   m_foreach(opts,p,j) {
-	  if( j->d == 0 ) continue;	  
+	  if( j->d == 0 || j->typ != NJSON_STRING ) continue;	  
 	  int id = conststr_lookup( j->d );
 	  sort_lookup( m, id );
   }
@@ -872,7 +1148,8 @@ int read_checksum( const char *fn )
   if(!fp) return cs;
 
   while( (rd=fread( mls(cs,len), sizeof(cs_t), inc, fp )) == inc ) {
-    len+=inc; 
+    len+=inc;
+    inc*=2; /* OPTIMIZE */
     m_setlen( cs,len+inc ); 
   }
   len+=rd; 
@@ -906,6 +1183,15 @@ void update_checksum_file( int cs, int fn )
   /* update node */
   d=mls(cs,pos);
   d->mtim = sb.st_mtim;
+}
+
+/* files:  list of mstr */
+void update_checksum_list(int checksum, int files)
+{
+	int p,*d;
+	m_foreach( files, p, d) {
+		update_checksum_file(checksum, *d);	
+	}	
 }
 
 void update_checksum_node( int cs, int node )
@@ -971,6 +1257,22 @@ int filesunchanged_checksum(int cs, int jd )
 }
 
 
+/* return true if at least one file in string list has changed */
+int has_changed(int cs, int m )
+{
+	int p,*d;
+  
+	m_foreach( m,p,d ) {
+		TRACE(4,"verify: %s", CHARP(*d));
+		if(  ismodified_checksum(cs, *d) ) {
+			TRACE(4,"changed: %s", CHARP(*d));
+			return 1;
+		}	  
+	}
+	return 0;
+}
+
+
 
 
 
@@ -1019,7 +1321,9 @@ void export_bash_command(int g, int comp_ready)
 
 
 
-void prepare_nodes(int checksum, int global_state, int ec )
+
+
+void prepare_nodes(int checksum, int global_state, int ec, int ret_upd_cs )
 {
   int p;
   struct njson_st *j;
@@ -1029,19 +1333,33 @@ void prepare_nodes(int checksum, int global_state, int ec )
     ERR("no member named 'nodes'");
   }
 
-  TRACE(2, "add loop count" );
+  TRACE(1, "add loop count %d", global_state );
   loop_count = fetch_node_int( global_state, "loop_count", 0 );
   set_node(global_state, "loop_count", loop_count+1 );
-  TRACE(2, "import/importmm" );
+
+
+  int k_gen = conststr_lookup_c("gen-each");
+  int k_rule = conststr_lookup_c("gen-rule");
+  int k_node = conststr_lookup_c("gen-node");	  
+  int k_import = conststr_lookup_c("import");
+  int k_zero = conststr_lookup_c("");
   
-  int k = conststr_lookup_c("import");
-  m_foreach(nodes,p,j) {
-	   if( j->name == k && CHAR(j->d,0) != 0 ) {
-		   char* glob = CHARP(j->d);
-		   j->d = conststr_lookup_c("");
-		   importmm(nodes, glob);  
-		   break;
-	   }
+  m_foreach(global_state,p,j) {
+	  if( s_empty(j->d) ) continue;	  
+	  if( j->name == k_node ) {
+		  gen_node_from_list(nodes,j->d);
+	  } 
+	  else if( j->name == k_rule ) {
+		  apply_rule(nodes,j->d);
+	  }
+	  else if( j->name == k_gen ) {
+		  gen_nodes(nodes,j->d);
+	  }
+	  else if( j->name == k_import ) {
+		  importmm(nodes,  j->d );  		  
+	  }
+	  else continue;
+	  j->d = k_zero;
    }
 		   
   TRACE(2,"update nodes and cache");
@@ -1056,18 +1374,23 @@ void prepare_nodes(int checksum, int global_state, int ec )
 	  if( loop_count == 0 ) {
 		  set_node( j->d, "exit_code", 1 );
 		  set_node( j->d, "id", p+1 );
-	  } else {
-		  int id = fetch_node_int(j->d, "id", -1 );
-		  int x = get_exit_code(id,ec);
-		  if( x>=0 ) {
-			  TRACE(4,"set exit code %d on node %d", x, id );
-			  set_node( j->d, "exit_code", x );
-		  }
-		  if( x == 0 ) {
-			  update_checksum_node( checksum, search_obj_data("OUT", j->d ));
-			  update_checksum_node( checksum, search_obj_data("IN", j->d ));
-		  }      
+		  continue;
+	  } 
+
+	  int id = fetch_node_int(j->d, "id", -1 );
+	  
+	  /* check if exit_code for this node is set
+	     update cache if exit_code is zero 
+	  */
+	  int x = get_exit_code(id,ec);
+	  if( x>=0 ) {
+		  TRACE(4,"set exit code %d on node %d", x, id );
+		  set_node( j->d, "exit_code", x );
 	  }
+	  if( x == 0 ) {
+		  app_names( ret_upd_cs, "OUT", j->d );
+		  app_names( ret_upd_cs, "IN", j->d );			  
+	  }      
   }
 }
 
@@ -1108,23 +1431,29 @@ int intersection_empty(int a, int b)
 	return 1;		
 }
 
-void find_nodes( int global_state, int ec )
+
+
+int node_is_cached(int checksum, int d )
+{
+	int lst_in = search_obj_data( "IN", d);
+	int lst_out = search_obj_data( "OUT", d);
+	return ( lst_in && m_len(lst_in) 
+	    && filesunchanged_checksum(checksum, lst_in)
+		 && filesunchanged_checksum(checksum, lst_out ) );	
+}
+
+void find_nodes( int global_state, int ec, int checksum, int ret_cs )
 {
 	
 	struct njson_st *j;
 	int p,nodes = search_obj_data( "nodes", global_state );
 	int *d;
-	int cnt = m_len(nodes);
+	int cnt = m_len(nodes) + 1;
 	int prep = m_create(cnt,sizeof(int));
-
-
-	/* load checksum database */
-	TRACE(2,"read checksum");
-	int checksum = read_checksum( CHECKSUM_FN );
 
 	/* import nodes, find cached nodes */
 	TRACE(2,"prepare nodes");
-	prepare_nodes(checksum,global_state,ec );
+	prepare_nodes(checksum,global_state,ec, ret_cs );
 
  	
 	/* START
@@ -1141,64 +1470,81 @@ void find_nodes( int global_state, int ec )
 		app_names(p1, "IN",  j->d);
 		app_names(p1, "DEP", j->d);
 	}
-
 	
-	/*OPTIMIZE: set exit code to zero on each node with checksum
-	 * unchanged for IN+OUT+not Empty(IN) */
-	m_foreach(nodes,p,j) {
-		if( fetch_node_int(j->d,"exit_code",-1) == 0 ) continue;
-		int lst_in = search_obj_data( "IN", j->d);
-		int lst_out = search_obj_data( "OUT", j->d);
-		if( lst_in && m_len(lst_in)
-		    && filesunchanged_checksum(checksum, lst_in)
-		    && filesunchanged_checksum(checksum, lst_out ) )
-		{
-			TRACE(4,"node %d cached", p);
-			set_node( j->d, "exit_code", 0 );  
-		}		    
-	}
+	/* OPTIMIZE: set exit code to zero on each node with checksum
+	 * unchanged for IN+OUT+not Empty(IN)
+	 */
+	/* m_foreach(nodes,p,j) { */
+	/* 	if( fetch_node_int(j->d,"exit_code",-1) == 0 ) continue; */
+		
+	/* 	int lst_in = search_obj_data( "IN", j->d); */
+	/* 	int lst_out = search_obj_data( "OUT", j->d); */
+	/* 	if( lst_in && m_len(lst_in) */
+	/* 	    && filesunchanged_checksum(checksum, lst_in) */
+	/* 	    && filesunchanged_checksum(checksum, lst_out ) ) */
+	/* 	{ */
+	/* 		TRACE(4,"node %d cached", p); */
+	/* 		set_node( j->d, "exit_code", 0 ); */
+	/* 	} */
+	/* } */
 
+	int in_cache = m_create(10,sizeof(int));
 
-
-       	/* ndep: all OUT-files with exit_code != 0 */
+       	/* ndep: all OUT-files with exit_code != 0
+	   i.e. known but not yet generated files.
+	   if in-files and out-files are in the cache and are unchanged, assume out-files are generated
+	 */
 	int ndep = m_create(100,sizeof(int));
 	m_foreach(nodes,p,j) {
 		int err = fetch_node_int(j->d, "exit_code", -1 );
-		if( ! err ) continue;
+		if( err ==0 ) continue;
+		if( node_is_cached(checksum,j->d) ) {
+			sort_lookup( in_cache, p );
+			TRACE(4,"Node is cached: %d", p );
+			continue;
+		}
+		
 		app_names(ndep, "OUT",  j->d);
 	}
 
 
 
          /* RULE1) comp_ready:= for all nodes with:
-	   1) prep list contains nothing from ndep and
+	   1) prep list (in+dep) contains nothing from ndep and
 	   2) exit_code != 0
+	   3) not to compile if (exit_code == -1 and node_cached())
 	*/
 	int comp_ready = m_create(100,sizeof(int));
 
 	m_foreach(nodes,p,j) {
 		if( fetch_node_int(j->d, "exit_code", -1 ) == 0 ) continue;
-		int p1 = INT(prep,p);
-
-		
-		if( intersection_empty( p1, ndep ) ) {
+		if( m_bsearch( &p, in_cache, cmp_int ) >= 0 ) {
+			TRACE(4,"Node is cached: %d", p );
+			continue;
+		}
+		int p1 = INT(prep,p);		
+		if(  intersection_empty( p1, ndep ) ) {
 			m_puti(comp_ready,j->d);
-			TRACE(4,"Ready: %d", p );
+			TRACE(4,"todo node nr:%d", p );
 		}
 	}
 
+      
+	
+	
 	export_bash_command(global_state,comp_ready);
-	save_checksum( checksum, CHECKSUM_FN );
+	
 	m_free(ndep);
 	m_free(comp_ready);
 	m_foreach( prep, p, d ) m_free(*d);
 	m_free(prep);
-	m_free(checksum);
+
+	m_free(in_cache);
 }
 
 
 
-
+#if 0
 void list_nodes( int global_state, int ec )
 {
 	int *d, id, p;
@@ -1380,6 +1726,7 @@ void list_nodes( int global_state, int ec )
 
   
 };
+#endif
 
 
 void test_num(void)
@@ -1406,9 +1753,86 @@ int test_bsearch(void)
 	TRACE(4,"%d", pos );
 	m_free(fn);
 	
-	exit(1);
-	
+	exit(1);	
 }
+
+
+int apply_named_rule( int nodes, int n, int buf )
+{
+	TRACE(4,"%s %s", CHARP(n), CHARP(buf) );
+	int k_gen_each = conststr_lookup_c("gen-each");
+	int k_rule = conststr_lookup_c("gen-rule");
+	int k_gen_node = conststr_lookup_c("gen-node");	  
+	int k_import = conststr_lookup_c("import");
+	  
+	if( n == k_gen_node ) {
+		gen_node_from_list(nodes,buf);
+	} 
+	else if( n == k_rule ) {
+		  apply_rule(nodes,buf);
+	}
+	else if( n == k_gen_each ) {
+		  gen_nodes(nodes,buf);
+	}
+	else if( n == k_import ) {
+		importmm(nodes,  buf );  		  
+	}
+	else {
+		syntax_error("Unknown rule '%s'",  CHARP(n) );
+		return 1;
+	}
+	
+	return 0;
+}
+
+	
+int m_copy_new(int n, int p, int len)
+{
+	if( len < 1 ) {
+		len = m_len(n) - p;
+		if( len < 1 ) len=1;
+		
+	}
+	
+	int ret = m_create(len, m_width(n));
+	
+	if( p >= m_len(n) || p+len > m_len(n) ) {
+		WARN("wrong args len=%d, start=%d, source_len=%d", len,p,m_len(n));
+		return ret;
+	}
+
+	m_setlen( ret, len );
+	void *target = m_buf(ret);
+	void *src = mls(n,p);
+	unsigned n_bytes = len * m_width(n);
+	memcpy( target, src, n_bytes );
+	return ret;
+}
+
+void apply_prepended_rules(int opts, int rules)
+{
+	int p,*d, sp;
+	int r_name, r_text;
+	int nodes = search_obj_data( "nodes", opts );
+	int w = m_create(20,1);
+
+	m_foreach( rules, p, d ) {
+		if( s_empty(*d) ) continue;
+		TRACE(4,"parse: %s", CHARP(*d));
+		sp=0; m_clear(w);
+		if( p_word(w,*d,&sp, ":") != ':' ) {
+			syntax_error( "unknown prepended rule '%s'", CHARP(*d));
+			continue;
+		}
+		r_name = s_mstr(w);
+		sp++; skip_ws(*d,&sp);
+		r_text = m_copy_new(*d,sp,-1);		
+		apply_named_rule(nodes, r_name, r_text );
+		m_free(r_text);
+	}
+	m_free(w);
+}
+
 
 
 /* 1) read exit codes and global state
@@ -1423,19 +1847,51 @@ int test_bsearch(void)
 
 int main(int argc, char **argv)
 {
-  trace_level=0;
+  trace_level=4;
   m_init();
   conststr_init();
 
   TRACE(1,"start");
 
 
+  int add_rules = m_create(10,sizeof(int));
+  int rule = m_create(100,1);
   int ec = m_create(10,sizeof(int));  
+  int new_cs = m_create(10,sizeof(int));
+  
+  int ch;
+  if( (ch=getchar()) == '|' ) {
+	  while( (ch=getchar()) > 0 ) {
+		  if( ch != '\n' && ch != '|' ) {
+			  m_putc(rule,ch);
+			  continue;
+		  }
+		  m_putc(rule,0);
+		  m_puti(add_rules,rule);
+		  if( ch == '|' ) { rule=0; break; }
+		  rule = m_create(100,1);
+	  }
+  } else ungetc(ch,stdin);  
   int x; while( scanf("%u", &x)==1 ) { TRACE(1, "%d", x ); m_puti(ec,x); }
 
   int opts = njson_from_file(stdin);
-  find_nodes(opts,ec);
+  int nodes = search_obj_data( "nodes", opts );
+  if( !nodes ) {
+	  nj_add_obj(opts, s_cstr("nodes"), 1 );
+  }
+  
+  
+  apply_prepended_rules( opts, add_rules );	  
+  m_free_list(add_rules);
+  m_free(rule);
 
+  int checksum = read_checksum( CHECKSUM_FN );
+  find_nodes(opts,ec, checksum, new_cs);
+  update_checksum_list(checksum, new_cs);
+  save_checksum( checksum, CHECKSUM_FN );
+  m_free(checksum);
+  m_free(new_cs);
+  
   m_free(ec);
   njson_free(opts);
   conststr_free();

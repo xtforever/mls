@@ -31,8 +31,6 @@ inline static struct njson_st *add_element(int list, int typ)
 }
 
 
-
-
 void njson_new(char *value, int typ)
 {
     TRACE(3,"NEW %s", value );
@@ -67,7 +65,9 @@ void njson_close(void)
 void njson_name(char*name)
 {
   struct njson_st *j = m_last(current);
-  j->name = conststr_lookup_c(name);
+  int p =  conststr_lookup_c(name);
+  TRACE(3,"%d %s", p, name );
+  j->name = p;
 }
 
 int njson_from_file( FILE *fp )

@@ -1,0 +1,218 @@
+[4]apply_named_rule: rules
+[4]rule_store: Rule Created: sbison
+[4]rule_store: Rule Created: sflex
+[4]rule_store: Rule Created: ccompile
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: njson_lex.l
+[4]rule_search_ext: 47 51 .y .l
+[4]rule_search_ext: 51 51 .l .l
+[4]auto_gen_for_file: found: njson_lex.l compile by sflex
+[4]auto_gen_for_file: file: njson_parse.y
+[4]rule_search_ext: 47 47 .y .y
+[4]auto_gen_for_file: found: njson_parse.y compile by sbison
+[4]auto_gen_for_file: file: mls.c
+[4]rule_search_ext: 47 52 .y .c
+[4]rule_search_ext: 51 52 .l .c
+[4]rule_search_ext: 52 52 .c .c
+[4]auto_gen_for_file: found: mls.c compile by ccompile
+[4]auto_gen_for_file: file: njson_read.c
+[4]rule_search_ext: 47 52 .y .c
+[4]rule_search_ext: 51 52 .l .c
+[4]rule_search_ext: 52 52 .c .c
+[4]auto_gen_for_file: found: njson_read.c compile by ccompile
+[4]auto_gen_for_file: file: bash-make.c
+[4]rule_search_ext: 47 52 .y .c
+[4]rule_search_ext: 51 52 .l .c
+[4]rule_search_ext: 52 52 .c .c
+[4]auto_gen_for_file: found: bash-make.c compile by ccompile
+[4]auto_gen_for_file: file: conststr.c
+[4]rule_search_ext: 47 52 .y .c
+[4]rule_search_ext: 51 52 .l .c
+[4]rule_search_ext: 52 52 .c .c
+[4]auto_gen_for_file: found: conststr.c compile by ccompile
+[4]auto_gen_for_file: file: bash-make.c
+[4]rule_search_ext: 47 52 .y .c
+[4]rule_search_ext: 51 52 .l .c
+[4]rule_search_ext: 52 52 .c .c
+[4]auto_gen_for_file: found: bash-make.c compile by ccompile
+[4]apply_named_rule: nodes
+[4]apply_named_rule: loop_count
+[4]prepare_nodes: update nodes and cache
+[4]filesunchanged_checksum: changed: bash-make.o
+[4]filesunchanged_checksum: changed: njson_lex.l
+[4]filesunchanged_checksum: changed: njson_parse.y
+[4]filesunchanged_checksum: changed: mls.c
+[4]filesunchanged_checksum: changed: njson_read.c
+[4]filesunchanged_checksum: changed: bash-make.c
+[4]filesunchanged_checksum: changed: conststr.c
+[4]filesunchanged_checksum: changed: bash-make.c
+[4]find_nodes: todo node nr:1
+[4]find_nodes: todo node nr:2
+[4]find_nodes: todo node nr:3
+[4]find_nodes: todo node nr:4
+[4]find_nodes: todo node nr:5
+[4]find_nodes: todo node nr:6
+[4]find_nodes: todo node nr:7
+[4]export_bash_command: starting 7 jobs
+[4]export_bash_command: sflex
+[4]export_bash_command: sbison
+[4]export_bash_command: ccompile
+[4]export_bash_command: ccompile
+[4]export_bash_command: ccompile
+[4]export_bash_command: ccompile
+[4]export_bash_command: ccompile
+[4]conststr_stats: Count: 59
+[4]conststr_stats: Memory: 1445
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error cod    es: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 
+[4]main: error codes: 2
+[4]main: error codes: 0
+[4]main: error codes: 3
+[4]main: error codes: 0
+[4]main: error codes: 4
+[4]main: error codes: 0
+[4]main: error codes: 5
+[4]main: error codes: 0
+[4]main: error codes: 6
+[4]main: error codes: 0
+[4]main: error codes: 7
+[4]main: error codes: 0
+[4]main: error codes: 8
+[4]main: error codes: 0
+[4]apply_named_rule: rules
+[4]apply_named_rule: files
+[4]auto_gen_for_file: file: 

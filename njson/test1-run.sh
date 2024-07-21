@@ -13,7 +13,10 @@ LOG()
 
 
 read -r -d '' global_state <<- EOM 
-( nodes: (
+(
+
+
+nodes: (
 
 (   OUT: ( 'test1/b.test' ), 
     REC: "run make_b"

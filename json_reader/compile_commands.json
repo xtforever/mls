@@ -1,0 +1,101 @@
+[
+    {
+        "arguments": [
+            "cc",
+            "-c",
+            "-g",
+            "-Wall",
+            "-DMLS_DEBUG",
+            "-D_GNU_SOURCE",
+            "-Wall",
+            "-I../lib",
+            "-DNO_XPM",
+            "-DCOMP_TAG=\"DEBUG_Do 29. Jun 16:55:49 CEST 2023\"",
+            "-o",
+            "mls.o",
+            "../lib/mls.c"
+        ],
+        "directory": "/home/jens/git/mls/json_reader",
+        "file": "../lib/mls.c"
+    },
+    {
+        "arguments": [
+            "cc",
+            "-c",
+            "-g",
+            "-Wall",
+            "-DMLS_DEBUG",
+            "-D_GNU_SOURCE",
+            "-Wall",
+            "-I../lib",
+            "-DNO_XPM",
+            "-DCOMP_TAG=\"DEBUG_Do 29. Jun 16:55:49 CEST 2023\"",
+            "-o",
+            "json_read.o",
+            "json_read.c"
+        ],
+        "directory": "/home/jens/git/mls/json_reader",
+        "file": "json_read.c"
+    },
+    {
+        "arguments": [
+            "cc",
+            "-c",
+            "-g",
+            "-Wall",
+            "-DMLS_DEBUG",
+            "-D_GNU_SOURCE",
+            "-Wall",
+            "-I../lib",
+            "-DNO_XPM",
+            "-DCOMP_TAG=\"DEBUG_Do 29. Jun 16:55:49 CEST 2023\"",
+            "-o",
+            "json_lex.lex.o",
+            "json_lex.lex.c"
+        ],
+        "directory": "/home/jens/git/mls/json_reader",
+        "file": "json_lex.lex.c"
+    },
+    {
+        "arguments": [
+            "cc",
+            "-c",
+            "-g",
+            "-Wall",
+            "-DMLS_DEBUG",
+            "-D_GNU_SOURCE",
+            "-Wall",
+            "-I../lib",
+            "-DNO_XPM",
+            "-DCOMP_TAG=\"DEBUG_Do 29. Jun 16:55:49 CEST 2023\"",
+            "mls.o",
+            "json_read.o",
+            "json_lex.lex.o",
+            "json_parse.tab.o",
+            "-o",
+            "json_read_test",
+            "json_read_test.c"
+        ],
+        "directory": "/home/jens/git/mls/json_reader",
+        "file": "json_read_test.c"
+    },
+    {
+        "arguments": [
+            "cc",
+            "-c",
+            "-g",
+            "-Wall",
+            "-DMLS_DEBUG",
+            "-D_GNU_SOURCE",
+            "-Wall",
+            "-I../lib",
+            "-DNO_XPM",
+            "-DCOMP_TAG=\"DEBUG_Do 29. Jun 16:55:49 CEST 2023\"",
+            "-o",
+            "json_parse.tab.o",
+            "json_parse.tab.c"
+        ],
+        "directory": "/home/jens/git/mls/json_reader",
+        "file": "json_parse.tab.c"
+    }
+]

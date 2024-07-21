@@ -1,0 +1,21 @@
+1 0 +
+( 
+  gen-node: "do-complex:a.c b.c d.c e.c:a.o b.o d.o:gen1.sh",
+  gen-node: "do-complex:a.c b.c d.c e.c:a.o b.o d.o",
+  gen-node: "do-complex::a.o b.o d.o:gen1.sh",
+  gen-node: "do-complex::a.o b.o d.o",
+
+
+  nodes: (
+(   OUT: ( 'test1/b.test' ), 
+    REC: "run make_b"
+),
+
+(   OUT: ( 'test1/c.test' ),
+    IN: ( 'test1/b.test' ), 
+    REC: "run make_c"
+),
+
+(   DEP: ( 'test1/b.test', 'test1/c.test' ),
+    REC: "verify"
+) ) )

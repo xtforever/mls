@@ -42,6 +42,7 @@ static const char *Version="Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jen
 // 2021-11-22 BUG: lst_resize - fill new memory with zero
 // 2023-12-18 FEATURE: m_next : allow data==NULL
 // 2024-03-20 m_free_list( (void) user_free( void*, void* ), void *user_data )
+// 2024-06-09 BUG: s_index missing p++ 
 // -----------------------------------------------------------------------------------------------------
 
 struct lst_owner_st {
@@ -1008,19 +1009,20 @@ void m_free_strings(int list, int CLEAR_ONLY )
 
 }
 
-
-//!X! splitte den string (s) bei jedem zeichen 'c'
-//und kopiere die teil-strings in die stringliste (m).
-//ein leerer string fÃ¼hrt zu einem eintrag mit einem
-//string der lÃ¤nge null.
-//ein string mit nur dem separator fÃ¼hrt zu einer
-//stringliste mit zwei eintÃ¤gen, beide leer.
-//wird (m) == 0 angegeben wird eine neue stringliste
-//erzeugt. sonst wird die vorhandene gelÃ¶scht und benutzt.
-//wird (remove_wspace) != 0 gesetzt werden fÃ¼hrende
-//und folgende whitespace-zeichen in den strings entfernt
-//returns: erzeugte string-liste
-
+/**
+ * @brief Splits the string `s` at each occurrence of the character `c` and copies the resulting substrings into the string list `m`.
+ *
+ * - An empty string results in an entry with a string of length zero.
+ * - A string containing only the separator results in a string list with two entries, both empty.
+ * - If `m` is set to 0, a new string list is created. Otherwise, the existing list is cleared and used.
+ * - If `remove_wspace` is non-zero, leading and trailing whitespace characters in the resulting substrings are removed.
+ *
+ * @param m The string list to which the substrings are copied. If set to 0, a new list is created.
+ * @param s The input string to be split.
+ * @param c The character used as the delimiter for splitting the string.
+ * @param remove_wspace Flag to indicate whether leading and trailing whitespace should be removed from the substrings.
+ * @return The generated string list.
+ */
 int m_split(int m, const char *s, int c, int remove_wspace)
 {
   int p=0,
@@ -1056,6 +1058,61 @@ int m_split(int m, const char *s, int c, int remove_wspace)
 
   return m;
 }
+
+/**
+ * @brief Splits the string `s` at each occurrence of the character `c` and copies the handles to the resulting substrings into the array list `m`.
+ * 
+ *
+ * - An empty string results in an entry with a string of length zero.
+ * - A string containing only the separator results in a string list with two entries, both empty.
+ * - If `m` is set to 0, a new string list is created. Otherwise, the existing list is cleared and used.
+ * - If `remove_wspace` is non-zero, leading and trailing whitespace characters in the resulting substrings are removed.
+ *
+ * @param m The string list to which the substrings are copied. If set to 0, a new list is created.
+ * @param s The input string to be split.
+ * @param c The character used as the delimiter for splitting the string.
+ * @param remove_wspace Flag to indicate whether leading and trailing whitespace should be removed from the substrings.
+ * @return The generated string list.
+ */
+int s_split(int m, const char *s, int c, int remove_wspace)
+{
+  int p=0,
+    start=0,
+    end;
+  char *szTemp;
+
+  if( m ) m_free_strings(m,1); else m=m_create(10,sizeof(char*));
+
+  for(;;) {
+
+    // leading white-space
+    while( isspace(s[p]) && s[p]!=c ) p++;
+    start=p;
+
+    // delimeter
+    while( s[p] && s[p] != c ) p++;
+
+    //  trailing whitespace before delimeter, zero - length: end < start
+    end=p;
+    while( end>=start && isspace( s[--end] ) );
+
+    if( end >= start )
+      {
+	szTemp= strndup( s+start, end-start+1 );
+      }
+    else
+      szTemp = strdup("");
+    m_put( m, &szTemp );
+
+    if( s[p] ) p++; else break;
+  }
+
+  return m;
+}
+
+
+
+
 
 #include <regex.h>
 
@@ -1974,6 +2031,7 @@ int s_index( int buf,int p, int ch )
   while( p<m_len(buf) ) {
     d = mls(buf,p);
     if( *d == ch ) return p;
+    p++;
   }
   return -1;
 }

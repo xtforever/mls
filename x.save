@@ -1,0 +1,23 @@
+
+
+
+typedef struct {
+  int x,y,z;
+} A
+
+
+ARRAY h
+
+
+A *ptrA;
+
+for i=1 to 500
+eA.x = i
+m_put( h, & eA }
+
+
+
+int arr( int len )
+
+char x[len
+

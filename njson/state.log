@@ -1,0 +1,106 @@
+
+global_state='(gen-each: ( "ccomp",".c",".o","conststr.c","njson_lex.lex.c","njson_parse.tab.c","njson_read.c","njson_read_test.c" ) ,nodes: (  ( OUT: ( "test1/b.test" ) ,REC:"run make_b",exit_code:"1",id:"1" ) , ( OUT: ( "test1/c.test" ) ,DEP: ( "test1/b.test" ) ,REC:"run make_c",exit_code:"1",id:"2" ) , ( DEP: ( "test1/b.test","test1/c.test" ) ,REC:"verify",exit_code:"1",id:"3" )  ) ,loop_count:"1")'
+nr_jobs=1
+IN=()
+OUT=(test1/b.test )
+run make_b
+store-result 1 $?
+
+exit_codes: 1 0
+global_state='(gen-each: ( "ccomp",".c",".o","conststr.c","njson_lex.lex.c","njson_parse.tab.c","njson_read.c","njson_read_test.c" ) ,nodes: (  ( OUT: ( "test1/b.test" ) ,REC:"run make_b",exit_code:"0",id:"1" ) , ( OUT: ( "test1/c.test" ) ,DEP: ( "test1/b.test" ) ,REC:"run make_c",exit_code:"1",id:"2" ) , ( DEP: ( "test1/b.test","test1/c.test" ) ,REC:"verify",exit_code:"1",id:"3" )  ) ,loop_count:"2")'
+nr_jobs=1
+IN=()
+OUT=(test1/c.test )
+run make_c
+store-result 2 $?
+
+exit_codes: 2 0
+global_state='(gen-each: ( "ccomp",".c",".o","conststr.c","njson_lex.lex.c","njson_parse.tab.c","njson_read.c","njson_read_test.c" ) ,nodes: (  ( OUT: ( "test1/b.test" ) ,REC:"run make_b",exit_code:"0",id:"1" ) , ( OUT: ( "test1/c.test" ) ,DEP: ( "test1/b.test" ) ,REC:"run make_c",exit_code:"0",id:"2" ) , ( DEP: ( "test1/b.test","test1/c.test" ) ,REC:"verify",exit_code:"1",id:"3" )  ) ,loop_count:"3")'
+nr_jobs=1
+IN=()
+OUT=()
+verify
+store-result 3 $?
+
+exit_codes: 3 0
+global_state='(gen-each: ( "ccomp",".c",".o","conststr.c","njson_lex.lex.c","njson_parse.tab.c","njson_read.c","njson_read_test.c" ) ,nodes: (  ( OUT: ( "test1/b.test" ) ,REC:"run make_b",exit_code:"0",id:"1" ) , ( OUT: ( "test1/c.test" ) ,DEP: ( "test1/b.test" ) ,REC:"run make_c",exit_code:"0",id:"2" ) , ( DEP: ( "test1/b.test","test1/c.test" ) ,REC:"verify",exit_code:"0",id:"3" )  ) ,loop_count:"4")'
+nr_jobs=0
+global_state='(gen-each: ( "ccomp",".c",".o","conststr.c","njson_lex.lex.c","njson_parse.tab.c","njson_read.c","njson_read_test.c" ) ,nodes: (  ( OUT: ( "test1/b.test" ) ,REC:"run make_b",exit_code:"0",id:"1" ) , ( OUT: ( "test1/c.test" ) ,DEP: ( "test1/b.test" ) ,REC:"run make_c",exit_code:"0",id:"2" ) , ( DEP: ( "test1/b.test","test1/c.test" ) ,REC:"verify",exit_code:"0",id:"3" )  ) ,loop_count:"5")'
+nr_jobs=0
+global_state='(nodes: (  ( REC:"run make_exec2 1",exit_code:"1",id:"1" )  ) ,loop_count:"1")'
+nr_jobs=1
+IN=()
+OUT=()
+run make_exec2 1
+store-result 1 $?
+
+exit_codes: 1 1
+global_state='(nodes: (  ( REC:"run make_exec2 1",exit_code:"1",id:"1" )  ) ,loop_count:"2")'
+nr_jobs=1
+IN=()
+OUT=()
+run make_exec2 1
+store-result 1 $?
+
+exit_codes: 1 0
+global_state='(nodes: (  ( REC:"run make_exec2 1",exit_code:"0",id:"1" )  ) ,loop_count:"3")'
+nr_jobs=0
+global_state='(nodes: (  ( REC:"run make_exec2 1",exit_code:"1",id:"1" ) , ( REC:"run make_exec2 2",exit_code:"1",id:"2" )  ) ,loop_count:"1")'
+nr_jobs=2
+IN=()
+OUT=()
+run make_exec2 1
+store-result 1 $?
+
+IN=()
+OUT=()
+run make_exec2 2
+store-result 2 $?
+
+exit_codes: 1 1 2 1
+global_state='(nodes: (  ( REC:"run make_exec2 1",exit_code:"1",id:"1" ) , ( REC:"run make_exec2 2",exit_code:"1",id:"2" )  ) ,loop_count:"2")'
+nr_jobs=2
+IN=()
+OUT=()
+run make_exec2 1
+store-result 1 $?
+
+IN=()
+OUT=()
+run make_exec2 2
+store-result 2 $?
+
+exit_codes: 1 0 2 0
+global_state='(nodes: (  ( REC:"run make_exec2 1",exit_code:"0",id:"1" ) , ( REC:"run make_exec2 2",exit_code:"0",id:"2" )  ) ,loop_count:"3")'
+nr_jobs=0
+global_state='(nodes: (  ( OUT: ( "phony" ) ,REC:"run showname ",exit_code:"1",id:"1" ) , ( OUT: ( "prepare" ) ,REC:"run showname ",exit_code:"1",id:"2" ) , ( IN: ( "phony" ) ,OUT: ( "dep2" ) ,REC:"run  showname ",exit_code:"1",id:"3" ) , ( IN: ( "phony","dep2" ) ,OUT: ( "dep3" ) ,REC:"run  showname ",exit_code:"1",id:"4" )  ) ,loop_count:"1")'
+nr_jobs=2
+IN=()
+OUT=(phony )
+run showname 
+store-result 1 $?
+
+IN=()
+OUT=(prepare )
+run showname 
+store-result 2 $?
+
+exit_codes: 1 0 2 0
+global_state='(nodes: (  ( OUT: ( "phony" ) ,REC:"run showname ",exit_code:"0",id:"1" ) , ( OUT: ( "prepare" ) ,REC:"run showname ",exit_code:"0",id:"2" ) , ( IN: ( "phony" ) ,OUT: ( "dep2" ) ,REC:"run  showname ",exit_code:"1",id:"3" ) , ( IN: ( "phony","dep2" ) ,OUT: ( "dep3" ) ,REC:"run  showname ",exit_code:"1",id:"4" )  ) ,loop_count:"2")'
+nr_jobs=1
+IN=(phony )
+OUT=(dep2 )
+run  showname 
+store-result 3 $?
+
+exit_codes: 3 0
+global_state='(nodes: (  ( OUT: ( "phony" ) ,REC:"run showname ",exit_code:"0",id:"1" ) , ( OUT: ( "prepare" ) ,REC:"run showname ",exit_code:"0",id:"2" ) , ( IN: ( "phony" ) ,OUT: ( "dep2" ) ,REC:"run  showname ",exit_code:"0",id:"3" ) , ( IN: ( "phony","dep2" ) ,OUT: ( "dep3" ) ,REC:"run  showname ",exit_code:"1",id:"4" )  ) ,loop_count:"3")'
+nr_jobs=1
+IN=(phony dep2 )
+OUT=(dep3 )
+run  showname 
+store-result 4 $?
+
+exit_codes: 4 0
+global_state='(nodes: (  ( OUT: ( "phony" ) ,REC:"run showname ",exit_code:"0",id:"1" ) , ( OUT: ( "prepare" ) ,REC:"run showname ",exit_code:"0",id:"2" ) , ( IN: ( "phony" ) ,OUT: ( "dep2" ) ,REC:"run  showname ",exit_code:"0",id:"3" ) , ( IN: ( "phony","dep2" ) ,OUT: ( "dep3" ) ,REC:"run  showname ",exit_code:"0",id:"4" )  ) ,loop_count:"4")'
+nr_jobs=0

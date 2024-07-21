@@ -1,0 +1,17 @@
+| gen-each: run ccompile:.c .o test1.o test2.c test3.x.y 
+  gen-node: run linker: test-main: test5.o test6.o test7-main.o
+| + ( 
+
+  nodes: (
+(   OUT: ( 'test1/b.test' ), 
+    REC: "run make_b"
+),
+
+(   OUT: ( 'test1/c.test' ),
+    IN: ( 'test1/b.test' ), 
+    REC: "run make_c"
+),
+
+(   DEP: ( 'test1/b.test', 'test1/c.test' ),
+    REC: "verify"
+) ) )
