@@ -1,37 +1,26 @@
 #include "mls.h"
 
+/*
+       strstr(3)    - s_strstr
+       strtok(3)    - s_split
+*/
 
-int s_strstr(int m, int p, int str)
-{
-	if( ! (m && m_len(m) && str && m_len(str) && p >=0 && p < m_len(m) && m_width(m)==1 && m_width(str) ==1 ) )
-		return -1;
-	
-	const char * hay = mls(m,p);
-	const char * needle = mls(str,0);
-	char *pos = strstr(hay,needle);
-	if( ! pos ) return  -1;
-	return p+ (pos - hay);
-}
-
-static void m_clear_mslist(int m)
+void m_clear_mlist(int m)
 {
         int p,*d;
         m_foreach( m, p, d ) m_free(*d);
 	m_clear(m);
 }
 
-static void m_free_list(int m)
+void m_free_mlist(int m)
 {
         int p,*d;
         m_foreach( m, p, d ) m_free(*d);
 	m_free(m);
 }
 
-	
-
-
 /**
- * @brief Splits the string `s` at each occurrence of the character `c` and copies the handles to the resulting substrings into the array list `m`.
+ * Splits the string `s` at each occurrence of the character `c` and copies the handles to the resulting substrings into the array list `m`.
  * 
  *
  * - An empty string results in an entry with a string of length zero.
@@ -47,7 +36,7 @@ static void m_free_list(int m)
  */
 int xs_split(int m, const char *str, const char *sep, int remove_wspace)
 {
-	if(!m) m=m_create(10,sizeof(int)); else m_clear_mslist(m);
+	if(!m) m=m_create(10,sizeof(int)); else m_clear_mlist(m);
 
 	if( is_empty(str) || is_empty(sep) ) {
 		goto nothing_found;
@@ -85,6 +74,49 @@ int xs_split(int m, const char *str, const char *sep, int remove_wspace)
 	return m;
 }
 
+
+/**
+ * The xs_strstr() function finds the first occurrence of the substring needle in the mstring haystack.
+ *
+ * @param m The input mstring to be split.
+ * @param p The starting position in m
+ * @param needle The string to search for
+ * @return The postion of needle or -1 if not found
+ */
+int xs_strstr(int m, int p, const char *needle)
+{
+	if( ! (m && m_len(m) && needle && needle[0] && p >=0 && p < m_len(m) && m_width(m)==1 ) )
+		return -1;
+	
+	const char * hay = mls(m,p);
+	char *pos = strstr(hay,needle);
+	if( ! pos ) return  -1;
+	return p+ (pos - hay);
+}
+
+
+
+
+
+/**
+ * reads from fp to buf until newline 
+ * the buffer is cleared before used
+ *
+ * @return -1 end of file, or number of bytes read until delimeter found 
+ */
+int xs_fgetline( FILE *fp, int buf )
+{
+	if( m_len(buf) ) m_clear(buf);
+	int l = m_fscan2( buf, 10, fp );
+	return ( l == 10 ) ? m_len(buf)-1 : -1;
+}
+
+
+
+
+
+ 
+
 int main()
 {
 	m_init();
@@ -94,7 +126,7 @@ int main()
 	int needle = s_printf(0,0, "is" );
 
 	int p = 0;
-	while( (p=s_strstr(hay,p,needle)) >= 0 ) {
+	while( (p=xs_strstr(hay,p,CHARP(needle))) >= 0 ) {
 		printf("Found at %d\n", p );
 		p+=s_strlen(needle);
 	}
@@ -113,7 +145,7 @@ int main()
 	}
 	
 
-	m_free_list(m);
+	m_free_mlist(m);
 	m_free(hay);
 	m_free(needle);
 
