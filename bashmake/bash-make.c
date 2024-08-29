@@ -1433,13 +1433,43 @@ void export_bash_command(int g, int comp_ready)
   printf( "nr_jobs=%d\n",  m_len(comp_ready) );
   TRACE(4,"starting %d jobs", m_len(comp_ready) );
   m_foreach(comp_ready,p,d) {
-    dump_string_array( "IN", *d );
-    dump_string_array( "OUT", *d );    
-    int lst = search_obj_data( "REC", *d  );
-    TRACE(4,"%s", CHARP(lst));
-    int id = search_obj_data( "id", *d  );
-    printf( "%s\nstore-result %s $?\n\n", CHARP(lst), CHARP(id) );
+	  int id = search_obj_data( "id", *d  );
+	  printf("node%s() {\n",CHARP(id));
+	  dump_string_array( "IN", *d );
+	  dump_string_array( "OUT", *d );    
+	  int lst = search_obj_data( "REC", *d  );
+	  printf( "%s\nstore-result %s $?\n}\n", CHARP(lst), CHARP(id) );
   }
+}
+
+int s_atoi(int m)
+{
+	return s_empty(m) ? -1 : atoi(CHARP(m));
+}
+
+void export_bash_list(int g, int comp_ready, int ec)
+{
+	int p, *d, node, id;
+
+	// do not export nodes found in ec
+	p = m_len(comp_ready);
+	while( p-- ) {
+		node = INT(comp_ready,p);
+		id =  fetch_node_int(node, "id", 0 );
+		if( !id ||  get_exit_code( id, ec ) != -1 ) m_del(comp_ready,p);
+	}
+	
+	/* export node definitions */
+	export_bash_command(g,comp_ready);
+
+	// list of ready nodes: nodes_ready=(id1 id2 ... )	
+	printf( "nodes_ready=(" );	
+	m_foreach(comp_ready,p,d) {
+		int id = s_atoi(search_obj_data( "id", *d  )); if(id<=0) continue;	  
+		if( get_exit_code( id, ec ) == -1 )
+			printf( "%u ", id );
+	}
+	printf( ")\n" );
 }
 
 
@@ -1834,7 +1864,8 @@ void find_nodes( int global_state, int ec, int checksum, int ret_cs )
       
 	
 	
-	export_bash_command(global_state,comp_ready);
+	// export_bash_command(global_state,comp_ready);
+	export_bash_list(global_state,comp_ready,ec);
 	
 	m_free(ndep);
 	m_free(comp_ready);
@@ -2347,7 +2378,7 @@ void test_rule_compile(void)
 
 int main(int argc, char **argv)
 {
-  trace_level=1;
+  trace_level=4;
   m_init();
   conststr_init();
 
