@@ -5,7 +5,7 @@
 
 #include "mls.h"
 #include "njson_read.h"
-#include "njson_parse.tab.h"
+#include "njson_parse.h"
 #include "njson_lex.h"
 #include "conststr.h"
 #include <limits.h>
@@ -16,7 +16,7 @@ void end_lexical_scan(void);
 
 
 static int stack2 = 0;
-static int current;
+static int current = 0;
 
 inline static void* m_last(int d)
 {

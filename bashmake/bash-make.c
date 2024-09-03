@@ -91,6 +91,9 @@
 #include <time.h>
 #include <glob.h>
 #include <stdarg.h>
+#include <stdint.h>
+typedef uint32_t u32;
+
 
 
 /* mls extensions */
@@ -131,6 +134,120 @@ static inline int s_new(int len)
 {
 	return m_create(len,1);
 }
+
+int bf_scan_set(int bf, int *p);
+void bf_set( int bf, int n );
+void bf_clr( int bf, int n );
+int bf_test( int bf, int n );
+int bf_max(int bf);
+int bf_min(int bf);
+int bf_intersect_empty(int bf1, int bf2);
+int bf_new(int len);
+
+
+
+int bf_scan_set(int bf, int *p)
+{
+	int end = bf_max(bf);
+	while( *p < end ) {
+		(*p)++;
+		if( bf_test(bf,*p) ) return 1;
+	}
+	return 0;
+}
+
+
+void bf_set( int bf, int n )
+{
+	int pos = n / 64;
+	if( m_len(bf) <= pos )
+		m_setlen(bf,pos+1);
+	uint64_t *w = mls(bf,pos);
+	n -= (64 * pos);
+	*w |= ( 1L << n );	
+}
+
+void bf_clr( int bf, int n )
+{
+	int pos = n / 64;
+	if( m_len(bf) <= pos )
+		m_setlen(bf,pos+1);
+	uint64_t *w = mls(bf,pos);
+	n -= (64 * pos);
+	*w &= ~( 1L << n );	
+}
+
+int bf_test( int bf, int n )
+{
+	int pos = n / 64;
+	if( m_len(bf) <= pos )
+		return 0;
+	uint64_t *w = mls(bf,pos);
+	n -= (64 * pos);
+	return *w & ( 1L << n );
+}
+
+int bf_max(int bf)
+{
+	int n = 63;
+	int p = m_len(bf);
+	while( p-- ) {
+		uint64_t w = * (uint64_t*) mls(bf,p);
+		while( w ) {
+			if( w & (1L<<63) ) return p*64 + n;
+			n--; w<<=1;
+		}
+	}
+	return -1;
+}
+
+int bf_min(int bf)
+{
+	int len = m_len(bf);
+	int p = 0;
+	int n = 0;
+	while( p < len ) {
+		uint64_t w = * (uint64_t*) mls(bf,p);
+		while( w ) {
+			if( w & 1 ) return p*64 + n;
+			n++; w >>= 1;
+		}
+		p++;
+	}
+	return -1;
+}
+
+
+
+int bf_intersect_empty(int bf1, int bf2)
+{
+	int end = Min( bf_max(bf1), bf_max(bf2) );
+	if( end < 0 ) return 1;
+
+	int start = Max( bf_min(bf1), bf_min(bf2) );
+	int p = start / 64;
+	end /= 64;
+	while( p <= end ) {
+
+		uint64_t w1 = * (uint64_t*) mls(bf1,p);
+		if( w1 ) {
+			uint64_t w2 = * (uint64_t*) mls(bf2,p);
+			if( w2 ) {
+				w1 &= w2;
+				if( w1 ) return 0;
+			}
+		}
+		p++;
+	}
+	return 1;
+}
+
+
+int bf_new(int len)
+{
+	return m_create(len,sizeof(uint64_t));
+}
+
 
 /*     
   int s_cstr(const char*s)   - s wird kopiert, falls noch nicht vorhanden 
@@ -1251,35 +1368,43 @@ int get_exit_code(int id, int ec)
 
 
 
-
+int checksum_changed(int cs,int p);
 
 void dump_checksum(int cs)
 {
 	cs_t *d; int p;
 	m_foreach( cs, p, d ) {
-		printf("%d %s %s\n",p, d->fn, ctime( & d->mtim.tv_sec ) );
+		fprintf(stderr, "%d %s %s\n",p, d->fn, ctime( & d->mtim.tv_sec ) );
 	}
-	printf("-------------\n");
+	fprintf(stderr,"-------------\n");
+	for(int i=0;i<m_len(cs);i++) {
+		checksum_changed(cs,i);
+	}
 }
 
 int read_checksum( const char *fn )
 {
-  int inc = 10;
+  int inc = 2;
   int len = 0;
   int rd;
   int cs = m_create( inc, sizeof( cs_t));
-  m_setlen( cs,inc );
-  
   FILE *fp = fopen(fn, "rb" );
   if(!fp) return cs;
+  do {
+	  inc*=2; /* OPTIMIZE */		  
+	  m_setlen( cs,len + inc );
+	  rd=fread( mls(cs,len), m_width(cs), inc, fp );
+	  if( rd < 0 ) {
+		  WARN("I/O ERROR READING %s", fn );
+		  break;
+	  }	  
+	  len+=rd;
+  } while( rd == inc );
 
-  while( (rd=fread( mls(cs,len), sizeof(cs_t), inc, fp )) == inc ) {
-    len+=inc;
-    inc*=2; /* OPTIMIZE */
-    m_setlen( cs,len+inc ); 
-  }
-  len+=rd; 
+  TRACE(4,"READ:%d INC:%d MAX:%d", rd,inc,len );
   m_setlen( cs,len );
+
+  dump_checksum(cs);
   return cs;
 }
 
@@ -1289,6 +1414,7 @@ void update_checksum_file( int cs, int fn )
 {
   cs_t *d;
   struct stat sb = { 0 };
+  if( s_empty(fn) ) return;
   int err = stat( CHARP(fn), &sb );
   int pos = m_bsearch( &fn, cs, cscmpmstr );
   if( err ) {		   /* if no file then remove node if exists */
@@ -1338,6 +1464,24 @@ void save_checksum( int cs, const char *fn )
   ASERR( fclose(fp)==0, "checksum file error on close()");
 }
 
+
+/* return true if entry p in checksum file has changed */
+int checksum_changed( int cs, int pos )
+{
+	struct stat sb = { 0 };
+	cs_t *d = mls(cs,pos);
+	int err = stat( d->fn, &sb );
+	if( err ) return 1;
+	err =  memcmp(& d->mtim.tv_sec, & sb.st_mtim, sizeof  sb.st_mtim ) ;
+	if( err ) {	  
+		TRACE(4,"check: %d %s", pos, d->fn);
+		TRACE(4,"cache: %s", ctime( &d->mtim.tv_sec));
+		TRACE(4,"cur:   %s", ctime(&sb.st_mtim.tv_sec));
+	}
+	return err;
+}
+
+
 /* return true if there is no entry for fn or modifed date has changed
    or fn does not exists
 
@@ -1345,27 +1489,13 @@ void save_checksum( int cs, const char *fn )
  */
 int ismodified_checksum( int cs, int fn )
 {
-  struct stat sb = { 0 };
   int pos = m_bsearch( &fn, cs, cscmpmstr );
-  
-
-  
   if( pos < 0 ) return 1;
-  cs_t *d = mls(cs,pos);
-  int err = stat( CHARP(fn), &sb );
-  if( err ) return 1;
-  
-
-  
-  err =  memcmp(& d->mtim.tv_sec, & sb.st_mtim, sizeof  sb.st_mtim ) ;
-  if( err ) {	  
-	  TRACE(4,"check: %d %s", pos, CHARP(fn));
-	  TRACE(4,"cache: %s", ctime( &d->mtim.tv_sec));
-	  TRACE(4,"cur:   %s", ctime(&sb.st_mtim.tv_sec));
-  }
-
-  return err;
+  return checksum_changed( cs, pos);
 }
+
+
+
 
 /* return true if all files in njson list jd are unchanged */
 int filesunchanged_checksum(int cs, int jd )
@@ -1375,12 +1505,13 @@ int filesunchanged_checksum(int cs, int jd )
   
   m_foreach( jd,p,j ) {
 	  if(  ismodified_checksum(cs, j->d) ) {
-		  TRACE(4,"changed: %s", CHARP(j->d));
+		  TRACE(4,"changed: %s. LEN=%d", CHARP(j->d), m_len(cs));
 		  return 0;
 	  }	  
   }
   return 1;
 }
+
 
 
 /* return true if at least one file in string list has changed */
@@ -1399,7 +1530,150 @@ int has_changed(int cs, int m )
 }
 
 
+int find_list_int( int lst, int obj )
+{
+	int p; int *d;
+	m_foreach(lst,p,d) {
+		if( *d == obj ) return p;
+	}
+	return -1;
+}
 
+int find_node_depending( int prep, int obj )
+{
+	int p; int *d;
+	m_foreach(prep,p,d) {
+		if( find_list_int( *d, obj ) >= 0 ) return p;
+	}
+	return -1;
+}
+
+void dump_list_int( int lst )
+{
+	int p; int *d;
+	m_foreach(lst,p,d) {
+		printf("%d ", *d );
+	}
+	printf("\n");
+}
+
+/** find node that depends on file `f`  
+ *  @returns node position
+ **/ 
+int find_file_in_prep(int f, int prep)
+{
+	int p,i,*d,*n;
+	m_foreach(prep,p,d) {
+		m_foreach( *d, i, n ) {
+			if( *n == f ) return p;
+		}		
+	}
+	return -1;		
+}
+
+void add_outfiles(int nodes, int p, int cf)
+{
+	struct njson_st *j ;
+	j = mls(nodes,p);
+	int opts = search_obj_data( "OUT", j->d );
+	if( opts <= 0 ) {
+		TRACE(4,"OUT not found in node %d", p);
+		return;
+	}
+	m_foreach(opts,p,j) {
+		if( j->d == 0 || j->typ != NJSON_STRING ) continue;	  
+		m_puti( cf, j->d );
+		// TRACE(4, "ADD file %s", CHARP(j->d));
+	}
+}
+
+/* search for entry 's' in tree opts0 and append all string member
+   to the list conststr-list m
+*/
+void app_names_bf( int bf, char *s, int opts0 )
+{
+  struct njson_st *j ;
+  int p;
+  int opts = search_obj_data( s,opts0 );
+  if( opts <= 0 ) {
+    TRACE(2,"not found");
+    return;
+  }
+  
+  m_foreach(opts,p,j) {
+	  if( j->d == 0 || j->typ != NJSON_STRING ) continue;	  
+	  int id = conststr_lookup( j->d );
+	  bf_set( bf , id );
+  }
+}
+
+
+/* 1) find all files in cache that have changed, put files in 'newfn'
+   2) repeat until nothing changes:
+   find all nodes that are dependend on files in  'newfn'
+   and put out file list in 'newfn'
+   
+
+ */
+int find_dependend_nodes(int nodes, int cs )
+{
+#if 0
+	dump_checksum( cs );
+	{	int p; int *d;
+		m_foreach(prep,p,d) {
+			printf("%d: ", p );
+			dump_list_int(*d);
+		}
+	}
+#endif
+	int p;
+	struct njson_st *j;
+	
+	/* create a bitfiled for the in+dep file list of each node */
+	int deps = m_create(10,sizeof(int));
+	m_foreach(nodes,p,j) {
+		int p1 = bf_new(2);
+		m_puti(deps,p1);
+		app_names_bf(p1, "IN",  j->d);
+		app_names_bf(p1, "DEP", j->d);
+	}
+
+	/* create an index for all changed files */
+	int newfn = bf_new(2);	
+	cs_t *cd;
+	m_foreach( cs, p, cd ) {
+		if( checksum_changed( cs, p) ) {
+			TRACE(4, "%d. changed: %s", p, cd->fn );
+			int f =  s_cstr(cd->fn);
+			bf_set(newfn, f );
+		}
+	}
+
+	/* search nodes that contain files from `newfn`
+	   append out file list of node to `newfn`
+	   repeat as long as new nodes are found
+	*/
+	int found = 1;
+	int checked_nodes = bf_new(2);
+	int *d;
+	while( found ) {
+		found = 0;
+		m_foreach(deps,p,d) {
+			if( bf_test(checked_nodes,p) ) continue;
+			if(! bf_intersect_empty(*d,newfn) ) {
+				TRACE(4,"ADD %d", p );
+				bf_set(checked_nodes,p);
+				j = mls(nodes,p);
+				app_names_bf(newfn, "OUT", j->d);
+				found=1;
+			}
+		}
+	}
+
+	m_free_list(deps);
+	m_free(newfn);
+	return checked_nodes;	
+}
 
 
 int isempty_list(char *name, int jd)
@@ -1584,12 +1858,12 @@ void cmd_files(int nodes, int d )
 	char **str;
 	int p=0;
 	m_foreach( names,p,str) {
+		
 		if(! **str ) {
 			WARN("empty str");
-		}
-		
-		auto_gen_for_file( nodes, *str );
-	       
+		} else {		
+			auto_gen_for_file( nodes, *str );
+		}	       
 	}
 	TRACE(4,"leaving");
 	m_free_strings(names,0);
@@ -1691,39 +1965,36 @@ void prepare_nodes(int checksum, int global_state, int ec, int ret_upd_cs )
 	}
 	TRACE(4,"update nodes and cache");
 
-  
-  /* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
-  /* verify valid nodes and  create unique id entries */
-  m_foreach(nodes,p,j) {
-	  if( j->typ < NJSON_ARR ) {
-		  TRACE(2, "Node %d invalid", p );
-		  return;
-	  }
-	  if( loop_count == 0 ) {
-		  set_node( j->d, "exit_code", 1 );
-		  set_node( j->d, "id", p+1 );
-		  continue;
-	  } 
+	
+	/* RULE 1) update cache for IN+OUT if node was compiled with exit_code zero */ 
+	/* verify valid nodes and  create unique id entries */
+	m_foreach(nodes,p,j) {
+		if( j->typ < NJSON_ARR ) {
+			TRACE(2, "Node %d invalid", p );
+			return;
+		}
+		if( loop_count == 0 ) {
+			set_node( j->d, "exit_code", 1 );
+			set_node( j->d, "id", p+1 );
+			continue;
+		} 
 
-	  int id = fetch_node_int(j->d, "id", -1 );
+		int id = fetch_node_int(j->d, "id", -1 );
 	  
-	  /* check if exit_code for this node is set
-	     update cache if exit_code is zero 
-	  */
-	  int x = get_exit_code(id,ec);
-	  if( x>=0 ) {
-		  TRACE(4,"set exit code %d on node %d", x, id );
-		  set_node( j->d, "exit_code", x );
-	  }
-	  if( x == 0 ) {
-		  app_names( ret_upd_cs, "OUT", j->d );
-		  app_names( ret_upd_cs, "IN", j->d );			  
-	  }      
-  }
+		/* check if exit_code for this node is set
+		   update cache if exit_code is zero 
+		*/
+		int x = get_exit_code(id,ec);
+		if( x>=0 ) {
+			TRACE(4,"set exit code %d on node %d", x, id );
+			set_node( j->d, "exit_code", x );
+		}
+		if( x == 0 ) {
+			app_names( ret_upd_cs, "OUT", j->d );
+			app_names( ret_upd_cs, "IN", j->d );			  
+		}      
+	}
 
-
-
-  
 }
 
 
@@ -1779,7 +2050,7 @@ void find_nodes( int global_state, int ec, int checksum, int ret_cs )
 	
 	struct njson_st *j;
 	int p,nodes = search_obj_data( "nodes", global_state );
-	int *d;
+
 	int cnt = m_len(nodes) + 1;
 	int prep = m_create(cnt,sizeof(int));
 
@@ -1797,10 +2068,10 @@ void find_nodes( int global_state, int ec, int checksum, int ret_cs )
 	/*OPTIMIZE: all filenames in IN+DEP */
 	TRACE(3, "BUILD IN+DEP LIST" );
 	m_foreach(nodes,p,j) {
-		int p1 = m_create(5,sizeof(int));
+		int p1 = bf_new(2);
 		m_puti(prep,p1);
-		app_names(p1, "IN",  j->d);
-		app_names(p1, "DEP", j->d);
+		app_names_bf(p1, "IN",  j->d);
+		app_names_bf(p1, "DEP", j->d);
 	}
 	
 	/* OPTIMIZE: set exit code to zero on each node with checksum
@@ -1820,59 +2091,72 @@ void find_nodes( int global_state, int ec, int checksum, int ret_cs )
 	/* 	} */
 	/* } */
 
-	int in_cache = m_create(10,sizeof(int));
+	int in_cache = bf_new(2);
 
-       	/* ndep: all OUT-files with exit_code != 0
+
+       	/* 1) ndep: all OUT-files with exit_code != 0
 	   i.e. known but not yet generated files.
-	   if in-files and out-files are in the cache and are unchanged, assume out-files are generated
+	   2) if in-files and out-files are in the cache and are unchanged,
+	   assume out-files are generated amd store node position in_cache[]
 	 */
-	int ndep = m_create(100,sizeof(int));
+	int csdeps = find_dependend_nodes(nodes,checksum);
+	int ndep = bf_new(2);
 	m_foreach(nodes,p,j) {
 		int err = fetch_node_int(j->d, "exit_code", -1 );
 		if( err ==0 ) continue;
-		if( node_is_cached(checksum,j->d) ) {
-			sort_lookup( in_cache, p );
+		if( ! bf_test(csdeps,p) && node_is_cached(checksum,j->d) ) {
+			bf_set( in_cache, p );
 			TRACE(4,"Node is cached: %d", p );
 			continue;
-		}
+		} else TRACE(4,"Node NOT in cached: %d", p );
 		
-		app_names(ndep, "OUT",  j->d);
+		app_names_bf(ndep, "OUT",  j->d);
 	}
-
-
-
+	
+	/* check all files dependend on changed files in checksum and put them in ndep */
+	// update_ndep_from_checksum( nodes, checksum, ndep, prep );
+	
          /* RULE1) comp_ready:= for all nodes with:
 	   1) prep list (in+dep) contains nothing from ndep and
 	   2) exit_code != 0
 	   3) not to compile if (exit_code == -1 and node_cached())
 	*/
 	int comp_ready = m_create(100,sizeof(int));
-
+	int unsatisifed_deps = m_create(100,sizeof(int));
 	m_foreach(nodes,p,j) {
 		if( fetch_node_int(j->d, "exit_code", -1 ) == 0 ) continue;
-		if( m_bsearch( &p, in_cache, cmp_int ) >= 0 ) {
-			TRACE(4,"Node is cached: %d", p );
+		if( bf_test( in_cache, p ) ) {
+			TRACE(4,"Node is cached: %d", p );		       
 			continue;
 		}
 		int p1 = INT(prep,p);		
-		if(  intersection_empty( p1, ndep ) ) {
+		if(  bf_intersect_empty( p1, ndep ) ) {
 			m_puti(comp_ready,j->d);
 			TRACE(4,"todo node nr:%d", p );
+		} else {
+			m_puti(	unsatisifed_deps, j->d );
 		}
 	}
-
+	m_free(csdeps);
       
-	
+	/* fallback method: REDO
+	   if no node is ready, but there are nodes with exit_code!=0
+	   put those in comp_ready
+	*/
+	if( m_len(comp_ready) == 0 ) {
+		m_free(comp_ready);
+		comp_ready = unsatisifed_deps;
+		unsatisifed_deps = 0;
+	}
 	
 	// export_bash_command(global_state,comp_ready);
 	export_bash_list(global_state,comp_ready,ec);
 	
 	m_free(ndep);
 	m_free(comp_ready);
-	m_foreach( prep, p, d ) m_free(*d);
-	m_free(prep);
-
+	m_free_list(prep);
 	m_free(in_cache);
+	m_free(unsatisifed_deps);
 }
 
 

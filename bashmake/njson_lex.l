@@ -1,7 +1,7 @@
 %{
 #define NJSONSTYPE char*
 #include "mls.h"
-#include "njson_parse.tab.h"
+#include "njson_parse.h"
 #include "njson_read.h"
 #include <string.h>
 
