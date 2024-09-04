@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "bash-make utility"
+echo "bash-make utility - need flex,bison,gcc"
 
 CFLAGS="-I. -I../lib -g -Wall -DMLS_DEBUG -D_GNU_SOURCE -Wall"
 YFLAGS=-d
@@ -25,5 +25,20 @@ do
 done
 
 $CC $CFLAGS -o$target ${depso[*]} && echo ready || echo error
+
+
+cat <<EOF
+
+DEMO:
+
+cd ../bitfield
+./bash-make autogen bftest bf.c mls.c
+. compile.sh
+. compile.sh
+touch mls.c
+. compile.sh
+
+EOF
+
 
 
