@@ -134,6 +134,39 @@ static inline int s_new(int len)
 {
 	return m_create(len,1);
 }
+static inline int s_dub(const char *s)
+{
+	int len = strlen(s)+1;
+	int x = m_create(len,1);
+	m_write(x,0,s,len);
+	return x;
+}
+
+
+/* Import a binary file */
+#define IMPORT_BIN(sect, file, sym) asm (\
+    ".section " #sect "\n"                  /* Change section */\
+    ".balign 4\n"                           /* Word alignment */\
+    ".global " #sym "\n"                    /* Export the object address */\
+    #sym ":\n"                              /* Define the object label */\
+    ".incbin \"" file "\"\n"                /* Import the file */\
+    #sym "_end:\n"                              /* Define the object label */\
+    ".byte 0\n" \
+    ".global " #sym "_end\n"            /* Export the object size */ \
+    ".global _sizeof_" #sym "\n"            /* Export the object size */\
+    ".set _sizeof_" #sym ", . - " #sym "\n" /* Define the object size */\
+    ".balign 4\n"                           /* Word alignment */\
+    ".section \".text\"\n")                 /* Restore section */
+
+
+/* Allocates foo.bin in constant section and reffered in FooBin */
+IMPORT_BIN(".rodata", "compile.sh", COMPILE_SCRIPT );
+
+/* Declaration of symbols (any type can be used) */
+extern const unsigned char COMPILE_SCRIPT[], _sizeof_COMPILE_SCRIPT[], COMPILE_SCRIPT_end[];
+
+
+
 
 int bf_scan_set(int bf, int *p);
 void bf_set( int bf, int n );
@@ -247,6 +280,17 @@ int bf_new(int len)
 {
 	return m_create(len,sizeof(uint64_t));
 }
+
+
+void dump_bf_names(int bf)
+{
+	int t=-1;
+	while(  bf_scan_set(bf,&t) )
+	{
+		TRACE(4, "%d %s", t, CHARP(t));
+	}	
+}
+
 
 
 /*     
@@ -2121,6 +2165,11 @@ void find_nodes( int global_state, int ec, int checksum, int ret_cs )
 	   2) exit_code != 0
 	   3) not to compile if (exit_code == -1 and node_cached())
 	*/
+	dump_bf_names(ndep);
+	TRACE(4,"deps of node0");
+	dump_bf_names( INT(prep,0) );
+	
+	
 	int comp_ready = m_create(100,sizeof(int));
 	int unsatisifed_deps = m_create(100,sizeof(int));
 	m_foreach(nodes,p,j) {
@@ -2659,20 +2708,95 @@ void test_rule_compile(void)
   conststr_free(); m_destruct(); exit(1);
 }
 
+const char *BM_HEAD=""							
+"		(							\n"
+"		(* define what files those bash functions generate *)	\n"
+"		rules: (						\n"
+"			sbison: '.y .c .h'				\n"
+"			sflex: '.l .c .h'				\n"
+"			ccompile: '.c .o'				\n"
+"			)						\n"
+"";
+
+int repl_suffix( int s, const char *fn, const char *suffix )
+{
+	int dot = 0;
+	int i = strlen(fn);	
+	if( i < 3 ) return 0;
+
+	while( i )
+	{
+		i--;
+		if( fn[i] == '/' ) break;
+		if( fn[i] == '.' ) dot = i;
+	}
+	if( ! dot ) return 0;
+	if( !s ) s=s_new( dot + strlen(suffix) + 1);
+	m_clear(s);
+	m_write( s,0, fn, dot );
+	m_write( s,dot,suffix,strlen(suffix)+1);
+	return s;
+}
+
+void autogen(int c, char**v)
+{
+
+
+	int fnlist = m_create(10,sizeof(int));
+	int p,*d;
+	FILE *fp ;
+	TRACE(4,"");
+	fp = fopen( "compile.sh", "w" );	
+	fputs( (char*)COMPILE_SCRIPT, fp );
+	fclose(fp);
+
+	fp = fopen( "bm.nodes", "w" );
+	fputs( BM_HEAD, fp );
+
+	fputs("files: '", fp );
+	for( int i = 3; i<c; i++ ) {
+		fprintf(fp, "%s ", v[i] );		
+		int fn = repl_suffix( 0, v[i], ".o" );
+		if( fn ) m_puti(fnlist,fn );
+
+	}
+	
+	fputs("'\n", fp );
+
+	fputs("nodes: (\n(\n", fp );
+	fprintf(fp, "OUT: ('%s')\n", v[2] );
+
+	fprintf(fp, "IN:  (" );
+	m_foreach(fnlist,p,d) {
+		fprintf(fp,"'%s' ", CHARP(*d));
+	};	
+	fprintf(fp, ")\n" );
+	fprintf(fp, "REC:  slink\n)))" );
+	
+	
+	fclose(fp);
+	m_free_list( fnlist );
+}
+
+
 
 int main(int argc, char **argv)
 {
   trace_level=4;
   m_init();
   conststr_init();
-
-
-  // test_rule_compile();
   rule_init();
   int add_rules = m_create(10,sizeof(int));
   int rule = m_create(100,1);
   int ec = m_create(10,sizeof(int));  
   int new_cs = m_create(10,sizeof(int));
+
+  if( argc > 1 ) {
+	  if( strcmp(argv[1],"autogen" ) == 0 ) autogen(argc,argv);
+	  goto leave;	  
+  }
+  
+  
   
   int ch;
   if( (ch=getchar()) == '|' ) {
@@ -2697,16 +2821,17 @@ int main(int argc, char **argv)
   
   
   apply_prepended_rules( opts, add_rules );	  
-  m_free_list(add_rules);
-  m_free(rule);
 
   int checksum = read_checksum( CHECKSUM_FN );
   find_nodes(opts,ec, checksum, new_cs);
   update_checksum_list(checksum, new_cs);
   save_checksum( checksum, CHECKSUM_FN );
   m_free(checksum);
-  m_free(new_cs);
-  
+
+leave:
+  m_free_list(add_rules);
+  m_free(rule);  
+  m_free(new_cs);  
   m_free(ec);
   njson_free(opts);
   conststr_stats();

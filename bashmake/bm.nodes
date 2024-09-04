@@ -1,20 +1,14 @@
+		(							
+		(* define what files those bash functions generate *)	
+		rules: (						
+			sbison: '.y .c .h'				
+			sflex: '.l .c .h'				
+			ccompile: '.c .o'				
+			)						
+files: 'bash-make.c conststr.c mls.c njson_lex.c njson_parse.c njson_parse.tab.c njson_read.c rule-expand.c '
+nodes: (
 (
-
- rules: (
-   sbison: ".y .tab.c .tab.h"
-   sflex: ".l .c .h"
-   ccompile: ".c .o"
- )
-
- files:"njson_lex.l njson_parse.y mls.c njson_read.c bash-make.c conststr.c bash-make.c"
- 
-
- nodes: (
-
-(   OUT: ( 'bash-make' ), 
-    IN: ( bash-make.o mls.o njson_read.o njson_lex.o njson_parse.tab.o conststr.o  )
-    REC: "slink"
-)
-
- ) )
-
+OUT: ('bash-make')
+IN:  ('bash-make.o' 'conststr.o' 'mls.o' 'njson_lex.o' 'njson_parse.o' 'njson_parse.o' 'njson_read.o' 'rule-expand.o' )
+REC:  slink
+)))
