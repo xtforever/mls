@@ -1,7 +1,6 @@
 #!/bin/bash
 
 echo "bash-make utility"
-echo "needed: compile.lib and bash-make"
 
 CFLAGS="-I. -I../lib -g -Wall -DMLS_DEBUG -D_GNU_SOURCE -Wall"
 YFLAGS=-d
@@ -10,15 +9,15 @@ LEX=flex
 CC=gcc
 
 n=njson_lex
-$LEX -o${n}.lex.c --header-file=${n}.lex.h $n.l
+$LEX -o${n}.c --header-file=${n}.h $n.l
 
-n=njson_parse.y
-$YACC $YFLAGS $n
+n=njson_parse
+$YACC -o$n.c -H$n.h $n.y
 
 target="bash-make"
 
-depsc=(conststr.c  ../lib/mls.c  njson_lex.lex.c  njson_parse.tab.c  njson_read.c  njson_read_test.c)
-depso=(conststr.o  mls.o  njson_lex.lex.o  njson_parse.tab.o  njson_read.o  njson_read_test.o)
+depsc=(conststr.c  ../lib/mls.c  njson_lex.c  njson_parse.c  njson_read.c  bash-make.c)
+depso=(conststr.o  mls.o  njson_lex.o  njson_parse.o  njson_read.o bash-make.o)
 
 for fn in ${depsc[@]}
 do
