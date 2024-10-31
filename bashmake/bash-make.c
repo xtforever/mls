@@ -256,21 +256,18 @@ int bf_intersect_empty(int bf1, int bf2)
 {
 	int end = Min( bf_max(bf1), bf_max(bf2) );
 	if( end < 0 ) return 1;
-
-	int start = Max( bf_min(bf1), bf_min(bf2) );
-	int p = start / 64;
 	end /= 64;
-	while( p <= end ) {
+	int start = Max( bf_min(bf1), bf_min(bf2) );
 
+        for( int p = start / 64; p <= end; p++ ) {
 		uint64_t w1 = * (uint64_t*) mls(bf1,p);
-		if( w1 ) {
-			uint64_t w2 = * (uint64_t*) mls(bf2,p);
-			if( w2 ) {
-				w1 &= w2;
-				if( w1 ) return 0;
-			}
+		if(! w1 ) {
+			continue;
 		}
-		p++;
+		uint64_t w2 = * (uint64_t*) mls(bf2,p);
+		if( w1 & w2 ) {
+			return 0;
+		} 
 	}
 	return 1;
 }
@@ -1704,13 +1701,12 @@ int find_dependend_nodes(int nodes, int cs )
 		found = 0;
 		m_foreach(deps,p,d) {
 			if( bf_test(checked_nodes,p) ) continue;
-			if(! bf_intersect_empty(*d,newfn) ) {
-				TRACE(4,"ADD %d", p );
-				bf_set(checked_nodes,p);
-				j = mls(nodes,p);
-				app_names_bf(newfn, "OUT", j->d);
-				found=1;
-			}
+			if( bf_intersect_empty(*d,newfn) ) continue;			
+			bf_set(checked_nodes,p);
+			TRACE(4,"ADD %d", p );
+			j = mls(nodes,p);
+			app_names_bf(newfn, "OUT", j->d);
+			found=1;
 		}
 	}
 
@@ -2797,7 +2793,7 @@ int main(int argc, char **argv)
   }
   
   
-  
+  /* create a additional rule list from command line */
   int ch;
   if( (ch=getchar()) == '|' ) {
 	  while( (ch=getchar()) > 0 ) {

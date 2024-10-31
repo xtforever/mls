@@ -1,5 +1,7 @@
 #include "mls.h"
 #include <stdarg.h>
+
+
 /* alphabetisch sortierte liste von mstr */
 static int CONSTSTR_DATA=0;
 static int CS_ZERO = -1;
@@ -54,7 +56,7 @@ int conststr_lookup(int s)
   if( p < 0 ) { // schon vorhanden
     return INT( CONSTSTR_DATA, (-p)-1 );
   }
-  TRACE(4,"ADD %d %s", p, CHARP(s) );
+  TRACE(1,"ADD %d %s", p, CHARP(s) );
   return INT(CONSTSTR_DATA,p) = m_dub(s);
 }
 
@@ -73,20 +75,41 @@ int conststr_lookup_c(const char *s)
 }
 
 
-int cs_printf( int m, int p, char *format, ... )
+/** @brief use vaprintf to create a a const-string that you do not need to free.
+    use our internal buffer('b') to create a string.
+    lookup this string.
+    if found, return handle to the found string,
+    otherwise return 'b', append 'b' and
+    alloc a new internal buffer.
+*/
+int cs_printf( char *format, ... )
 {
-    va_list ap;
-    va_start(ap,format);
-    m = vas_printf( m,p, format, ap );
-    va_end(ap);
-
-    p = m_binsert( CONSTSTR_DATA, &m, mscmp, 0 );
-    if( p < 0 ) { // schon vorhanden
-      m_free(m);
-      return INT( CONSTSTR_DATA, (-p)-1 );
-    }
-    return m;
+	va_list ap;
+	va_start(ap,format);
+	int m = vas_printf( 0,0, format, ap );
+	va_end(ap);
+	int p = m_binsert( CONSTSTR_DATA, &m, mscmp, 0 );
+	if( p < 0 ) { // schon vorhanden
+		m_free(m);
+		return INT( CONSTSTR_DATA, (-p)-1 );
+	}
+	TRACE(1,"ADD const[%d]=%d:%s", p, m, CHARP(m) );
+	return m;
 }
+
+
+void conststr_stats(void)
+{
+	int len,*d,p;
+	int cnt =  m_len(CONSTSTR_DATA);
+	TRACE(4,"Count: %d", cnt );
+	len = cnt * (sizeof(int) + sizeof (struct ls_st));
+	m_foreach(CONSTSTR_DATA, p, d ) {
+		len += m_len(*d);
+	}
+	TRACE(4,"Memory: %d", len );
+}
+
 
 
 #ifdef WITH_CONSTR_MAIN

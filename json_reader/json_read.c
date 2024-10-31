@@ -9,10 +9,12 @@
 #include "json_lex.lex.h"
 #include <limits.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+
 int yyparse(void);
 void set_input_string(const char* in);
 void end_lexical_scan(void);
-
 
 
 static int stack2 = 0;
