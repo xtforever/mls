@@ -82,9 +82,10 @@ extern int trace_level;
 // ********************************************
 
 typedef struct ls_st {
-    int w, l, max;
-    char d[0];
-} *lst_t;
+	int w, l, max;
+	char uaf_protection;
+	char d[0];
+} *lst_t __attribute__(( aligned(1) ));
 
 void* lst( lst_t l, int i )   __attribute__ ((pure));
 lst_t lst_create(int max, int w);
@@ -285,7 +286,7 @@ int s_app(int m, ...) __attribute__ ((__sentinel__(0)));
     /* append string |s| to |m| */
 int s_app1(int m, char *s);
   /* write sprintf(...) string to array m at pos p */
-int vas_printf(int m, int p, char *format, va_list argptr );
+int vas_printf(int m, int p, const char *format, va_list argptr );
 int s_printf(int m, int p, char *format, ...);
 int s_index( int buf,int p, int ch );
 int mstrcmp(int m,int p, const char *s);
