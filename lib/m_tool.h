@@ -5,7 +5,7 @@
 
 #include "mls.h"
 #include <stdarg.h>
-#include <stdbool.h>
+// #include <stdbool.h>
 
 /* how man strings before forced exit(122) to prevent OOM Killer */ 
 #define CONSTSTR_MAX 9000
@@ -66,7 +66,7 @@ int s_strncmpr(int str, int suffix);
 	
 int s_readln(int buf, FILE *fp);
 int s_regex(int res, char *regex, int buf);
-bool glob_match(char const *pat, char const *str, const char **a, const char **b) __attribute__((const));
+int glob_match(char const *pat, char const *str, const char **a, const char **b) __attribute__((const));
 
 /* imported from conststr */
 void conststr_stats(void);

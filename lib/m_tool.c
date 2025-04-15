@@ -431,69 +431,6 @@ lookup_int(int m, int key)
 	return p;
 }
 
-/**
- * @brief Copies a portion of the list `m` starting at index `a` and ending at
- * index `b` to a new list at position `offs`, and returns the new list.
- *
- * - If `dest` is zero, a new destination list is created.
- * - Indices can be positive or negative:
- *   - Negative indices count from the end to the start of the list.
- *   - The first element is 0, and the last element is -1.
- *
- * Example:
- * @code
- *   m:    0    1    2    3    4
- *       -5   -4   -3   -2   -1
- * @endcode
- *
- * @param dest The destination list where the portion is copied. If set to 0, a
- * new list is created.
- * @param offs The offset position in the destination list where the copied
- * portion is placed.
- * @param m The source list from which the portion is copied.
- * @param a The starting index of the portion to be copied.
- * @param b The ending index of the portion to be copied.
- * @return The new list with the copied portion.
- */
-int
-m_slice(int dest, int offs, int m, int a, int b)
-{
-	int len = m ? m_len(m) : 0;
-	if (b < 0) {
-		b += len;
-	}
-	if (a < 0) {
-		a += len;
-	}
-	if (b >= len)
-		b = len - 1;
-	if (a >= len)
-		a = len - 1;
-	if (a < 0)
-		a = 0;
-	int cnt = b - a + 1;
-	if (cnt < 0)
-		cnt = 1;
-	if (dest <= 0)
-		dest = m_create(cnt + offs, m_width(m));
-	m_setlen(dest, offs);
-	ASSERT(m_width(dest) == m_width(m));
-	for (int i = a; i <= b; i++) {
-		void *d = m_peek(m, i);
-		m_put(dest, d);
-	}
-	return dest;
-}
-
-/* slice for strings: add a zero byte to the end */
-int
-s_slice(int dest, int offs, int m, int a, int b)
-{
-	int ret = m_slice(dest, offs, m, a, b);
-	if (m_len(ret) == 0 || CHAR(ret, m_len(ret) - 1) != 0)
-		m_putc(ret, 0);
-	return ret;
-}
 
 int
 s_warn(int m)
@@ -832,14 +769,6 @@ conststr_init(void)
 	}
 }
 
-int
-cmp_mstr(const void *a, const void *b)
-{
-	int k1 = *(const int *)a;
-	int k2 = *(const int *)b;
-	TRACE(1, "cmp %s %s", CHARP(k1), CHARP(k2));
-	return m_cmp(k1, k2);
-}
 
 /* treat shorter strings as beeing lower than longer strings */
 int
@@ -1040,6 +969,11 @@ s_regex(int res, char *regex, int buf)
  *
  * An opening bracket without a matching close is matched literally.
  */
+
+typedef int bool;
+#define true (1)
+#define false (0)
+
 bool
 glob_match(char const *pat, char const *str, const char **a, const char **b)
 {

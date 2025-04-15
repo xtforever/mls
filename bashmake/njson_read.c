@@ -4,10 +4,10 @@
 */
 
 #include "mls.h"
+#include "m_tool.h"
 #include "njson_read.h"
 #include "njson_parse.h"
 #include "njson_lex.h"
-#include "conststr.h"
 #include <limits.h>
 #include <stdlib.h>
 int yyparse(void);

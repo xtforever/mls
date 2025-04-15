@@ -83,7 +83,8 @@
 
 #include "njson_read.h"
 #include "mls.h"
-#include "conststr.h"
+#include "m_tool.h"
+
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -337,18 +338,6 @@ void dump_bf_names(int bf)
 
 
 
-static void m_map( int m, void (*func) ( void *d, void *ctx ), void *ctx )
-{
-	int p; void *d;
-	m_foreach( m, p, d ) func(d,ctx);
-}
-
-static void m_free_list(int m)
-{
-	int p,*d;
-	m_foreach( m, p, d ) m_free(*d);
-	m_free(m);
-}
 
 
 /* cmp_
@@ -373,12 +362,6 @@ int cscmp( const void *a,const void *b )
   return strncmp(a0->fn,b0->fn,sizeof( a0->fn) );
 }
 
-int cmp_int( const void *a0, const void *b0 )
-{
-	const int *a = a0;
-	const int *b = b0;
-	return (*a) - (*b);
-}
 
 int cmp_mstr( const void *a0, const void *b0 )
 {
@@ -1894,7 +1877,7 @@ void cmd_files(int nodes, int d )
 	if( m_len(d) < 2 ) {
 		WARN("wrong arg list %d", d  );
 	}
-	int names = m_split(0, m_buf(d),' ', 1 );
+	int names = m_str_split(0, m_buf(d)," ", 1 );
 	char **str;
 	int p=0;
 	m_foreach( names,p,str) {
@@ -2598,11 +2581,12 @@ void rule_init(void)
 	RULES = m_create(10,sizeof(rule_t));
 }
 
-void rule_free_x(void *element, void *dummy)
+int rule_free_x( int m, int e, void *dummy)
 {
-	rule_t *r = element;
+	rule_t *r = mls(m,e);
 	m_free(r->suffix_list);
 	(void)dummy;
+	return 0;
 }
 
 void rule_free(void)
