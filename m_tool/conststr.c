@@ -1,1 +1,0 @@
-../conststr/conststr.c

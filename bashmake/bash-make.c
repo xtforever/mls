@@ -363,12 +363,6 @@ int cscmp( const void *a,const void *b )
 }
 
 
-int cmp_mstr( const void *a0, const void *b0 )
-{
-	const int a = *(int *)a0;
-	const int b =  *(int *)b0;
-	return m_cmp( a,b );
-}
 
 
 
@@ -2490,48 +2484,6 @@ int m_dub(int l2)
 */
 
 
-/**
- * @brief Copies a portion of the list `m` starting at index `a` and ending at index `b` to a new list at position `offs`, and returns the new list.
- *
- * - If `dest` is zero, a new destination list is created.
- * - Indices can be positive or negative:
- *   - Negative indices count from the end to the start of the list.
- *   - The first element is 0, and the last element is -1.
- *
- * Example:
- * @code
- *   m:    0    1    2    3    4
- *       -5   -4   -3   -2   -1
- * @endcode
- *
- * @param dest The destination list where the portion is copied. If set to 0, a new list is created.
- * @param offs The offset position in the destination list where the copied portion is placed.
- * @param m The source list from which the portion is copied.
- * @param a The starting index of the portion to be copied.
- * @param b The ending index of the portion to be copied.
- * @return The new list with the copied portion.
- */
-int m_slice(int dest, int offs, int m, int a, int b )
-{
-	int len = m_len(m);
-	if( b < 0 ) { b+= len; }
-	if( a < 0 ) { a+= len; }
-	if( b < a ) { int t = b; b=a; a=t; }
-	if( b >= len ) b = len -1;
-	int cnt = b-a +1;
-	if( dest <= 0 ) dest = m_create(cnt+offs, m_width(m));
-	m_setlen(dest,offs);
-	for( int i = a; i <= b; i++ ) m_put(dest, mls(m,i) );
-	return dest;
-}
-
-/* slice for strings: add a zero byte to the end */
-int s_slice(int dest, int offs, int m, int a, int b )
-{
-	int ret = m_slice(dest,offs,m,a,b);
-	if( m_len(ret) > 0 && CHAR( ret, m_len(ret)-1 ) != 0 ) m_putc(ret,0);
-	return ret;
-}
 
 
 /* expand a rule by adding suffixes to basename of 'inf'

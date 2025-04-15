@@ -1,6 +1,5 @@
 #include "mls.h"
 #include "m_tool.h"
-#include "conststr.h"
 
 
 void expect_ms_equals_cstr(int m, const char *s)
