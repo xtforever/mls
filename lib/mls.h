@@ -21,6 +21,7 @@ extern "C" {
 #include <stdio.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #ifndef is_empty
 #define is_empty(s) (!((s) && *(s)))
@@ -126,6 +127,7 @@ void lst_resize( lst_t *LP, int new_size);
 	int m_alloc( int max, int w, uint8_t free_hdl );
 	int m_xfree( int m );
 	int m_reg_freefn( int n, void (*free_fn) (int m) );
+	int m_is_freed( int h );
 	/* --- */
 	
 	

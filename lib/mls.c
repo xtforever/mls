@@ -436,65 +436,10 @@ int m_next(int m, int *p, void *d) {
 
 static int deep_protect = 0;
 static int MF = 0;
-static void free_wrap(int m)
-{
-	m_free(m);
-}
-static void free_strings_wrap(int m)
-{
-	m_free_strings(m,0);	
-}
-
-static void free_list_wrap(int m)
-{
-	if(!deep_protect) {
-		ERR("possible loop detected");
-	}
-	deep_protect--;
-	int p,*d;	
-	m_foreach(m,p,d) xfree_impl(*d); 
-}
-
-static void xfree_impl(int m)
-{	
-	if( m < 1 ) return;
-	lst_t *lp = _get_list(m);
-	h= (*lp)->free_hdl;	
-	if( h >= m_len(MF) ) {
-		ERR("FREE Hander %d undefined", h );
-	}
-	void (*fn)(int m);
-	fn = mls(MF,h);
-	if(!fn) { ERR("FREE Hander %d is NULL", h ); }
-	fn(m);
-}
-
-void m_xfree(int m)
-{
-	deep_protect = 20;
-	xfree_impl(m);
-}
-
-int m_reg_freefn( int n, void (*free_fn) (int m) )
-{
-	void (**fn)(int m);	
-	int p;
-	m_foreach(MF,p,fn) {
-		if( *fn == free_fn ) return p;
-	}
-	return m_put( MF, &free_fn);
-}
-
-int m_alloc( int max, int w, uint8_t free_hdl )
-{
-	if( free_hdl >= m_len(MF) ) {
-		ERR("FREE Hander %d undefined", free_hdl );
-	}
-	int h = m_create( max, w );
-	lst_t *lp = _get_list(h);
-	(*lp)->free_hdl = free_hdl;
-	return h;
-}
+static void xfree_impl(int m);
+static void free_wrap(int m);
+static void free_strings_wrap(int m);
+static void free_list_wrap(int m);
 
 // returns 0 - ok, 1 - liste schon initialisiert
 int m_init() {
@@ -505,11 +450,11 @@ int m_init() {
   lst_put(&ML, &zero);
   FR = lst_create(100, sizeof(int));
   // -- m_init ready -- 
-  MF = m_alloc( 10, sizeof(void*), 0 );
+  MF = m_create( 10, sizeof(void*) );
   void *p;
   p =  free_wrap; m_put( MF, &p );
   p =  free_strings_wrap; m_put( MF, &p );
-  p =  free_strings_wrap; m_put( MF, &p );
+  p =  free_list_wrap; m_put( MF, &p );
   return 0;
 }
 
@@ -939,6 +884,78 @@ void _m_clear(int ln, const char *fn, const char *fun, int h) {
 #undef MLS_DEBUG_DISABLE
 #include "mls.h"
 
+static void free_wrap(int m)
+{
+	m_free(m);
+}
+static void free_strings_wrap(int m)
+{
+	m_free_strings(m,0);	
+}
+
+static void free_list_wrap(int m)
+{
+	if(!deep_protect) {
+		ERR("possible loop detected");
+	}
+	deep_protect--;
+	int p,*d;	
+	m_foreach(m,p,d) xfree_impl(*d); 
+	m_free(m);
+}
+
+static void xfree_impl(int m)
+{	
+	if( m < 1 ) return;
+	lst_t *lp = _get_list(m);
+	int h = (*lp)->free_hdl;	
+	if( h >= m_len(MF) ) {
+		ERR("FREE Hander %d undefined", h );
+	}
+	void (**fn)(int m);
+	fn = mls(MF,h);
+	if(!*fn) { ERR("FREE Hander %d is NULL", h ); }
+	(*fn)(m);
+}
+
+int m_xfree(int m)
+{
+	deep_protect = 20;
+	xfree_impl(m);
+	return 0;
+}
+
+int m_reg_freefn( int n, void (*free_fn) (int m) )
+{
+	void (**fn)(int m);	
+	int p;
+	m_foreach(MF,p,fn) {
+		if( *fn == free_fn ) return p;
+	}
+	return m_put( MF, &free_fn);
+}
+
+int m_alloc( int max, int w, uint8_t free_hdl )
+{
+	if( MF && free_hdl >= m_len(MF) ) {
+		ERR("FREE Hander %d undefined", free_hdl );
+	}
+	int h = m_create( max, w );
+	lst_t *lp = _get_list(h);
+	(*lp)->free_hdl = free_hdl;
+	return h;
+}
+
+int m_is_freed(int h)
+{
+	if (!FR) return 0;
+	h &= 0xffffff;
+	for (int i = 0; i < FR->l; i++) {
+		if (*(int*)lst_peek(FR, i) == h) return 1;
+	}
+	return 0;
+}
+
 void m_print_version() {
   puts("MLS - Secure, Easy, Low-Overhead Array-Memory-Mangement");
   puts(Version);
@@ -1078,7 +1095,7 @@ int s_split(int m, const char *s, int c, int remove_wspace) {
   for (;;) {
 
     // leading white-space
-    while (isspace(s[p]) && s[p] != c)
+    if( remove_wspace ) while (isspace(s[p]) && s[p] != c)
       p++;
     start = p;
 
@@ -1087,14 +1104,21 @@ int s_split(int m, const char *s, int c, int remove_wspace) {
       p++;
 
     //  trailing whitespace before delimeter, zero - length: end < start
-    end = p;
-    while (end >= start && isspace(s[--end]))
-      ;
-
-    if (end >= start) {
-      szTemp = strndup(s + start, end - start + 1);
-    } else
-      szTemp = strdup("");
+    if (remove_wspace) {
+        end = p;
+        while (end > start && isspace(s[--end]))
+            ;
+        if (end >= start && !isspace(s[end])) {
+            szTemp = strndup(s + start, end - start + 1);
+        } else
+            szTemp = strdup("");
+    } else {
+        end = p;
+        if (end > start) {
+            szTemp = strndup(s + start, end - start);
+        } else
+            szTemp = strdup("");
+    }
     m_put(m, &szTemp);
 
     if (s[p])
