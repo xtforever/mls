@@ -485,6 +485,15 @@ int m_reg_freefn( int n, void (*free_fn) (int m) )
 	return m_put( MF, &free_fn);
 }
 
+int m_alloc( int max, int w, uint8_t free_hdl )
+{
+	if( free_hdl >= m_len(MF) ) {
+		ERR("FREE Hander %d undefined", free_hdl );
+	}
+	int h = m_create( max, w );
+	lst_t *lp = _get_list(h);
+	(*lp)->free_hdl = free_hdl;
+}
 
 // returns 0 - ok, 1 - liste schon initialisiert
 int m_init() {
