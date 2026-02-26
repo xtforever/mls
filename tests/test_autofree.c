@@ -9,7 +9,7 @@ void test_mfree() {
     int val = 42;
     m_put(m, &val);
     assert(m_len(m) == 1);
-    m_xfree(m);
+    m_free(m);
     assert(m_is_freed(m));
     printf("MFREE test passed.\n");
 }
@@ -22,8 +22,8 @@ void test_mfree_str() {
     m_put(m, &s1);
     m_put(m, &s2);
     assert(m_len(m) == 2);
-    // m_xfree should call m_free_strings(m, 0)
-    m_xfree(m);
+    // m_free should call m_free_strings(m, 0)
+    m_free(m);
     assert(m_is_freed(m));
     printf("MFREE_STR test passed.\n");
 }
@@ -50,7 +50,7 @@ void test_mfree_each() {
     
     // This should free outer, which calls xfree_impl for each element.
     // inner1 has MFREE_STR, inner2 has MFREE.
-    m_xfree(outer);
+    m_free(outer);
     assert(m_is_freed(outer));
     assert(m_is_freed(inner1));
     assert(m_is_freed(inner2));
@@ -60,7 +60,6 @@ void test_mfree_each() {
 static int custom_free_called = 0;
 void my_custom_free(int m) {
     custom_free_called++;
-    m_free(m);
 }
 
 void test_custom_free() {
@@ -70,7 +69,7 @@ void test_custom_free() {
     int val = 99;
     m_put(m, &val);
     
-    m_xfree(m);
+    m_free(m);
     assert(custom_free_called == 1);
     assert(m_is_freed(m));
     printf("Custom free handler test passed.\n");

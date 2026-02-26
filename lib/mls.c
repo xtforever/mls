@@ -68,6 +68,12 @@ struct debug_info_st {
 };
 
 static struct debug_info_st debi;
+static int m_free_simple(int h); /* was: m_free */
+static int AUTO_start = 0;
+static int AUTO_ln = -1;
+static const char * AUTO_fn = NULL;
+static const char *AUTO_fun = NULL;
+
 
 //
 // Error Reporting
@@ -397,6 +403,8 @@ void *mls(int m, int i) {
   return lst(*lp, i);
 }
 
+
+
 /* add n elements, return index of first element */
 int m_new(int m, int n) {
   lst_t *lp = _get_list(m);
@@ -434,9 +442,9 @@ int m_next(int m, int *p, void *d) {
   return lst_next(*lp, p, d);
 }
 
-static int deep_protect = 0;
+
+// static int deep_protect = 0;
 static int MF = 0;
-static void xfree_impl(int m);
 static void free_wrap(int m);
 static void free_strings_wrap(int m);
 static void free_list_wrap(int m);
@@ -464,7 +472,7 @@ void m_destruct() {
   lst_t *d;
   if (!ML)
     ERR("Not Init.");
-  m_free(MF);
+  m_free_simple(MF);
   // -- m_destruct start -- 
   for (p = -1; lst_next(ML, &p, &d);)
     if (*d) {
@@ -502,13 +510,14 @@ int m_create(int max, int w) {
   return i;
 }
 
+
 //! X!
 // free memory for list h
 // Returns Zero
 //
 // OPT: speichert die nummer des freigegebenen arrays
 // JH 2007-12-25 ignore h==0 instead of abort with error
-int m_free(int h) {
+int m_free_simple(int h) {
   if (!ML || h < 0)
     ERR("Wrongs Args ML=%p h=%d", ML, h);
   if (!h)
@@ -523,6 +532,7 @@ int m_free(int h) {
 
   free(*l);
   *l = 0;
+  TRACE(1, "Free List %d", h);
   lst_put(&FR, &h);
   return 0;
 }
@@ -534,9 +544,13 @@ int m_put(int m, const void *data) {
   return lst_put(lp, data);
 }
 
-int m_len(int m) {
+int m_len_simple(int m) {
   lst_t *lp = _get_list(m);
   return (**lp).l;
+}
+
+int m_len(int m) {
+  return m_len_simple(m);
 }
 
 void *m_buf(int m) { return m_peek(m, 0); }
@@ -591,10 +605,14 @@ void m_del(int m, int p) {
 }
 
 // clears array, sets used ptr to zero
-void m_clear(int m) {
+void m_clear_simple(int m) {
   lst_t *lp;
   lp = _get_list(m);
   (**lp).l = 0;
+}
+
+void m_clear(int m) {
+  m_clear_simple(m);
 }
 
 /**
@@ -651,6 +669,65 @@ int m_width(int m) {
   lp = _get_list(m);
   return (**lp).w;
 }
+
+int m_free(int m)
+{	
+	if( m < 1 ) return 0;
+	
+	lst_t *lp = _get_list(m);
+	int h = (*lp)->free_hdl;	
+	if( h >= m_len(MF) ) {
+		ERR("FREE Hander %d undefined", h );
+	}
+	void (**fn)(int m);
+	fn = mls(MF,h);
+	if(!*fn) { ERR("FREE Hander %d is NULL", h ); }
+	(*fn)(m);
+	if( h > MFREE_MAX ) {   /* in case of a custom free handler we have to */
+				/* clean internal data ourselfs */
+		m_free_simple(m);
+	}
+		
+	return 0;
+}
+
+int m_reg_freefn( int n, void (*free_fn) (int m) )
+{
+	void (**fn)(int m);	
+	int p;
+	for(p=-1; m_next(MF, &p, &fn); ) {
+		if( *fn == free_fn ) return p;
+	}
+	return m_put( MF, &free_fn);
+}
+
+int m_alloc( int max, int w, uint8_t free_hdl )
+{
+	if( MF && free_hdl >= m_len_simple(MF) ) {
+		ERR("FREE Hander %d undefined", free_hdl );
+	}
+	int h = m_create( max, w );
+	lst_t *lp = _get_list(h);
+	(*lp)->free_hdl = free_hdl;
+	return h;
+}
+
+int m_free_hdl( int h )
+{
+	lst_t *lp = _get_list(h);
+	return (*lp)->free_hdl; 
+}
+
+int m_is_freed(int h)
+{
+	if (!FR) return 0;
+	h &= 0xffffff;
+	for (int i = 0; i < FR->l; i++) {
+		if (*(int*)lst_peek(FR, i) == h) return 1;
+	}
+	return 0;
+}
+
 
 // ********************************************
 //
@@ -738,8 +815,8 @@ static int _mlsdb_check_handle() {
 }
 static int _mlsdb_check_index() {
   int i = debi.index, h = debi.handle;
-  if (i < 0) {
-    perr("Array Index %d should be >=0\n", i);
+  if (i < -1) {
+    perr("Array Index %d should be >=-1\n", i);
     return -1;
   }
 
@@ -805,7 +882,7 @@ void _m_destruct() {
            i + 1, o->fun, o->fn, o->ln);
     }
   }
-  m_free(DEB);
+  m_free_simple(DEB);
   m_destruct();
   debi.me = NULL;
 }
@@ -830,10 +907,22 @@ int _m_create(int ln, const char *fn, const char *fun, int n, int w) {
   return m_uaf;
 }
 
+int _m_alloc(int ln, const char *fn, const char *fun, int n, int w, uint8_t free_hdl) {
+	int h = _m_create(ln,fn,fun,n,w);
+	lst_t *lp = _get_list(h);
+	(*lp)->free_hdl = free_hdl;
+	return h;
+}
+
 int _m_free(int ln, const char *fn, const char *fun, int m) {
   if (!m)
     return 0;
-  _mlsdb_caller(__FUNCTION__, ln, fn, fun, 1, m, 0, 0);
+  if(! AUTO_start++ ) {  
+	  AUTO_ln = ln;
+	  AUTO_fn = fn;
+	  AUTO_fun = fun;
+  }
+  _mlsdb_caller(__FUNCTION__, AUTO_ln, AUTO_fn, AUTO_fun, 1, m, 0, 0);
   m_free(m);
 
   m &= 0xffffff; /* uaf protection */
@@ -843,6 +932,7 @@ int _m_free(int ln, const char *fn, const char *fun, int m) {
   o->fun = fun;
   o->fn = fn;
   TRACE(1, "Free List %d", m);
+  AUTO_start--;
   return 0;
 }
 
@@ -873,6 +963,8 @@ void _m_clear(int ln, const char *fn, const char *fun, int h) {
   m_clear(h);
 }
 
+
+
 /*
    -------------------------------------------------------------------------
 
@@ -884,76 +976,55 @@ void _m_clear(int ln, const char *fn, const char *fun, int h) {
 #undef MLS_DEBUG_DISABLE
 #include "mls.h"
 
+
 static void free_wrap(int m)
 {
-	m_free(m);
+	//if  MLS_DEBUG is enabled, we may be called by   _m_free() -> m_free() -> free_wrap() 
+	//we need m_free_simple to avoid a loop
+	//but wait: if we are called by free_list_wrap() and we are in debug mode we need to call
+	// _m_free for the list to clear debug-list information
+	m_free_simple(m);
+
+
+#if 0
+	_mlsdb_caller(__FUNCTION__,AUTO_ln, AUTO_fn,AUTO_fun, 1, m, 0, 0);
+	m &= 0xffffff; /* uaf protection */
+	lst_owner *o = (lst_owner *)mls(DEB, m - 1);
+	o->ln = -ln;
+	o->fun = fun;
+	o->fn = fn;
+	TRACE(1, "Free List %d", m);
+#endif	
 }
-static void free_strings_wrap(int m)
+
+static void free_strings_wrap(int list)
 {
-	m_free_strings(m,0);	
+  int index;
+  char **strp;
+  TRACE(1, "Free List %d", list & 0xffffff ) ;
+  if (list < 1)
+    return;
+  for(index=-1; m_next(list, &index, &strp); ) {
+    if (*strp)
+      free(*strp);
+    *strp = NULL;
+  }
+  /* here begins the tricky part:
+     if MLS_DEBUG is enabled, we are called by   _m_free() -> m_free() -> free_strings_wrap() 
+     which means that 'list' is about to be deleted.
+     Normally we would call 
+     m_free(list) but this would start the process again (loop).
+     instead we are calling: m_free_simple() 
+  */
+  m_free_simple(list);
 }
 
 static void free_list_wrap(int m)
 {
-	if(!deep_protect) {
-		ERR("possible loop detected");
-	}
-	deep_protect--;
+	TRACE(1, "Free List %d", m & 0xffffff );
 	int p,*d;	
-	m_foreach(m,p,d) xfree_impl(*d); 
-	m_free(m);
-}
-
-static void xfree_impl(int m)
-{	
-	if( m < 1 ) return;
-	lst_t *lp = _get_list(m);
-	int h = (*lp)->free_hdl;	
-	if( h >= m_len(MF) ) {
-		ERR("FREE Hander %d undefined", h );
-	}
-	void (**fn)(int m);
-	fn = mls(MF,h);
-	if(!*fn) { ERR("FREE Hander %d is NULL", h ); }
-	(*fn)(m);
-}
-
-int m_xfree(int m)
-{
-	deep_protect = 20;
-	xfree_impl(m);
-	return 0;
-}
-
-int m_reg_freefn( int n, void (*free_fn) (int m) )
-{
-	void (**fn)(int m);	
-	int p;
-	m_foreach(MF,p,fn) {
-		if( *fn == free_fn ) return p;
-	}
-	return m_put( MF, &free_fn);
-}
-
-int m_alloc( int max, int w, uint8_t free_hdl )
-{
-	if( MF && free_hdl >= m_len(MF) ) {
-		ERR("FREE Hander %d undefined", free_hdl );
-	}
-	int h = m_create( max, w );
-	lst_t *lp = _get_list(h);
-	(*lp)->free_hdl = free_hdl;
-	return h;
-}
-
-int m_is_freed(int h)
-{
-	if (!FR) return 0;
-	h &= 0xffffff;
-	for (int i = 0; i < FR->l; i++) {
-		if (*(int*)lst_peek(FR, i) == h) return 1;
-	}
-	return 0;
+	for(p=-1; m_next(m,&p,&d); ) m_free(*d); 
+	m_free_simple(m);
 }
 
 void m_print_version() {
@@ -1051,15 +1122,19 @@ void m_free_strings(int list, int CLEAR_ONLY) {
   char **strp;
   if (list < 1)
     return;
-  m_foreach(list, index, strp) {
+  for(index=-1; m_next(list, &index, &strp); ) {
     if (*strp)
       free(*strp);
     *strp = NULL;
   }
   if (CLEAR_ONLY)
     m_clear(list); // reset array size to zero
-  else
-    m_free(list); // free array
+  else {
+	  lst_t *lp = _get_list(list);
+	  (*lp)->free_hdl = 0;
+	  m_free(list); // free simple array and if ncc. debug info
+  }
+  
 }
 
 /**
@@ -1088,9 +1163,9 @@ int s_split(int m, const char *s, int c, int remove_wspace) {
   char *szTemp;
 
   if (m)
-    m_free_strings(m, 1);
+	  m_free_strings(m, 1);
   else
-    m = m_create(10, sizeof(char *));
+	  m = m_alloc(10, sizeof(char *), MFREE_STR );
 
   for (;;) {
 
@@ -1181,9 +1256,9 @@ int m_regex(int m, const char *regex, const char *s) {
   pm = (regmatch_t *)malloc(sizeof(regmatch_t) * subexp);
 
   if (m > 1)
-    m_free_strings(m, 1);
+	  m_free_strings(m, 1);
   else
-    m = m_create(subexp + 1, sizeof(char *));
+	  m = m_alloc(subexp + 1, sizeof(char *), MFREE_STR);
 
   error = regexec(&regc, s, subexp, pm, 0);
   if (!error) {
@@ -1201,9 +1276,10 @@ int m_regex(int m, const char *regex, const char *s) {
 
 //! X! Copy List m
 int m_dub(int m) {
-  int r = m_create(m_len(m), m_width(m));
-  m_write(r, 0, mls(m, 0), m_len(m));
-  return r;
+	int h = m_free_hdl( m );
+	int r = m_alloc(m_len(m), m_width(m), h);  
+	m_write(r, 0, mls(m, 0), m_len(m));  
+	return r;
 }
 
 /*

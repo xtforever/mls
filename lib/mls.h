@@ -125,9 +125,10 @@ void lst_resize( lst_t *LP, int new_size);
 	
 	/* new alloc function, using pre-registered free_hdl */
 	int m_alloc( int max, int w, uint8_t free_hdl );
-	int m_xfree( int m );
+	int m_free( int m );
 	int m_reg_freefn( int n, void (*free_fn) (int m) );
 	int m_is_freed( int h );
+	int m_free_hdl( int h );
 	/* --- */
 	
 	
@@ -137,8 +138,9 @@ void *m_add( int m );
 int m_next( int m, int *p, void *d );
 int m_init();
 void m_destruct() ;
-int m_create(int max, int w);
-int m_free(int h);
+	
+	int m_create(int max, int w); /* deprecated: use m_alloc */
+
 int m_put( int m, const void* data );
 int m_len( int m );
 int m_setlen( int m, int len );
@@ -189,6 +191,8 @@ void _m_clear( int ln, const char *fn, const char *fun,
 	      int h );
 void* _m_buf(int ln, const char *fn, const char *fun,
 	      int m );
+int _m_alloc(int ln, const char *fn, const char *fun,
+	       int n, int w, uint8_t hfree );
 
 // ********************************************
 //
@@ -374,6 +378,10 @@ enum {
 #define m_create(n,w) \
 	_m_create(__LINE__, \
 	__FILE__,__FUNCTION__,(n),(w))
+
+#define m_alloc(n,w,h)				   \
+	_m_alloc(__LINE__,  __FILE__,__FUNCTION__, \
+		 (n),(w), (h) )
 
 #define m_free(m) \
 	_m_free(__LINE__, \
