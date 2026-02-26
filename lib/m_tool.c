@@ -15,7 +15,7 @@ mls_printf_handler(FILE *stream, const struct printf_info *info,
 	// Extract the argument as a "mls" type
 	const int p = *((const int *)args[0]);
 	// Convert mls Handle to String
-	const char *s = mls(p, 0);
+	const char *s = p > 0 ? mls(p, 0) : "";
 	char *o, out[50];
 	o = out;
 	*o++ = '%';
@@ -324,6 +324,7 @@ m_clear_user(int m, void (*free_h)(void *))
 void
 m_free_list(int m)
 {
+	if(!m) return;
 	if( m_width(m) < sizeof(int) ) {
 		ERR("expected array of handles/int but list %d has width %d",
 		    m, m_width(m) );
@@ -514,13 +515,15 @@ s_isempty(int m)
 	if (m == 0)
 		WARN("handle is zero");
 	else {
-		if (m_len(m) == 0)
-			WARN("strlen  is zero");
+		if (m_len(m) == 0) {
+			// WARN("strlen  is zero");
+		}
 		else {
 			if (CHAR(m, m_len(m) - 1))
 				WARN("last byte not zero");
-			if (CHAR(m, 0) == 0)
-				WARN("first byte is zero");
+			if (CHAR(m, 0) == 0) {
+				//	WARN("first byte is zero");
+			}					
 		}
 	}
 
@@ -741,7 +744,6 @@ m_map(int m, int (*fn)(int m, int p, void *ctx), void *ctx)
 		fn(m, i, ctx);
 }
 
-
 int
 s_strcpy_c(int out, const char *s)
 {
@@ -752,27 +754,11 @@ s_strcpy_c(int out, const char *s)
 	return out;
 }
 
-int
-s_strcmp_c(int s0,int offs, const char *s1)
-{
-	if( s0 == 0 || m_len(s0) <= offs ) return -1;
-	return mstrcmp(s0,offs,s1);	
-}
-
 
 int
 s_strdup_c(const char *s)
 {
-	if (s == NULL) {
-		int v = m_create(1, 1);
-		m_putc(v, 0);
-		return v;
-	}
-
-	int len = strlen(s) + 1;
-	int v = m_create(len, 1);
-	m_write(v, 0, s, len);
-	return v;
+	return s_strcpy_c(0,s);
 }
 
 int
@@ -860,6 +846,11 @@ int cmp_mstr_cstr_fast(const void *key, const void *b)
 	const char *const *s = key;
 	int mstr = *(int*) b;
 	return -mstrcmp(mstr, 0, *s);	
+}
+
+int s_strcmp_c( int mstr, const char *s )
+{
+	return mstrcmp(mstr, 0, s);
 }
 
 static int
@@ -991,14 +982,19 @@ s_strncmpr(int str, int suffix)
 	return s_strncmp2(str, lenstr - lensuffix, suffix, 0, lensuffix) == 0;
 }
 
+
+/* read a line of text
+   this function must be called once, after all data is read, to find the eof.
+   if the last line is terminated by eof this function returns success!
+   returns: 0 - success, -1 no more data
+*/
 int
 s_readln(int buf, FILE *fp)
 {
 	m_clear(buf);
 	int ret = m_fscan(buf, 10, fp);
-	if (ret < 0 && m_len(buf) > 1)
-		return 0;
-	return ret;
+	if( ret < 0 && m_len(buf) <= 1 ) return -1;	
+	return 0;
 }
 
 int
@@ -1007,12 +1003,6 @@ s_regex(int res, char *regex, int buf)
 	m_regex(res, regex, m_str(buf));
 	return m_len(res);
 }
-
-
-typedef int bool;
-#define true (1)
-#define false (0)
-
 
 /* LICENSE Dual MIT/GPL
    ripped from linux kernel 6.8 source /lib/glob.c

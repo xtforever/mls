@@ -84,6 +84,7 @@ extern int trace_level;
 typedef struct ls_st {
 	int w, l, max;
 	char uaf_protection;
+	uint8_t free_hdl;
 	char d[0];
 } *lst_t __attribute__(( aligned(1) ));
 
@@ -107,7 +108,27 @@ void lst_resize( lst_t *LP, int new_size);
 // handle and are indexed by an integer
 //
 // ********************************************
-
+	enum predefined_free_handler {
+		MFREE = 0,
+		MFREE_STR = 1,
+		MFREE_EACH = 2,
+		MFREE_MAX = 2
+	};
+	
+	/* pregistered free handler:
+	   registered by m_init()
+	   MFREE       0 - m_free
+	   MFREE_STR   1 - m_free_strings   - elements are malloced strings 
+	   MFREE_EACH  2 - m_free_each      - elements are m_alloc() lists, m_xfree will be called for each element
+	*/
+	
+	/* new alloc function, using pre-registered free_hdl */
+	int m_alloc( int max, int w, uint8_t free_hdl );
+	int m_xfree( int m );
+	int m_reg_freefn( int n, void (*free_fn) (int m) );
+	/* --- */
+	
+	
 void* mls( int m, int i );
 int m_new( int m, int n );
 void *m_add( int m );
@@ -217,8 +238,8 @@ void* _m_buf(int ln, const char *fn, const char *fun,
 	int m_lookup( int m, int key );
 	int m_lookup_obj( int m, void *obj, int size );
 	int utf8_getchar(FILE *fp, utf8_char_t buf );
-	void m_putc(int m, char c);
-	void m_puti(int m, int  c);
+	int m_putc(int m, char c);
+	int m_puti(int m, int  c);
 	int m_lookup_str(int m, const char *key, int NOT_INSERT);
 	int utf8char(char **s);
 	int m_utf8char(int buf, int *p);

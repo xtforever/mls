@@ -434,6 +434,58 @@ int m_next(int m, int *p, void *d) {
   return lst_next(*lp, p, d);
 }
 
+static int deep_protect = 0;
+static int MF = 0;
+static void free_wrap(int m)
+{
+	m_free(m);
+}
+static void free_strings_wrap(int m)
+{
+	m_free_strings(m,0);	
+}
+
+static void free_list_wrap(int m)
+{
+	if(!deep_protect) {
+		ERR("possible loop detected");
+	}
+	deep_protect--;
+	int p,*d;	
+	m_foreach(m,p,d) xfree_impl(*d); 
+}
+
+static void xfree_impl(int m)
+{	
+	if( m < 1 ) return;
+	lst_t *lp = _get_list(m);
+	h= (*lp)->free_hdl;	
+	if( h >= m_len(MF) ) {
+		ERR("FREE Hander %d undefined", h );
+	}
+	void (*fn)(int m);
+	fn = mls(MF,h);
+	if(!fn) { ERR("FREE Hander %d is NULL", h ); }
+	fn(m);
+}
+
+void m_xfree(int m)
+{
+	deep_protect = 20;
+	xfree_impl(m);
+}
+
+int m_reg_freefn( int n, void (*free_fn) (int m) )
+{
+	void (**fn)(int m);	
+	int p;
+	m_foreach(MF,p,fn) {
+		if( *fn == free_fn ) return p;
+	}
+	return m_put( MF, &free_fn);
+}
+
+
 // returns 0 - ok, 1 - liste schon initialisiert
 int m_init() {
   static lst_t zero = 0;
@@ -442,6 +494,12 @@ int m_init() {
   ML = lst_create(100, sizeof(lst_t));
   lst_put(&ML, &zero);
   FR = lst_create(100, sizeof(int));
+  // -- m_init ready -- 
+  MF = m_alloc( 10, sizeof(void*), 0 );
+  void *p;
+  p =  free_wrap; m_put( MF, &p );
+  p =  free_strings_wrap; m_put( MF, &p );
+  p =  free_strings_wrap; m_put( MF, &p );
   return 0;
 }
 
@@ -451,6 +509,8 @@ void m_destruct() {
   lst_t *d;
   if (!ML)
     ERR("Not Init.");
+  m_free(MF);
+  // -- m_destruct start -- 
   for (p = -1; lst_next(ML, &p, &d);)
     if (*d) {
       free(*d);
@@ -886,15 +946,15 @@ void m_bzero(int m) {
 // ********************************************
 
 //! X! speicher das char c an das ende von marray m
-void m_putc(int m, char c)
+int m_putc(int m, char c)
 {
-	*(char*)m_add(m)=c;
+	return *(char*)m_add(m)=c;
 }
 
 //! X! speicher ein int an das ende von marray m
-void m_puti(int m, int c)
+int m_puti(int m, int c)
 {
-	*(int*)m_add(m)=c;
+	return *(int*)m_add(m)=c;
 }
 
 
