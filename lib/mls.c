@@ -493,6 +493,7 @@ int m_alloc( int max, int w, uint8_t free_hdl )
 	int h = m_create( max, w );
 	lst_t *lp = _get_list(h);
 	(*lp)->free_hdl = free_hdl;
+	return h;
 }
 
 // returns 0 - ok, 1 - liste schon initialisiert
