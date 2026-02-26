@@ -1,9 +1,0 @@
-(
-   title: 'freigabe erstellen',
-   script: "freigabe.sh -m '$kk' $sandbox $srv $domain",
-   fields: (
-      ( type: 'kuerzel', title: 'Kuerzel', variable: 'kk' ),
-      ( type: 'input', title: 'sandbox', variable: 'sandbox' ),
-      ( type: 'option', title: 'server', variable: 'srv', values: ( 'sandbox7','sandbox9','sandbox10' ) )
-   )
-)

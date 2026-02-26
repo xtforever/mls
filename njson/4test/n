@@ -1,8 +1,0 @@
-(
-import: "*.deps",
-nodes: ( 
-(        OUT: ('prepare'),
-	 REC: "run itworks"
-)
-
- ) )
