@@ -675,19 +675,25 @@ int m_free(int m)
 	if( m < 1 ) return 0;
 	
 	lst_t *lp = _get_list(m);
-	int h = (*lp)->free_hdl;	
+	uint8_t h = (*lp)->free_hdl;
+	if (h == 255) return 0; /* this prevents recursion, if a list contains itself */
+	if (h == 0 ) { /* the simple case first */
+	  m_free_simple(m);
+	  return 0;
+	}
+
 	if( h >= m_len(MF) ) {
 		ERR("FREE Hander %d undefined", h );
 	}
+	(*lp)->free_hdl = 255; // mark this list as 'freeing in progress'
 	void (**fn)(int m);
 	fn = mls(MF,h);
 	if(!*fn) { ERR("FREE Hander %d is NULL", h ); }
 	(*fn)(m);
-	if( h > MFREE_MAX ) {   /* in case of a custom free handler we have to */
-				/* clean internal data ourselfs */
-		m_free_simple(m);
-	}
-		
+	/* clean this list, use a non on-debug-override function
+	   because we could be called from a debug function */
+	m_free_simple(m);
+
 	return 0;
 }
 
@@ -917,6 +923,12 @@ int _m_alloc(int ln, const char *fn, const char *fun, int n, int w, uint8_t free
 int _m_free(int ln, const char *fn, const char *fun, int m) {
   if (!m)
     return 0;
+
+  if (m_is_freed(m)) {
+    WARN("Attempt to free already freed list %d. Called by %s() in %s:%d", m, fun, fn, ln);
+    return 0;
+  }
+
   if(! AUTO_start++ ) {  
 	  AUTO_ln = ln;
 	  AUTO_fn = fn;
@@ -976,7 +988,7 @@ void _m_clear(int ln, const char *fn, const char *fun, int h) {
 #undef MLS_DEBUG_DISABLE
 #include "mls.h"
 
-
+/* should not be called anytime */
 static void free_wrap(int m)
 {
 	//if  MLS_DEBUG is enabled, we may be called by   _m_free() -> m_free() -> free_wrap() 
@@ -1004,27 +1016,24 @@ static void free_strings_wrap(int list)
   TRACE(1, "Free List %d", list & 0xffffff ) ;
   if (list < 1)
     return;
-  for(index=-1; m_next(list, &index, &strp); ) {
-    if (*strp)
+
+  lst_t *lp = _get_list(list);
+  for(index=-1; lst_next(*lp, &index, &strp); ) {
+    if (*strp) {
       free(*strp);
-    *strp = NULL;
+      *strp = NULL;
+    }
   }
-  /* here begins the tricky part:
-     if MLS_DEBUG is enabled, we are called by   _m_free() -> m_free() -> free_strings_wrap() 
-     which means that 'list' is about to be deleted.
-     Normally we would call 
-     m_free(list) but this would start the process again (loop).
-     instead we are calling: m_free_simple() 
-  */
-  m_free_simple(list);
 }
 
 static void free_list_wrap(int m)
 {
 	TRACE(1, "Free List %d", m & 0xffffff );
 	int p,*d;	
-	for(p=-1; m_next(m,&p,&d); ) m_free(*d); 
-	m_free_simple(m);
+	m_foreach(m,p,d) m_free(*d);
+	// list m is marked with free_hdl=255 before this function was
+	// called, so we will not get a recursion
+	// if this list 'm' contains itself       
 }
 
 void m_print_version() {
