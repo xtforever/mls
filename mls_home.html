@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLS - Interpreted Comfort for C</title>
+    <link rel="stylesheet" href="pico.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* High-Contrast Enterprise Color Scheme */
+        :root {
+            --pico-background-color: #0c1120;
+            --pico-color: #f8fafc;
+            --pico-primary: #6366f1; /* Indigo */
+            --pico-primary-hover: #4f46e5;
+            --pico-card-background-color: #1e293b;
+            --pico-border-color: #334155;
+            
+            --accent-emerald: #10b981;
+            --accent-emerald-hover: #059669;
+            --text-secondary: #94a3b8;
+            
+            --font-size-hero: clamp(2rem, 5vw + 1rem, 4rem);
+        }
+
+        body {
+            background-color: var(--pico-background-color);
+            color: var(--pico-color);
+            line-height: 1.7;
+        }
+
+        .hero {
+            text-align: center;
+            padding-block: clamp(3rem, 10vh, 6rem);
+            background: radial-gradient(circle at top, #1e293b 0%, #0c1120 100%);
+            border-bottom: 1px solid var(--pico-border-color);
+            margin-bottom: 3rem;
+        }
+
+        .hero h1 {
+            font-size: var(--font-size-hero);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            color: #fff;
+            letter-spacing: -0.02em;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            max-width: 600px;
+            margin-inline: auto;
+        }
+
+        .download-btn {
+            background-color: var(--accent-emerald) !important;
+            border: none !important;
+            color: #fff !important;
+            padding: 0.8rem 2.5rem !important;
+            border-radius: 50px !important;
+            font-weight: 700 !important;
+            font-size: 1.1rem !important;
+            transition: transform 0.2s ease, background-color 0.2s ease !important;
+            box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.39);
+        }
+
+        .download-btn:hover {
+            background-color: var(--accent-emerald-hover) !important;
+            transform: translateY(-2px);
+        }
+
+        .modern-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+            gap: 1.5rem;
+            margin-block: 2.5rem;
+        }
+
+        .card {
+            background-color: var(--pico-card-background-color);
+            border: 1px solid var(--pico-border-color);
+            padding: 2rem;
+            border-radius: 1rem;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--pico-primary);
+        }
+
+        .card h3 {
+            color: #fff;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            flex-grow: 1;
+            margin-bottom: 1.5rem;
+        }
+
+        .card a {
+            color: var(--pico-primary);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .section-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-top: 4rem;
+            color: #fff;
+            border-left: 4px solid var(--pico-primary);
+            padding-left: 1rem;
+        }
+
+        .joke-tag {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-top: 2rem;
+        }
+
+        #markdown-content {
+            background-color: #1e293b;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            border: 1px solid var(--pico-border-color);
+        }
+
+        .top-nav {
+            padding-block: 1rem;
+        }
+
+        .top-nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .top-nav a:hover {
+            color: #fff;
+        }
+
+        /* Syntax highlighting tweaks */
+        pre {
+            background-color: #0f172a !important;
+            border: 1px solid #334155;
+        }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <nav class="top-nav">
+            <ul>
+                <li><a href="../index.html">← Back to Showcase</a></li>
+            </ul>
+        </nav>
+
+        <!-- Hero Section -->
+        <section class="hero">
+            <h1>🚀 MLS: Interpreted Comfort</h1>
+            <p>A memory safety layer for ANSI C that replaces pointers with integer handles. Stable, fast, and remarkably safe.</p>
+            <div style="margin-top: 2.5rem;">
+                <a href="mls_library.zip" class="pico-button download-btn" download>
+                    Download MLS v1.0
+                </a>
+            </div>
+            <p class="joke-tag">
+                Guaranteed 100% pointer-to-pointer free*<br>
+                <small>*Except in the library itself, where we do the dirty work for you.</small>
+            </p>
+        </section>
+
+        <!-- Main Content Area -->
+        <div id="content-area">
+            <div id="home-content">
+                <section>
+                    <h2 class="section-title">Overview</h2>
+                    <p>MLS (Memory List System) brings the ease of high-level languages to C. By using <strong>Integer Handles</strong>, it eliminates common memory pitfalls while maintaining blazing performance.</p>
+                    
+                    <div class="modern-grid">
+                        <article class="card">
+                            <h3>⚡ Handle-Based</h3>
+                            <p>Reference data with stable IDs. Resizing memory never invalidates your handles. No more stale pointers or manual remapping.</p>
+                        </article>
+                        <article class="card">
+                            <h3>🔄 Auto-Cleanup</h3>
+                            <p>Build complex, nested data structures and free them with a single call. Built-in cycle safety ensures zero leaks.</p>
+                        </article>
+                        <article class="card">
+                            <h3>🛡️ Secure</h3>
+                            <p>Integrated bounds checking and Use-After-Free detection. If your code compiles, it is already significantly safer.</p>
+                        </article>
+                    </div>
+                </section>
+
+                <section id="navigation">
+                    <h2 class="section-title">Essential Guides</h2>
+                    <div class="modern-grid">
+                        <article class="card">
+                            <h3>🤔 Why MLS? (Deep Dive)</h3>
+                            <p>An objective, deeply researched look at the security problems MLS solves and how it compares to alternatives like jemalloc and Talloc.</p>
+                            <a href="#" onclick="loadDoc('docs/why_mls.md'); return false;">Read the Analysis →</a>
+                        </article>
+                        <article class="card">
+                            <h3>🎯 Goals & Philosophy</h3>
+                            <p>Learn how we eliminate pointers and why "Exit on Error" is better for your productivity.</p>
+                            <a href="#" onclick="loadDoc('docs/philosophy.md'); return false;">Read Philosophy →</a>
+                        </article>
+                        <article class="card">
+                            <h3>👶 Beginners Guide</h3>
+                            <p>Coming from Python or Java? Learn how to think in Handles instead of memory addresses.</p>
+                            <a href="#" onclick="loadDoc('docs/beginners_guide.md'); return false;">Start Here →</a>
+                        </article>
+                        <article class="card">
+                            <h3>🧵 String Handling</h3>
+                            <p>A stress-free string experience. No more manual null-terminator or buffer management.</p>
+                            <a href="#" onclick="loadDoc('docs/strings.md'); return false;">Explore Examples →</a>
+                        </article>
+                        <article class="card">
+                            <h3>🛡️ Memory Safety</h3>
+                            <p>In-depth look at how MLS prevents buffer overflows and security vulnerabilities.</p>
+                            <a href="#" onclick="loadDoc('docs/security.md'); return false;">Security Guide →</a>
+                        </article>
+                        <article class="card">
+                            <h3>⚔️ C vs MLS</h3>
+                            <p>A technical comparison between traditional C memory and the robust MLS approach.</p>
+                            <a href="#" onclick="loadDoc('docs/memory_management.md'); return false;">Comparison Guide →</a>
+                        </article>
+                        <article class="card">
+                            <h3>✂️ Slicing Simplified</h3>
+                            <p>Python-style slicing with bounds checking and negative indices brought to C.</p>
+                            <a href="#" onclick="loadDoc('docs/m_slice.md'); return false;">Learn Slicing →</a>
+                        </article>
+                    </div>
+
+                    <h2 class="section-title">Advanced Insights</h2>
+                    <div class="modern-grid">
+                        <article class="card">
+                            <h3>🛡️ Case Study: Curl</h3>
+                            <p>See how MLS would have definitively prevented the high-severity <strong>CVE-2023-38545</strong> in curl.</p>
+                            <a href="#" onclick="loadDoc('docs/case_study_curl.md'); return false;">Read Case Study →</a>
+                        </article>
+                        <article class="card">
+                            <h3>🚀 Implementing MLS in Curl</h3>
+                            <p>How big is curl, and is it feasible to implement MLS in a project of this scale? A strategic feasibility study.</p>
+                            <a href="#" onclick="loadDoc('docs/curl_integration.md'); return false;">Read the Study →</a>
+                        </article>
+                        <article class="card">
+                            <h3>💎 Constant Strings</h3>
+                            <p>Specialized interning system for internal keywords and program-wide constants.</p>
+                            <a href="#" onclick="loadDoc('docs/advanced_strings.md'); return false;">Advanced Guide →</a>
+                        </article>
+                        <article class="card">
+                            <h3>✨ Table API</h3>
+                            <p>Bring Pythonic dictionaries and type introspection to your C applications.</p>
+                            <a href="#" onclick="loadDoc('docs/m_table_greatness.md'); return false;">Explore Tables →</a>
+                        </article>
+                        <article class="card">
+                            <h3>🌍 Real-World Impact</h3>
+                            <p>Case study: How MLS could delete 15% of boilerplate from a 60k LOC project.</p>
+                            <a href="#" onclick="loadDoc('docs/real-world-examples.md'); return false;">Read Case Study →</a>
+                        </article>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Dynamic Markdown Area -->
+            <div id="markdown-container" style="display: none;">
+                <article id="markdown-content"></article>
+                <div style="margin-top: 3rem; text-align: center;">
+                    <a href="#" onclick="showHome(); return false;" role="button" class="secondary">← Back to Overview</a>
+                </div>
+            </div>
+        </div>
+
+        <footer style="padding-block: 5rem; opacity: 0.5; text-align: center;">
+            <p><small>© 2026 MLS Project. Built for stability and performance.</small></p>
+        </footer>
+    </main>
+
+    <script>
+        function loadDoc(url) {
+            fetch(url)
+                .then(response => response.text())
+                .then(text => {
+                    document.getElementById('home-content').style.display = 'none';
+                    document.getElementById('markdown-container').style.display = 'block';
+                    
+                    if (url.endsWith('.html')) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(text, 'text/html');
+                        const mainContent = doc.querySelector('main');
+                        document.getElementById('markdown-content').innerHTML = mainContent ? mainContent.innerHTML : doc.body.innerHTML;
+                    } else {
+                        document.getElementById('markdown-content').innerHTML = marked.parse(text);
+                    }
+                    window.scrollTo(0, 0);
+                })
+                .catch(err => {
+                    alert("Failed to load document: " + url);
+                    console.error(err);
+                });
+        }
+
+        function showHome() {
+            document.getElementById('home-content').style.display = 'block';
+            document.getElementById('markdown-container').style.display = 'none';
+            window.scrollTo(0, 0);
+        }
+    </script>
+</body>
+</html>

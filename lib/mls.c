@@ -490,7 +490,7 @@ static int UAF_PROTECTION = 0;
 int m_create(int max, int w) {
   int i;
   lst_t lp;
-  if (!ML || max <= 0 || w <= 0)
+  if (!ML || max < 0 || w <= 0)
     ERR("Wrong args");
   lp = lst_create(max, w);
   lp->uaf_protection = UAF_PROTECTION;
