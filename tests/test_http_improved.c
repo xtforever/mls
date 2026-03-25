@@ -85,6 +85,117 @@ void test_max_header_line_limit() {
     printf("Max header line limit test passed.\n");
 }
 
+void test_chunked_encoding() {
+    printf("Testing chunked transfer encoding...\n");
+    http_parser_t p;
+    http_parser_init(&p);
+
+    const char *raw = "POST /upload HTTP/1.1\r\n"
+                      "Host: localhost\r\n"
+                      "Transfer-Encoding: chunked\r\n"
+                      "\r\n"
+                      "5\r\n"
+                      "hello\r\n"
+                      "6\r\n"
+                      " world\r\n"
+                      "0\r\n"
+                      "\r\n";
+    int data = s_strdup_c(raw);
+    
+    int res = http_parse(&p, data);
+    assert(res == 0);
+    assert(p.state == HTTP_STATE_DONE);
+    assert(p.is_chunked == 1);
+    assert(m_len(p.body) == 11);
+    assert(memcmp(m_buf(p.body), "hello world", 11) == 0);
+
+    m_free(data);
+    http_parser_free(&p);
+    printf("Chunked encoding test passed.\n");
+}
+
+void test_memory_safety() {
+    printf("Testing memory safety features...\n");
+    http_parser_t p1, p2;
+    
+    http_parser_init(&p1);
+    const char *raw1 = "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    int data1 = s_strdup_c(raw1);
+    http_parse(&p1, data1);
+    
+    http_parser_init(&p2);
+    const char *raw2 = "GET /second HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello";
+    int data2 = s_strdup_c(raw2);
+    http_parse(&p2, data2);
+    
+    assert(strcmp(m_str(p1.uri), "/first") == 0);
+    assert(strcmp(m_str(p2.uri), "/second") == 0);
+    assert(strcmp(m_str(p1.method), "GET") == 0);
+    assert(strcmp(m_str(p2.method), "GET") == 0);
+    
+    m_free(data1);
+    m_free(data2);
+    
+    m_free(p1.method);
+    m_free(p2.method);
+    m_free(p1.uri);
+    m_free(p2.uri);
+    m_free(p1.version);
+    m_free(p2.version);
+    m_free(p1.body);
+    m_free(p2.body);
+    m_table_free(p1.headers);
+    m_table_free(p2.headers);
+    
+    printf("Memory safety test passed.\n");
+}
+
+void test_incremental_parsing() {
+    printf("Testing incremental parsing (streaming)...\n");
+    http_parser_t p;
+    http_parser_init(&p);
+
+    const char *part1 = "GET /api/data HTTP/1.1\r\n";
+    const char *part2 = "Host: localhost\r\n";
+    const char *part3 = "Content-Length: 5\r\n\r\n";
+    const char *part4 = "hello";
+    
+    int data1 = s_strdup_c(part1);
+    int data2 = s_strdup_c(part2);
+    int data3 = s_strdup_c(part3);
+    int data4 = s_strdup_c(part4);
+    
+    int combined = m_alloc(0, 1, MFREE);
+    m_write(combined, 0, m_buf(data1), m_len(data1));
+    m_write(combined, m_len(combined), m_buf(data2), m_len(data2));
+    m_write(combined, m_len(combined), m_buf(data3), m_len(data3));
+    
+    int res = http_parse(&p, combined);
+    assert(res == 0);
+    assert(p.state == HTTP_STATE_BODY || p.state == HTTP_STATE_DONE);
+    
+    if (p.state == HTTP_STATE_BODY) {
+        m_write(combined, m_len(combined), m_buf(data4), m_len(data4));
+        res = http_parse(&p, combined);
+        assert(res == 0);
+        assert(p.state == HTTP_STATE_DONE);
+        assert(m_len(p.body) == 5);
+    }
+    
+    m_free(data1);
+    m_free(data2);
+    m_free(data3);
+    m_free(data4);
+    m_free(combined);
+    m_free(p.method);
+    m_free(p.uri);
+    m_free(p.version);
+    m_free(p.body);
+    m_table_free(p.headers);
+    
+    printf("Incremental parsing test passed.\n");
+}
+
 int main() {
     trace_level = 1;
     m_init();
@@ -94,6 +205,9 @@ int main() {
     test_malformed_headers();
     test_max_headers_limit();
     test_max_header_line_limit();
+    test_chunked_encoding();
+    test_memory_safety();
+    test_incremental_parsing();
 
     conststr_free();
     m_destruct();

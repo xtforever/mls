@@ -15,6 +15,7 @@ void http_parser_init(http_parser_t *p) {
 }
 
 void http_parser_free(http_parser_t *p) {
+    if (p->method > 0) m_free(p->method);
     if (p->uri > 0) m_free(p->uri);
     if (p->version > 0) m_free(p->version);
     if (p->headers > 0) m_table_free(p->headers);
@@ -29,6 +30,36 @@ static int find_crlf(int data_h, int start) {
         }
     }
     return -1;
+}
+
+static int parse_hex_chunk_size(int data_h, int start, int *out_size) {
+    int pos = start;
+    int len = m_len(data_h);
+    int result = 0;
+    int has_digit = 0;
+    
+    while (pos < len && pos < start + 16) {
+        char c = CHAR(data_h, pos);
+        if (c == '\r') break;
+        if (c >= '0' && c <= '9') {
+            result = result * 16 + (c - '0');
+            has_digit = 1;
+        } else if (c >= 'a' && c <= 'f') {
+            result = result * 16 + (c - 'a' + 10);
+            has_digit = 1;
+        } else if (c >= 'A' && c <= 'F') {
+            result = result * 16 + (c - 'A' + 10);
+            has_digit = 1;
+        } else if (c == ';' || c == ' ') {
+        } else {
+            return -1;
+        }
+        pos++;
+    }
+    
+    if (!has_digit) return -1;
+    *out_size = result;
+    return pos;
 }
 
 static void normalize_header_key(int key_h) {
@@ -129,8 +160,46 @@ int http_parse(http_parser_t *p, int data_h) {
                     p->state = HTTP_STATE_DONE;
                 }
             } else {
-                // Chunked parsing placeholder
-                p->state = HTTP_STATE_DONE;
+                int chunk_size = 0;
+                int hex_end = parse_hex_chunk_size(data_h, pos, &chunk_size);
+                if (hex_end == -1) break;
+                
+                int crlf_pos = -1;
+                for (int i = hex_end; i < data_len && i < hex_end + 4; i++) {
+                    if (i + 1 < data_len && CHAR(data_h, i) == '\r' && CHAR(data_h, i+1) == '\n') {
+                        crlf_pos = i;
+                        break;
+                    }
+                }
+                if (crlf_pos == -1) break;
+                
+                pos = crlf_pos + 2;
+                
+                if (chunk_size == 0) {
+                    p->state = HTTP_STATE_DONE;
+                } else {
+                    size_t body_space = m_len(p->body);
+                    size_t needed = body_space + chunk_size;
+                    if (needed > p->max_body_size) {
+                        p->state = HTTP_STATE_ERROR;
+                        return -1;
+                    }
+                    
+                    size_t available = data_len - pos;
+                    size_t to_copy = (available < (size_t)chunk_size) ? available : (size_t)chunk_size;
+                    m_write(p->body, m_len(p->body), m_buf(data_h) + pos, to_copy);
+                    pos += to_copy;
+                    
+                    if (to_copy == (size_t)chunk_size) {
+                        if (pos + 2 <= data_len && CHAR(data_h, pos) == '\r' && CHAR(data_h, pos+1) == '\n') {
+                            pos += 2;
+                        } else {
+                            int trail_crlf = find_crlf(data_h, pos);
+                            if (trail_crlf == -1) break;
+                            pos = trail_crlf + 2;
+                        }
+                    }
+                }
             }
         }
     }
