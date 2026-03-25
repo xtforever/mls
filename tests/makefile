@@ -1,7 +1,7 @@
 include ../rules.mk
 
-TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_slice_advanced test_table_advanced test_memory_advanced test_http
-DEPS=mls.o${OBJ} m_tool.o${OBJ} m_table.o${OBJ} m_http.o${OBJ}
+TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_slice_advanced test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client
+DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ}
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
 ALL: $(EXE_TARGETS) run
@@ -36,7 +36,17 @@ test_memory_advanced.exe${OBJ}: test_memory_advanced.o${OBJ} $(DEPS)
 test_http.exe${OBJ}: test_http.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-m_http.o${OBJ}: ../lib/m_http.c ../lib/m_http.h
+test_http_improved.exe${OBJ}: test_http_improved.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+http_server.exe${OBJ}: http_server.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+http_client.exe${OBJ}: http_client.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+# Compile lib sources to .od files
+../lib/%.od: ../lib/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 run: $(EXE_TARGETS)
