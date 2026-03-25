@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+#define CRLF_LEN 2
+
 void http_parser_init(http_parser_t *p) {
     memset(p, 0, sizeof(http_parser_t));
     p->state = HTTP_STATE_REQUEST_LINE;
@@ -32,39 +34,75 @@ static int find_crlf(int data_h, int start) {
     return -1;
 }
 
-static int parse_hex_chunk_size(int data_h, int start, int *out_size) {
+static int parse_hex(int data_h, int start, int max_chars, int *out) {
+    int result = 0;
     int pos = start;
     int len = m_len(data_h);
-    int result = 0;
     int has_digit = 0;
-    
-    while (pos < len && pos < start + 16) {
+
+    while (pos < len && pos < start + max_chars) {
         char c = CHAR(data_h, pos);
-        if (c == '\r') break;
-        if (c >= '0' && c <= '9') {
-            result = result * 16 + (c - '0');
-            has_digit = 1;
-        } else if (c >= 'a' && c <= 'f') {
-            result = result * 16 + (c - 'a' + 10);
-            has_digit = 1;
-        } else if (c >= 'A' && c <= 'F') {
-            result = result * 16 + (c - 'A' + 10);
-            has_digit = 1;
-        } else if (c == ';' || c == ' ') {
-        } else {
-            return -1;
-        }
+        if (c == '\r' || c == '\n') break;
+
+        int nibble = -1;
+        if (c >= '0' && c <= '9') nibble = c - '0';
+        else if (c >= 'a' && c <= 'f') nibble = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') nibble = c - 'A' + 10;
+        else if (c == ';' || c == ' ') { pos++; continue; }
+        else return -1;
+
+        result = result * 16 + nibble;
+        has_digit = 1;
         pos++;
     }
-    
+
     if (!has_digit) return -1;
-    *out_size = result;
+    *out = result;
     return pos;
 }
 
-static void normalize_header_key(int key_h) {
-    s_lower(key_h);
-    s_trim(key_h);
+static int parse_header(int data_h, int start, int end, int *key_h, int *val_h) {
+    int line_h = m_slice(0, 0, data_h, start, end);
+    char *colon = strchr(m_str(line_h), ':');
+    if (!colon) {
+        m_free(line_h);
+        return -1;
+    }
+
+    int key_len = colon - m_str(line_h);
+    if (key_len <= 0) {
+        m_free(line_h);
+        return -1;
+    }
+
+    *key_h = s_slice(0, 0, line_h, 0, key_len - 1);
+    s_lower(*key_h);
+    s_trim(*key_h);
+
+    *val_h = s_slice(0, 0, line_h, key_len + 1, -1);
+    s_trim(*val_h);
+
+    m_free(line_h);
+    return 0;
+}
+
+static int parse_request(int data_h, int start, int end,
+                       int *method, int *uri, int *version) {
+    int line_h = m_slice(0, 0, data_h, start, end);
+    int parts = m_alloc(0, sizeof(char*), MFREE_STR);
+    m_str_split(parts, m_str(line_h), " ", 1);
+
+    int ok = 0;
+    if (m_len(parts) >= 3) {
+        *method = s_strdup_c(STR(parts, 0));
+        *uri = s_strdup_c(STR(parts, 1));
+        *version = s_strdup_c(STR(parts, 2));
+        ok = 1;
+    }
+
+    m_free(line_h);
+    m_free(parts);
+    return ok;
 }
 
 int http_parse(http_parser_t *p, int data_h) {
@@ -72,136 +110,113 @@ int http_parse(http_parser_t *p, int data_h) {
     int data_len = m_len(data_h);
 
     while (pos < data_len && p->state != HTTP_STATE_DONE && p->state != HTTP_STATE_ERROR) {
-        if (p->state == HTTP_STATE_REQUEST_LINE || p->state == HTTP_STATE_HEADERS) {
-            int next_crlf = find_crlf(data_h, pos);
-            if (next_crlf == -1) break; // Need more data
 
-            int line_len = next_crlf - pos;
+        if (p->state == HTTP_STATE_REQUEST_LINE) {
+            int crlf = find_crlf(data_h, pos);
+            if (crlf == -1) break;
+
+            if (crlf - pos > p->max_header_line) {
+                p->state = HTTP_STATE_ERROR;
+                return -1;
+            }
+
+            if (!parse_request(data_h, pos, crlf - 1, &p->method, &p->uri, &p->version)) {
+                p->state = HTTP_STATE_ERROR;
+                return -1;
+            }
+            p->state = HTTP_STATE_HEADERS;
+            pos = crlf + CRLF_LEN;
+
+        } else if (p->state == HTTP_STATE_HEADERS) {
+            int crlf = find_crlf(data_h, pos);
+            if (crlf == -1) break;
+
+            int line_len = crlf - pos;
             if (line_len > p->max_header_line) {
                 p->state = HTTP_STATE_ERROR;
                 return -1;
             }
 
-            if (p->state == HTTP_STATE_REQUEST_LINE) {
-                // Simplified request line parsing: METHOD URI VERSION
-                int line_h = m_slice(0, 0, data_h, pos, next_crlf - 1);
-                
-                // Use a simple split
-                int parts = m_alloc(0, sizeof(char *), MFREE_STR);
-                m_str_split(parts, m_str(line_h), " ", 1);
-                
-                if (m_len(parts) >= 3) {
-                    p->method = s_strdup_c(STR(parts, 0));
-                    p->uri = s_strdup_c(STR(parts, 1));
-                    p->version = s_strdup_c(STR(parts, 2));
-                    p->state = HTTP_STATE_HEADERS;
+            if (line_len == 0) {
+                int te = m_table_get_cstr(p->headers, "transfer-encoding");
+                if (te && strstr(m_str(te), "chunked")) {
+                    p->is_chunked = 1;
+                    p->state = HTTP_STATE_BODY;
                 } else {
-                    p->state = HTTP_STATE_ERROR;
-                }
-                m_free(line_h);
-                m_free(parts);
-            } else if (p->state == HTTP_STATE_HEADERS) {
-                if (line_len == 0) {
-                    // End of headers
-                    // Check for Body presence
-                    int te = m_table_get_cstr(p->headers, "transfer-encoding");
-                    if (te && strstr(m_str(te), "chunked")) {
-                        p->is_chunked = 1;
-                        p->state = HTTP_STATE_BODY; // Simplified: don't actually parse chunks in this example
+                    int cl = m_table_get_cstr(p->headers, "content-length");
+                    if (cl) {
+                        p->content_length = atoi(m_str(cl));
+                        if (p->content_length > p->max_body_size) {
+                            p->state = HTTP_STATE_ERROR;
+                            return -1;
+                        }
+                        p->state = (p->content_length > 0) ? HTTP_STATE_BODY : HTTP_STATE_DONE;
                     } else {
-                        int cl = m_table_get_cstr(p->headers, "content-length");
-                        if (cl) {
-                            p->content_length = atoi(m_str(cl));
-                            if (p->content_length > p->max_body_size) {
-                                p->state = HTTP_STATE_ERROR;
-                                return -1;
-                            }
-                            p->state = (p->content_length > 0) ? HTTP_STATE_BODY : HTTP_STATE_DONE;
-                        } else {
-                            p->state = HTTP_STATE_DONE;
-                        }
+                        p->state = HTTP_STATE_DONE;
                     }
-                } else {
-                    int line_h = m_slice(0, 0, data_h, pos, next_crlf - 1);
-                    char *colon = strchr(m_str(line_h), ':');
-                    if (colon) {
-                        int key_len = colon - m_str(line_h);
-                        if (key_len > 0) {
-                            p->header_count++;
-                            if (p->header_count > p->max_headers) {
-                                p->state = HTTP_STATE_ERROR;
-                                m_free(line_h);
-                                return -1;
-                            }
-                            
-                            int key_h = s_slice(0, 0, line_h, 0, key_len - 1);
-                            normalize_header_key(key_h);
-                            
-                            int val_h = s_slice(0, 0, line_h, key_len + 1, -1);
-                            s_trim(val_h);
-                            
-                            m_table_set_handle_by_str(p->headers, key_h, val_h, MLS_TABLE_TYPE_STRING);
-                        }
-                    }
-                    m_free(line_h);
                 }
+                pos = crlf + CRLF_LEN;
+            } else {
+                int key_h, val_h;
+                if (parse_header(data_h, pos, crlf - 1, &key_h, &val_h) == 0) {
+                    p->header_count++;
+                    if (p->header_count > p->max_headers) {
+                        m_free(key_h);
+                        m_free(val_h);
+                        p->state = HTTP_STATE_ERROR;
+                        return -1;
+                    }
+                    m_table_set_handle_by_str(p->headers, key_h, val_h, MLS_TABLE_TYPE_STRING);
+                }
+                pos = crlf + CRLF_LEN;
             }
-            pos = next_crlf + 2;
+
         } else if (p->state == HTTP_STATE_BODY) {
             if (!p->is_chunked) {
                 size_t remaining = p->content_length - m_len(p->body);
                 size_t available = data_len - pos;
                 size_t to_copy = (available < remaining) ? available : remaining;
-                
+
                 m_write(p->body, m_len(p->body), m_buf(data_h) + pos, to_copy);
                 pos += to_copy;
-                
+
                 if (m_len(p->body) == p->content_length) {
                     p->state = HTTP_STATE_DONE;
                 }
             } else {
                 int chunk_size = 0;
-                int hex_end = parse_hex_chunk_size(data_h, pos, &chunk_size);
+                int hex_end = parse_hex(data_h, pos, 16, &chunk_size);
                 if (hex_end == -1) break;
-                
-                int crlf_pos = -1;
-                for (int i = hex_end; i < data_len && i < hex_end + 4; i++) {
-                    if (i + 1 < data_len && CHAR(data_h, i) == '\r' && CHAR(data_h, i+1) == '\n') {
-                        crlf_pos = i;
-                        break;
-                    }
-                }
-                if (crlf_pos == -1) break;
-                
-                pos = crlf_pos + 2;
-                
+
+                int crlf = find_crlf(data_h, hex_end);
+                if (crlf == -1) break;
+
+                pos = crlf + CRLF_LEN;
+
                 if (chunk_size == 0) {
                     p->state = HTTP_STATE_DONE;
                 } else {
-                    size_t body_space = m_len(p->body);
-                    size_t needed = body_space + chunk_size;
-                    if (needed > p->max_body_size) {
+                    if (m_len(p->body) + chunk_size > p->max_body_size) {
                         p->state = HTTP_STATE_ERROR;
                         return -1;
                     }
-                    
+
                     size_t available = data_len - pos;
                     size_t to_copy = (available < (size_t)chunk_size) ? available : (size_t)chunk_size;
+
                     m_write(p->body, m_len(p->body), m_buf(data_h) + pos, to_copy);
                     pos += to_copy;
-                    
+
                     if (to_copy == (size_t)chunk_size) {
-                        if (pos + 2 <= data_len && CHAR(data_h, pos) == '\r' && CHAR(data_h, pos+1) == '\n') {
-                            pos += 2;
-                        } else {
-                            int trail_crlf = find_crlf(data_h, pos);
-                            if (trail_crlf == -1) break;
-                            pos = trail_crlf + 2;
+                        int trail_crlf = find_crlf(data_h, pos);
+                        if (trail_crlf != -1) {
+                            pos = trail_crlf + CRLF_LEN;
                         }
                     }
                 }
             }
         }
     }
+
     return (p->state == HTTP_STATE_ERROR) ? -1 : 0;
 }
