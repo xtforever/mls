@@ -71,8 +71,8 @@ void m_table_set_handle_by_str(int table_h, int key_str_h, int value_h, mls_tabl
 // Old generic setters (still available for advanced/flexible usage)
 // 'value' is the handle to the actual data (string, list, table) or a raw int.
 // 'type' specifies the type of the value for introspection.
-void m_table_set_int_key(int table_h, int key_idx, int value, mls_table_type_t type);
 void m_table_set_str_key(int table_h, int key_str_h, int value, mls_table_type_t type);
+void m_table_set_str_key_ext(int table_h, int key_str_h, mls_table_type_t key_type, int value, mls_table_type_t type);
 void m_table_set_cstr_key(int table_h, const char *key_cstr, int value, mls_table_type_t type);
 
 // --- Getting Values ---

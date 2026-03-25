@@ -459,7 +459,12 @@ lookup_int(int m, int key)
 int
 m_slice(int dest, int offs, int m, int a, int b)
 {
-	int len = m ? m_len(m) : 0;
+	if (!m) {
+		if (dest > 0)
+			m_setlen(dest, offs);
+		return dest;
+	}
+	int len = m_len(m);
 	if (b < 0) {
 		b += len;
 	}

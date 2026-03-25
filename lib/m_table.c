@@ -122,6 +122,10 @@ void m_table_set_int_key(int table_h, int key_idx, int value, mls_table_type_t t
 }
 
 void m_table_set_str_key(int table_h, int key_str_h, int value, mls_table_type_t type) {
+    m_table_set_str_key_ext(table_h, key_str_h, MLS_TABLE_TYPE_STRING, value, type);
+}
+
+void m_table_set_str_key_ext(int table_h, int key_str_h, mls_table_type_t key_type, int value, mls_table_type_t type) {
     if (table_h <= 0) { ERR("Invalid table handle %d", table_h); return; }
     if (key_str_h <= 0) { ERR("Invalid key string handle %d", key_str_h); return; }
 
@@ -137,18 +141,18 @@ void m_table_set_str_key(int table_h, int key_str_h, int value, mls_table_type_t
             m_free(entry->key);
         }
         // Update existing entry
-        entry->key = key_str_h; // Key ownership transfers here for new key_str_h.
-        entry->key_type = (type == MLS_TABLE_TYPE_CONST_STRING) ? MLS_TABLE_TYPE_CONST_STRING : MLS_TABLE_TYPE_STRING; // Assume string handles are dynamic unless explicitly constant
+        entry->key = key_str_h; 
+        entry->key_type = key_type;
         entry->value = value;
         entry->type = type;
     } else {
-        // Add new entry, key_str_h ownership transfers here.
+        // Add new entry
         m_table_entry_t new_entry = {
-            .key = key_str_h, // Store the string handle
+            .key = key_str_h,
             .value = value,
             .type = type,
             .is_str_key = 1,
-            .key_type = (type == MLS_TABLE_TYPE_CONST_STRING) ? MLS_TABLE_TYPE_CONST_STRING : MLS_TABLE_TYPE_STRING
+            .key_type = key_type
         };
         m_put(table_h, &new_entry);
     }

@@ -155,7 +155,7 @@ void test_m_table_string_key_handles() {
     assert(m_table_get_type_str(table, key1_h) == MLS_TABLE_TYPE_INT);
     
     int key2_h = s_cstr("constant_key"); // Constant key handle
-    m_table_set_string_by_str(table, key2_h, "value_str");
+    m_table_set_str_key_ext(table, key2_h, MLS_TABLE_TYPE_CONST_STRING, s_strdup_c("value_str"), MLS_TABLE_TYPE_STRING);
     assert(strcmp(m_str(m_table_get_str(table, key2_h)), "value_str") == 0);
     assert(m_table_get_type_str(table, key2_h) == MLS_TABLE_TYPE_STRING);
 
