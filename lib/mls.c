@@ -69,10 +69,8 @@ struct debug_info_st {
 
 static struct debug_info_st debi;
 static int m_free_simple(int h); /* was: m_free */
-static int AUTO_start = 0;
-static int AUTO_ln = -1;
-static const char * AUTO_fn = NULL;
-static const char *AUTO_fun = NULL;
+
+
 
 
 //
@@ -929,22 +927,15 @@ int _m_free(int ln, const char *fn, const char *fun, int m) {
     return 0;
   }
 
-  if(! AUTO_start++ ) {  
-	  AUTO_ln = ln;
-	  AUTO_fn = fn;
-	  AUTO_fun = fun;
-  }
-  _mlsdb_caller(__FUNCTION__, AUTO_ln, AUTO_fn, AUTO_fun, 1, m, 0, 0);
+  _mlsdb_caller(__FUNCTION__,ln, fn, fun, 1, m, 0, 0);
   m_free(m);
 
   m &= 0xffffff; /* uaf protection */
   lst_owner *o = (lst_owner *)mls(DEB, m - 1);
-
   o->ln = -ln;
   o->fun = fun;
   o->fn = fn;
   TRACE(1, "Free List %d", m);
-  AUTO_start--;
   return 0;
 }
 
