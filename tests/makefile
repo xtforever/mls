@@ -1,6 +1,6 @@
 include ../rules.mk
 
-TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_slice_advanced test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client
+TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client error-handler
 DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ}
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
