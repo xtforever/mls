@@ -238,8 +238,12 @@ int _m_alloc(int ln, const char *fn, const char *fun,
 
 	int m_regex( int m, const char *regex, const char *s );
 	int m_dub(int m);
+
+	/* file input */
 	int m_fscan2( int m, char delim, FILE *fp);
 	int m_fscan( int m, char delim, FILE *fp);
+	int ioread_all(int fd, int buffer)
+		
 	int m_cmp( int a, int b );
 	int m_lookup( int m, int key );
 	int m_lookup_obj( int m, void *obj, int size );

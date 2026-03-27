@@ -2300,3 +2300,24 @@ int mstr_to_long(int buf, int *p, long int *ret_val) {
     return -1;
   return 0;
 }
+
+int ioread_all(int fd, int buffer)
+{	
+    ssize_t total = 0;
+    ssize_t n = 0;
+    m_clear(buffer);
+    do {
+	    total += n;
+	    m_setlen(buffer, total + 4096 );
+	    n = read(fd, mls(buffer, total), 4096 );
+	    if( n < 0 ) {
+		    if( errno == EINTR ) {
+			    n=0;
+			    continue; // retry on interrupt
+		    }
+		    break;
+	    }
+    }
+    } while( n > 0 );
+    m_setlen(buffer,total); m_putc(buffer, 0);
+}
