@@ -1,13 +1,16 @@
 include ../rules.mk
 
-TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client error-handler
+TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client
 DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ}
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
-ALL: $(EXE_TARGETS) run
+ALL: $(EXE_TARGETS) error-handler
 
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+error-handler: error-handler.c
+	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls.c ../lib/m_tool.c -I ../lib
 
 test_ssplit.exe${OBJ}: test_ssplit.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -62,6 +65,7 @@ check-leaks: $(EXE_TARGETS)
 	done
 
 clean:
-	-${RM} $(EXE_TARGETS) *.o *.od *~ *.lex.* *.tab.*
+	-${RM} $(EXE_TARGETS) *.o *.od *~ *.lex.* *.tab.* error-handler
+
 
 extra: clean ALL

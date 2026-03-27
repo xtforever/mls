@@ -787,24 +787,23 @@ static int _mlsdb_check_handle() {
   lp = (lst_t *)lst(ML, h);
   if (*lp == NULL) {
     perr("List base address for handle %d is not allocated", h);
-    return -1;
   }
-
-  if ((*lp)->uaf_protection != (orig >> 24)) {
-    perr("uaf protection pattern does not match, expected:%d, got:%d",
-         (*lp)->uaf_protection, (orig >> 24));
-    return -1;
+  else {
+	  if ((*lp)->uaf_protection != (orig >> 24)) {
+		  perr("uaf protection pattern does not match, expected:%d, got:%d",
+		       (*lp)->uaf_protection, (orig >> 24));
+		  return -1;
+	  }
   }
 
   o = (lst_owner *)mls(DEB, h - 1);
-
   if (!o || o->allocated != 42) {
     perr("Array was not allocated");
     return -1;
   }
 
   if (o->ln < 0) {
-    perr("Array was previously removed by %s() in %s:%d", o->fun, o->fn, o->ln);
+    perr("Array was previously removed by %s() in %s:%d", o->fun, o->fn, -o->ln);
     return -1;
   }
 
@@ -826,8 +825,7 @@ static int _mlsdb_check_index() {
 
   if (i >= m_len(h)) {
     perr("Array Index out of bounds i=%d should be lower than m_len(%d)=%d.\n",
-         i, h, m_len(h));
-    return -1;
+         i, h, m_len(h));    return -1;
   }
 
   return 0;
@@ -921,11 +919,6 @@ int _m_alloc(int ln, const char *fn, const char *fun, int n, int w, uint8_t free
 int _m_free(int ln, const char *fn, const char *fun, int m) {
   if (!m)
     return 0;
-
-  if (m_is_freed(m)) {
-    WARN("Attempt to free already freed list %d. Called by %s() in %s:%d", m, fun, fn, ln);
-    return 0;
-  }
 
   _mlsdb_caller(__FUNCTION__,ln, fn, fun, 1, m, 0, 0);
   m_free(m);
