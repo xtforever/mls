@@ -242,7 +242,7 @@ int _m_alloc(int ln, const char *fn, const char *fun,
 	/* file input */
 	int m_fscan2( int m, char delim, FILE *fp);
 	int m_fscan( int m, char delim, FILE *fp);
-	int ioread_all(int fd, int buffer)
+	int ioread_all(int fd, int buffer);
 		
 	int m_cmp( int a, int b );
 	int m_lookup( int m, int key );

@@ -2317,7 +2317,6 @@ int ioread_all(int fd, int buffer)
 		    }
 		    break;
 	    }
-    }
     } while( n > 0 );
     m_setlen(buffer,total); m_putc(buffer, 0);
 }
