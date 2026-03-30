@@ -1,7 +1,7 @@
 include ../rules.mk
 
-TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client
-DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ}
+TARGETS=test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced
+DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ}
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
 ALL: $(EXE_TARGETS) error-handler
@@ -9,7 +9,7 @@ ALL: $(EXE_TARGETS) error-handler
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-error-handler: error-handler.c
+error-handler: error-handler.c ../lib/mls.c ../lib/mls.h ../lib/m_tool.c  ../lib/m_tool.h
 	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls.c ../lib/m_tool.c -I ../lib
 
 test_ssplit.exe${OBJ}: test_ssplit.o${OBJ} $(DEPS)
@@ -48,18 +48,32 @@ http_server.exe${OBJ}: http_server.o${OBJ} $(DEPS)
 http_client.exe${OBJ}: http_client.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+test_hdf.exe${OBJ}: test_hdf.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+hdf_http_server.exe${OBJ}: hdf_http_server.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_flask.exe${OBJ}: test_flask.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_flask_advanced.exe${OBJ}: test_flask_advanced.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
 # Compile lib sources to .od files
 ../lib/%.od: ../lib/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+RUN_TARGETS := $(filter-out http_server.exe${OBJ} hdf_http_server.exe${OBJ} test_flask.exe${OBJ}, $(EXE_TARGETS))
+
 run: $(EXE_TARGETS)
-	@for exe in $(EXE_TARGETS); do \
+	@for exe in $(RUN_TARGETS); do \
 		echo "Running $$exe..."; \
 		./$$exe || exit 1; \
 	done
 
 check-leaks: $(EXE_TARGETS)
-	@for exe in $(EXE_TARGETS); do \
+	@for exe in $(RUN_TARGETS); do \
 		echo "Checking leaks in $$exe..."; \
 		ASAN_OPTIONS=detect_leaks=1 ./$$exe || exit 1; \
 	done

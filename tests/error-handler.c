@@ -89,9 +89,17 @@ void delete_string(int str)
 	m_free(str);
 }
 
+void rep(const char *s)
+{
+	puts("\n");
+	puts(s);
+	puts("--------------------------------------------------------------");
+	fflush(stdout);
+}
 
 void error_double_free(void)
 {
+	rep("Report that the string was allready freed");
 	int mystring = create_string();
 	delete_string(mystring);	
 	m_free(mystring);
@@ -99,6 +107,7 @@ void error_double_free(void)
 
 void error_out_of_bounds(void)
 {
+	rep("Report that the Index 30 is not allocated");
 	int mystring = create_string();
 	*(char*)mls(mystring,30) = 'x';
 	m_free(mystring);
@@ -106,21 +115,32 @@ void error_out_of_bounds(void)
 
 void error_handle(void)
 {
+	rep("Report that there is no List with that number");
 	int wrong = 264673;
 	*(char*)mls(wrong,30) = 'x';	
 }
 
-void error_free_list(void)
+void error_access_list(void)
 {
-	int strlist = m_alloc( 10, sizeof(char*), MFREE_STR );
-	char *teststr = "hello world";
-	m_regex( strlist, "([a-z]*) (.*)", teststr  );
-	m_free(strlist);
-	m_free(strlist);
-	
-	m_destruct(); exit(0);
+	rep("Report that there is a list but it was freed by the function delete_string");
+	int strlist = m_alloc( 10, sizeof(char*), 0 );
+	delete_string(strlist);
+	(void) m_buf(strlist);
 }
 
+void uaf_protection(void)
+{
+	rep("this handle has been reused, it is not valid");
+	int l1 = m_create(10,1);
+	int l2 = m_create(10,1);
+	int l3 = m_create(10,1);
+	m_free(l1);
+	int n1 = m_create(10,1);
+	// n1 and l1 have the same handle (excluding the uaf protection)
+	m_putc( l1, 0 );
+
+
+}
 
 
 int main( int argc, char **argv )
@@ -129,15 +149,14 @@ int main( int argc, char **argv )
 	trace_level=0;
 	int buffer = m_alloc(4096,1,0);
 	trace_level=0;
-	debug_exec( error_free_list, buffer);
+	debug_exec( error_access_list, buffer);
 	puts(m_str(buffer));
 	m_free(buffer);
 
-	
 	EXEC( error_double_free );
 	EXEC( error_out_of_bounds );
 	EXEC( error_handle );
-	EXEC( error_free_list );
-	
+	EXEC( uaf_protection );
+
 	m_destruct();	
 }

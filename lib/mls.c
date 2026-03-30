@@ -90,12 +90,9 @@ void deb_err(int line, const char *file, const char *function,
   vsnprintf(buf, sizeof(buf), format, argptr);
   va_end(argptr);
 
-  fprintf(stderr, "ERROR: %s Line: %d Function: %s\n%s\n", file, line, function,
-          buf);
-  // todo: error handler exception for errors in mls.c
-  // debi.me=0; // do not inspect mls functions for debug info
+  fprintf(stderr, "\n[mls error] %s:%d %s(): %s\n", file, line, function, buf);
   if (err)
-    perror("");
+    perror("  system error");
   exit(1);
 }
 
@@ -108,8 +105,7 @@ void deb_warn(int line, const char *file, const char *function,
   vsnprintf(buf, sizeof(buf), format, argptr);
   va_end(argptr);
 
-  fprintf(stderr, "WARNING: %s Line: %d Function: %s\n%s\n", file, line,
-          function, buf);
+  fprintf(stderr, "[mls warning] %s:%d %s(): %s\n", file, line, function, buf);
 }
 
 void deb_trace(int l, int line, const char *file, const char *function,
@@ -123,7 +119,7 @@ void deb_trace(int l, int line, const char *file, const char *function,
   vsnprintf(buf, sizeof(buf), format, argptr);
   va_end(argptr);
 
-  fprintf(stderr, "[%d]%s: %s\n", l, function, buf);
+  fprintf(stderr, "[mls trace %d] %s(): %s\n", l, function, buf);
 }
 
 //
@@ -145,8 +141,8 @@ void deb_trace(int l, int line, const char *file, const char *function,
 //
 // ********************************************
 
-static lst_t ML = 0; // stack allocated vars
-static lst_t FR = 0; // stack freed vars
+lst_t ML = 0; // stack allocated vars
+lst_t FR = 0; // stack freed vars
 
 int print_stacksize() {
   printf("STACKSIZE: %d\n", ML->l);
@@ -172,7 +168,7 @@ void *reallocz(void *pBuffer, size_t oldSize, size_t newSize) {
 // R: NULL - index out of bounds
 void *lst(lst_t l, int i) {
   if (i >= l->l || i < 0)
-    ERR("Index(%d) out of Bounds", i);
+    ERR("Index %d out of bounds (used: %d, max: %d)", i, l->l, l->max);
   return &l->d[l->w * i];
 }
 
@@ -384,13 +380,13 @@ int lst_read(lst_t l, int p, void **data, int n) {
 // ansonsten ein zeiger auf auf den array-header
 static inline lst_t *_get_list(int m) {
   if (ML == 0 || m < 1)
-    ERR("Not initialized");
+    ERR("Not initialized (handle: %d)", m);
   lst_t *l = (lst_t *)lst(ML, m & 0xffffff);
   if (*l == NULL)
-    ERR("List %d not allocated", m);
+    ERR("List handle %d is not allocated", m & 0xffffff);
   if ((*l)->uaf_protection != (m >> 24)) {
-    ERR("uaf protection pattern does not match, expected:%d, got:%d",
-        (*l)->uaf_protection, (m >> 24));
+    ERR("UAF protection mismatch for handle %d: expected %d, got %d",
+        m & 0xffffff, (*l)->uaf_protection, (m >> 24));
   }
 
   return l;
@@ -542,6 +538,7 @@ int m_put(int m, const void *data) {
   return lst_put(lp, data);
 }
 
+#ifdef MLS_DEBUG
 int m_len_simple(int m) {
   lst_t *lp = _get_list(m);
   return (**lp).l;
@@ -550,8 +547,11 @@ int m_len_simple(int m) {
 int m_len(int m) {
   return m_len_simple(m);
 }
+#endif
 
+#ifdef MLS_DEBUG
 void *m_buf(int m) { return m_peek(m, 0); }
+#endif
 
 int m_bufsize(int m) {
   lst_t *lp = _get_list(m);
@@ -707,7 +707,7 @@ int m_reg_freefn( int n, void (*free_fn) (int m) )
 
 int m_alloc( int max, int w, uint8_t free_hdl )
 {
-	if( MF && free_hdl >= m_len_simple(MF) ) {
+	if( MF && free_hdl >= m_len(MF) ) {
 		ERR("FREE Hander %d undefined", free_hdl );
 	}
 	int h = m_create( max, w );
@@ -777,20 +777,20 @@ static int _mlsdb_check_handle() {
   lst_owner *o;
   int orig = debi.handle;
   int h = orig & 0xffffff;
-  perr("Checking Handle %d, uaf protection: %d", h, orig >> 24);
+  perr("  Handle:    %d (UAF protection: %d)", h, orig >> 24);
 
   if (h < 1 || h > m_len(DEB)) {
-    perr("Handle out of range (0 < %d < %d)", h, m_len(DEB) + 1);
+    perr("  Status:    Handle out of range (max=%d)", m_len(DEB));
     return -1;
   }
 
   lp = (lst_t *)lst(ML, h);
   if (*lp == NULL) {
-    perr("List base address for handle %d is not allocated", h);
+    perr("  Status:    List base address for handle %d is not allocated", h);
   }
   else {
 	  if ((*lp)->uaf_protection != (orig >> 24)) {
-		  perr("uaf protection pattern does not match, expected:%d, got:%d",
+		  perr("  Status:    uaf protection pattern does not match, expected:%d, got:%d",
 		       (*lp)->uaf_protection, (orig >> 24));
 		  return -1;
 	  }
@@ -798,34 +798,33 @@ static int _mlsdb_check_handle() {
 
   o = (lst_owner *)mls(DEB, h - 1);
   if (!o || o->allocated != 42) {
-    perr("Array was not allocated");
+    perr("  Status:    Array was not allocated");
     return -1;
   }
 
   if (o->ln < 0) {
-    perr("Array was previously removed by %s() in %s:%d", o->fun, o->fn, -o->ln);
+    perr("  Status:    Previously removed by %s() at %s:%d", o->fun, o->fn, -o->ln);
     return -1;
   }
 
-  perr("Array was created by %s in %s:%d", o->fun, o->fn, o->ln);
+  perr("  Created by: %s() at %s:%d", o->fun, o->fn, o->ln);
 
-  perr("Base Address Structure: %p\n"
-       "Base Address Data (d):%p\nElem.Width (w):%d\n"
-       "Buffer size(max):%d\nUsed Size(l):%d",
-       *lp, (*lp)->d, (*lp)->w, (*lp)->max, (*lp)->l);
+  perr("  Metadata:  struct=%p, data=%p, width=%d\n"
+       "  Buffer:    used=%d, max=%d",
+       *lp, (*lp)->d, (*lp)->w, (*lp)->l, (*lp)->max);
 
   return 0;
 }
 static int _mlsdb_check_index() {
   int i = debi.index, h = debi.handle;
   if (i < -1) {
-    perr("Array Index %d should be >=-1\n", i);
+    perr("  Index:     %d is invalid (must be >= -1)", i);
     return -1;
   }
 
   if (i >= m_len(h)) {
-    perr("Array Index out of bounds i=%d should be lower than m_len(%d)=%d.\n",
-         i, h, m_len(h));    return -1;
+    perr("  Index:     %d is out of bounds (len=%d)", i, m_len(h));
+    return -1;
   }
 
   return 0;
@@ -835,14 +834,12 @@ void exit_error() {
   if (!debi.me)
     return;
 
-  perr("\n"
-       "POST MORTEM ANALYSER STARTED\n"
-       "****************************\n"
-       "ERROR in funtion: '%s'. Called by '%s:%d' in '%s'",
-       debi.me, debi.fun, debi.ln, debi.fn);
+  perr("\n[mls post-mortem analysis]");
+  perr("  Operation: %s()", debi.me);
+  perr("  Context:   Called from %s() at %s:%d", debi.fun, debi.fn, debi.ln);
 
   if (!ML) {
-    perr("m_init not called");
+    perr("  Status:    m_init not called");
     return;
   }
 
@@ -1013,8 +1010,12 @@ static void free_strings_wrap(int list)
 static void free_list_wrap(int m)
 {
 	TRACE(1, "Free List %d", m & 0xffffff );
-	int p,*d;	
-	m_foreach(m,p,d) m_free(*d);
+	int p,*d;
+	m_foreach(m,p,d) {
+		if (*d > 0 && !m_is_freed(*d)) {
+			m_free(*d);
+		}
+	}
 	// list m is marked with free_hdl=255 before this function was
 	// called, so we will not get a recursion
 	// if this list 'm' contains itself       
@@ -2301,8 +2302,25 @@ int mstr_to_long(int buf, int *p, long int *ret_val) {
   return 0;
 }
 
+
+
+/**
+ * @brief Reads all available data from a file descriptor into an mls buffer.
+ *
+ * This function clears the provided buffer and then performs repeated reads from the
+ * file descriptor until EOF (0) or an error occurs. The buffer is automatically resized
+ * in 4096-byte increments to accommodate the incoming data.
+ *
+ * Retry logic:
+ * - Retries automatically if the read is interrupted by a signal (EINTR).
+ *
+ * @param fd The file descriptor to read from (e.g., a file or socket).
+ * @param buffer The handle of the mls buffer where data will be stored.
+ * @return The number of bytes read on success (>= 0), or -1 if a read error (other than EINTR) occurred.
+ *         Note: Even on error, the buffer may contain partially read data.
+ */
 int ioread_all(int fd, int buffer)
-{	
+{
     ssize_t total = 0;
     ssize_t n = 0;
     m_clear(buffer);
@@ -2319,4 +2337,6 @@ int ioread_all(int fd, int buffer)
 	    }
     } while( n > 0 );
     m_setlen(buffer,total); m_putc(buffer, 0);
+    return n;
 }
+

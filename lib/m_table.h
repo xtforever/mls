@@ -4,15 +4,24 @@
 #include "mls.h"
 #include "m_tool.h" // For s_cstr
 
+// Bit flag for types that should be freed by the table.
+#define MLS_TABLE_FREE 0x80
+#define MLS_TABLE_TYPE_MASK 0x7F
+
+// Helper macros for type introspection
+#define m_table_is_free(t) ((t) & MLS_TABLE_FREE)
+#define m_table_type(t)    ((t) & MLS_TABLE_TYPE_MASK)
+#define m_table_is_str_key(t) (m_table_type(t) == m_table_type(MLS_TABLE_TYPE_STRING) || m_table_type(t) == m_table_type(MLS_TABLE_TYPE_CONST_STRING))
+
 // Enum for types stored in the table for introspection.
 typedef enum {
-    MLS_TABLE_TYPE_UNKNOWN = 0, // Default or uninitialized
-    MLS_TABLE_TYPE_INT,         // Value is an actual integer (stored directly in table, not a handle)
-    MLS_TABLE_TYPE_STRING,      // Value is an MLS string handle (s_printf, s_strdup_c)
-    MLS_TABLE_TYPE_CONST_STRING, // Value is a constant MLS string handle (s_cstr), should NOT be individually freed
-    MLS_TABLE_TYPE_LIST,        // Value is an MLS generic list handle (m_alloc(..., MFREE/MFREE_EACH))
-    MLS_TABLE_TYPE_TABLE,       // Value is another M_TABLE handle
-    MLS_TABLE_TYPE_CUSTOM_HANDLE // Value is a handle but m_table doesn't know its specific type
+    MLS_TABLE_TYPE_UNKNOWN       = 0, 
+    MLS_TABLE_TYPE_INT           = 1,
+    MLS_TABLE_TYPE_STRING        = 2 | MLS_TABLE_FREE,
+    MLS_TABLE_TYPE_CONST_STRING  = 3,
+    MLS_TABLE_TYPE_LIST          = 4 | MLS_TABLE_FREE,
+    MLS_TABLE_TYPE_TABLE         = 5 | MLS_TABLE_FREE,
+    MLS_TABLE_TYPE_CUSTOM_HANDLE = 6 | MLS_TABLE_FREE
 } mls_table_type_t;
 
 // --- Table Management ---
@@ -91,6 +100,11 @@ int m_table_get_cstr(int table_h, const char *key_cstr);
 
 // --- Introspection ---
 
+// Returns a handle to an MLS list containing the handles of all keys in the table.
+// For int keys, it's the raw int. For string keys, it's the string handle.
+// User is responsible for freeing the returned list handle (m_free(keys)).
+int m_table_keys(int table_h);
+
 // Gets the type of the value stored at an integer key.
 mls_table_type_t m_table_get_type_int(int table_h, int key_idx);
 
@@ -99,6 +113,19 @@ mls_table_type_t m_table_get_type_str(int table_h, int key_str_h);
 
 // Convenience function to get the type of the value stored at a C-string key.
 mls_table_type_t m_table_get_type_cstr(int table_h, const char *key_cstr);
+
+// --- Simplified API (mt_ prefix) ---
+
+// Sets an integer value by C-string key.
+void mt_seti(int table_h, const char *key, int val);
+// Sets a dynamic MLS string by C-string key (duplicates the C-string).
+void mt_sets(int table_h, const char *key, const char *val);
+// Sets a constant MLS string by C-string key (uses s_cstr).
+void mt_setc(int table_h, const char *key, const char *val);
+// Sets an MLS handle (list, table, etc.) by C-string key.
+void mt_seth(int table_h, const char *key, int handle, mls_table_type_t type);
+// Gets a value (raw int or handle) by C-string key.
+int mt_get(int table_h, const char *key);
 
 
 #endif // M_TABLE_H

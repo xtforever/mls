@@ -204,11 +204,32 @@ void test_m_table_type_overwrites() {
 }
 
 
+void test_m_table_handle_collision() {
+    printf("Testing m_table handle collision (different handles, same content)...\n");
+    int table = m_table_create();
+
+    // Use a C-string key, which internally creates a dynamic string handle
+    mt_sets(table, "key", "value");
+
+    // Try to get it using a different handle for the same string content
+    int const_key_h = s_cstr("key");
+    int val = m_table_get_str(table, const_key_h);
+
+    printf("DEBUG: m_table_get_str returned %d\n", val);
+    // This should succeed if content is compared, but currently it fails because handles differ.
+    assert(val != 0); 
+    assert(strcmp(m_str(val), "value") == 0);
+
+    m_table_free(table);
+    printf("m_table handle collision passed.\n");
+}
+
 int main() {
     trace_level = 1;
     m_init();
-    conststr_init(); // For s_cstr used in tests
+    conststr_init(); 
 
+    test_m_table_handle_collision();
     test_m_table_basic();
     test_m_table_nesting();
     test_m_table_update_values();

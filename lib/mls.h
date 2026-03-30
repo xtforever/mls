@@ -55,9 +55,9 @@ extern "C" {
 #define ERREX ERR("Schwerer Unbekannter Programmfehler")
 #define TR(a) TRACE(a,"");
 
-void deb_err( int line, const char* file, const char *function, const char *format, ... );
-void deb_warn( int line, const char* file, const char *function, const char *format, ... );
-void deb_trace( int l, int line, const char* file, const char *function, const char *format, ... );
+void deb_err( int line, const char* file, const char *function, const char *format, ... ) __attribute__((format(printf, 4, 5)));
+void deb_warn( int line, const char* file, const char *function, const char *format, ... ) __attribute__((format(printf, 4, 5)));
+void deb_trace( int l, int line, const char* file, const char *function, const char *format, ... ) __attribute__((format(printf, 5, 6)));
 
 #define CHARP(m) ((char*)m_buf(m))
 
@@ -130,9 +130,26 @@ void lst_resize( lst_t *LP, int new_size);
 	int m_is_freed( int h );
 	int m_free_hdl( int h );
 	/* --- */
-	
-	
-void* mls( int m, int i );
+
+	#ifdef MLS_DEBUG
+	int m_len( int m );
+	#else
+	extern lst_t ML;
+	static inline int m_len_fast(int m) {
+	    if (m < 1 || !ML) return 0;
+	    return ((lst_t*)ML->d)[m & 0xffffff]->l;
+	}
+	#define m_len(m) m_len_fast(m)
+
+	static inline void *m_buf_fast(int m) {
+	    if (m < 1 || !ML) return NULL;
+	    return ((lst_t*)ML->d)[m & 0xffffff]->d;
+	}
+	#define m_buf(m) m_buf_fast(m)
+	#endif
+
+	void* mls( int m, int i );
+
 int m_new( int m, int n );
 void *m_add( int m );
 int m_next( int m, int *p, void *d );
@@ -142,10 +159,14 @@ void m_destruct() ;
 	int m_create(int max, int w); /* deprecated: use m_alloc */
 
 int m_put( int m, const void* data );
+#ifdef MLS_DEBUG
 int m_len( int m );
+#endif
 int m_setlen( int m, int len );
 int m_bufsize( int m );
+#ifdef MLS_DEBUG
 void *m_buf( int m );
+#endif
 void *m_peek( int m, int i );
 int m_write(  int m, int p, const void *data, int n );
 int m_read(  int h, int p, void **data, int n  );
