@@ -103,3 +103,11 @@
     - `mt_seth(t, key, handle, type)`: Set a generic MLS handle (list, table, etc.).
     - `mt_get(t, key)`: Get a value (raw int or handle) by C-string key.
 - These functions use C-string keys by default, as they are the most common use case in the project.
+
+## Session: March 31, 2026 - QA Session Findings
+- **Alignment:** 'lst_t' in 'mls.h' was forced to 1-byte alignment, causing UBSan warnings on 64-bit systems. Removed 'aligned(1)' and added 'aligned(8)' to 'char d[0]' to ensure payload alignment.
+- **Null-Termination:** 
+  - 'm_slice' does not null-terminate. Replaced with 's_slice' in 'lib/m_http.c' for HTTP parsing.
+  - 'm_hdf.c' parser ('parse_quoted_string' and 'parse_raw_string') was not null-terminating strings, causing 'strlen' crashes in ASan builds.
+- **Build System:** Added 'makefile.qa' for static analysis (cppcheck, clang-tidy) and runtime sanitizers (ASan, UBSan).
+- **Style:** Implemented Linux Kernel style via '.clang-format'.
