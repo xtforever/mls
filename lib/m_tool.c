@@ -1,21 +1,20 @@
 #include "m_tool.h"
 #include "mls.h"
-#include <stdarg.h>
 #include <printf.h>
+#include <stdarg.h>
 
 /* alphabetisch sortierte liste von mstr */
 static int CONSTSTR_DATA = 0;
 static int CS_ZERO = -1;
 
 // Custom printf handler function for the 'M' specifier
-static int
-mls_printf_handler(FILE *stream, const struct printf_info *info,
-                   const void *const *args)
+static int mls_printf_handler (FILE *stream, const struct printf_info *info,
+			       const void *const *args)
 {
 	// Extract the argument as a "mls" type
 	const int p = *((const int *)args[0]);
 	// Convert mls Handle to String
-	const char *s = p > 0 ? mls(p, 0) : "";
+	const char *s = p > 0 ? mls (p, 0) : "";
 	char *o, out[50];
 	o = out;
 	*o++ = '%';
@@ -23,21 +22,20 @@ mls_printf_handler(FILE *stream, const struct printf_info *info,
 		*o++ = '-';
 	}
 	if (info->width > 0) {
-		o += sprintf(o, "%u", info->width);
+		o += sprintf (o, "%u", info->width);
 	}
 	if (info->prec > 0) {
-		o += sprintf(o, ".%u", info->prec);
+		o += sprintf (o, ".%u", info->prec);
 	}
 	*o++ = 's';
 	*o++ = 0;
 
 	// Print the mls string to the stream using given modifier
-	return fprintf(stream, out, s);
+	return fprintf (stream, out, s);
 }
 // Custom argument size handler for the 'M' specifier
-static int
-mls_printf_arginfo(const struct printf_info *info, size_t n, int *argtypes,
-                   int *size)
+static int mls_printf_arginfo (const struct printf_info *info, size_t n,
+			       int *argtypes, int *size)
 {
 	if (n > 0) {
 		argtypes[0] = PA_INT; // Expecting 'int'
@@ -45,56 +43,49 @@ mls_printf_arginfo(const struct printf_info *info, size_t n, int *argtypes,
 	return 1;
 }
 
-void
-m_register_printf()
+void m_register_printf ()
 {
 	// Register the custom printf specifier 'M'
-	if (register_printf_specifier('M', mls_printf_handler,
-	                              mls_printf_arginfo)
-	    != 0) {
-		ERR("Failed to register printf specifier 'M'\n");
+	if (register_printf_specifier ('M', mls_printf_handler,
+				       mls_printf_arginfo) != 0) {
+		ERR ("Failed to register printf specifier 'M'\n");
 	}
 }
 
-int
-m_str_va_app(int m, va_list ap)
+int m_str_va_app (int m, va_list ap)
 {
 	char *name;
-	while ((name = va_arg(ap, char *)) != NULL) {
-		name = strdup(name);
-		m_put(m, &name);
+	while ((name = va_arg (ap, char *)) != NULL) {
+		name = strdup (name);
+		m_put (m, &name);
 	}
 	return m;
 }
 
-int
-m_str_app(int m, ...)
+int m_str_app (int m, ...)
 {
 	va_list ap;
 	if (!m)
-		m = m_create(3, sizeof(char *));
-	va_start(ap, m);
-	m_str_va_app(m, ap);
-	va_end(ap);
+		m = m_create (3, sizeof (char *));
+	va_start (ap, m);
+	m_str_va_app (m, ap);
+	va_end (ap);
 	return m;
 }
 
-static void
-cskip_ws(char **s)
+static void cskip_ws (char **s)
 {
-	while (isspace(**s))
+	while (isspace (**s))
 		(*s)++;
 }
 
-static void
-ctrim(char **a, char **b)
+static void ctrim (char **a, char **b)
 {
-	while (*a < *b && isspace((*b)[-1])) {
+	while (*a < *b && isspace ((*b)[-1])) {
 		(*b)--;
 	}
 }
-static void
-skip_delim(char **s, char *delim)
+static void skip_delim (char **s, char *delim)
 {
 	while (**s && *delim && **s == *delim) {
 		(*s)++;
@@ -102,10 +93,9 @@ skip_delim(char **s, char *delim)
 	}
 }
 
-static void
-skip_unitl_delim(char **s, char *delim)
+static void skip_unitl_delim (char **s, char *delim)
 {
-	char *p = strstr(*s, delim);
+	char *p = strstr (*s, delim);
 
 	if (p) { /* delim found, set s to start of delim */
 		*s = p;
@@ -116,29 +106,27 @@ skip_unitl_delim(char **s, char *delim)
 		(*s)++; /* delim not found, set s to end of string */
 }
 
-static int
-cut_word(char **s, char *delim, int trimws, char **a, char **b)
+static int cut_word (char **s, char *delim, int trimws, char **a, char **b)
 {
 
 	// remove ws from start word
 	if (trimws)
-		cskip_ws(s);
-	*a = *s;                    // start of word
-	skip_unitl_delim(s, delim); // s points to first char of delimiter
-	*b = *s;                    // b points to first char after word
+		cskip_ws (s);
+	*a = *s;		     // start of word
+	skip_unitl_delim (s, delim); // s points to first char of delimiter
+	*b = *s;		     // b points to first char after word
 	if (trimws)
-		ctrim(a, b); // start at b and remove ws until a
+		ctrim (a, b); // start at b and remove ws until a
 	return (*b) - (*a);
 }
 
-static char *
-dup_word(char **s, char *delim, int trimws)
+static char *dup_word (char **s, char *delim, int trimws)
 {
 	char *a, *b;
-	int len = cut_word(s, delim, trimws, &a, &b);
+	int len = cut_word (s, delim, trimws, &a, &b);
 	if (len) {
-		char *word = calloc(1, len + 1);
-		memcpy(word, a, b - a);
+		char *word = calloc (1, len + 1);
+		memcpy (word, a, b - a);
 		word[len] = 0;
 		return word;
 	}
@@ -147,18 +135,17 @@ dup_word(char **s, char *delim, int trimws)
 
 /** split string into list of c-strings
  **/
-int
-m_str_split(int m, char *s, char *delim, int trimws)
+int m_str_split (int m, char *s, char *delim, int trimws)
 {
 	if (!m)
-		m = m_create(3, sizeof(char *));
+		m = m_create (3, sizeof (char *));
 	char *w;
 
 	while (*s) {
-		w = dup_word(&s, delim, trimws);
+		w = dup_word (&s, delim, trimws);
 		if (w)
-			m_put(m, &w);
-		skip_delim(&s, delim);
+			m_put (m, &w);
+		skip_delim (&s, delim);
 	}
 
 	return m;
@@ -170,57 +157,55 @@ m_str_split(int m, char *s, char *delim, int trimws)
  * if dst is zero it will be allocated
  * @returns dst
  */
-int
-m_strncpy(int dst, int src, int max)
+int m_strncpy (int dst, int src, int max)
 {
 	int c, src_bytes;
-	ASSERT(max > 0);
+	ASSERT (max > 0);
 
 	/* create string if none given */
 	if (!dst)
-		dst = m_create(max, 1);
-	else if (m_bufsize(dst) < max) {
+		dst = m_create (max, 1);
+	else if (m_bufsize (dst) < max) {
 		/* realloc if string is too short */
-		m_setlen(dst, max);
+		m_setlen (dst, max);
 	}
 
 	/* if src not exists or has zero length, return empty string */
-	if (src < 1 || !(src_bytes = m_len(src))) {
-		m_putc(dst, 0);
+	if (src < 1 || !(src_bytes = m_len (src))) {
+		m_putc (dst, 0);
 		return dst;
 	}
 
 	/* copy src to dst, but not more than max-bytes */
-	c = Min(max, src_bytes);
-	memcpy(m_buf(dst), m_buf(src), c);
-	m_setlen(dst, c);
+	c = Min (max, src_bytes);
+	memcpy (m_buf (dst), m_buf (src), c);
+	m_setlen (dst, c);
 
 	/* if the string is not zero terminated, append zero */
-	if (CHAR(dst, c - 1) != 0) {
+	if (CHAR (dst, c - 1) != 0) {
 		if (c < max)
-			m_putc(dst, 0);
+			m_putc (dst, 0);
 		else
-			CHAR(dst, c - 1) = 0;
+			CHAR (dst, c - 1) = 0;
 	}
 
 	return dst;
 }
 
-static void
-array_copy(int dest, int destp, int src, int srcp, int src_count)
+static void array_copy (int dest, int destp, int src, int srcp, int src_count)
 {
-	void *from = mls(src, srcp);
-	void *to = mls(dest, destp);
-	size_t n = src_count * m_width(src);
-	memcpy(to, from, n);
+	void *from = mls (src, srcp);
+	void *to = mls (dest, destp);
+	size_t n = src_count * m_width (src);
+	memcpy (to, from, n);
 }
 
-static void
-element_copy(int dest, int destp, int src, int srcp, int src_count, int width)
+static void element_copy (int dest, int destp, int src, int srcp, int src_count,
+			  int width)
 {
 	for (int i = 0; i < src_count; i++) {
-		void *from = mls(src, srcp);
-		memcpy(mls(dest, destp), from, width);
+		void *from = mls (src, srcp);
+		memcpy (mls (dest, destp), from, width);
 		srcp++;
 		destp++;
 	}
@@ -232,17 +217,16 @@ element_copy(int dest, int destp, int src, int srcp, int src_count, int width)
  * *srcp* if *destp* is <0 append *src* to *dest*
  * @returns dest
  */
-int
-m_mcopy(int dest, int destp, int src, int srcp, int src_count)
+int m_mcopy (int dest, int destp, int src, int srcp, int src_count)
 {
 	int dest_len;
-	int src_len = m_len(src);
+	int src_len = m_len (src);
 
 	if (srcp < 0)
 		srcp = 0;
 	/* if no lenght is given or length outside of array, copy full array */
 
-	if (src_count < 0 || src_count + srcp > m_len(src)) {
+	if (src_count < 0 || src_count + srcp > m_len (src)) {
 		src_count = src_len - srcp;
 	}
 
@@ -257,19 +241,19 @@ m_mcopy(int dest, int destp, int src, int srcp, int src_count)
 			dest_len = destp + src_count;
 		else
 			dest_len = src_count;
-		dest = m_create(dest_len, m_width(src));
+		dest = m_create (dest_len, m_width (src));
 	} else {
 
 		if (destp < 0) {
-			destp = m_len(
-			    dest); /* this means: append to src to dest array */
+			destp = m_len (dest); /* this means: append to src to
+						 dest array */
 		}
 		dest_len = destp + src_count;
 	}
 
 	/* resize dest to fit src array only if it is currently too small */
-	if (m_len(dest) < dest_len)
-		m_setlen(dest, destp + src_count);
+	if (m_len (dest) < dest_len)
+		m_setlen (dest, destp + src_count);
 
 	/* shortcurt, nothing to copy */
 	if (src_count == 0)
@@ -278,99 +262,78 @@ m_mcopy(int dest, int destp, int src, int srcp, int src_count)
 	/* now we have checked: dest_len,dest,src_count,srcp,destp */
 
 	/* check if src and dest are of same element size */
-	if (m_width(src) == m_width(dest)) {
-		array_copy(dest, destp, src, srcp, src_count);
+	if (m_width (src) == m_width (dest)) {
+		array_copy (dest, destp, src, srcp, src_count);
 		return dest;
 	}
 
 	/* copy each element from src to dest */
-	int width = Min(m_width(src), m_width(dest));
-	element_copy(dest, destp, src, srcp, src_count, width);
+	int width = Min (m_width (src), m_width (dest));
+	element_copy (dest, destp, src, srcp, src_count, width);
 	return dest;
 }
 
-int
-compare_int(const void *a, const void *b)
+int compare_int (const void *a, const void *b)
 {
 	const int *a0 = a, *b0 = b;
 	return (*a0) - (*b0);
 }
 
-void
-m_free_ptr(void *d)
-{
-	m_free(*(int *)d);
-}
+void m_free_ptr (void *d) { m_free (*(int *)d); }
 
-void
-m_free_user(int m, void (*free_h)(void *), int only_clear)
+void m_free_user (int m, void (*free_h) (void *), int only_clear)
 {
 	void *d;
 	int p;
-	m_foreach(m, p, d) free_h(d);
+	m_foreach (m, p, d) free_h (d);
 	if (only_clear)
-		m_clear(m);
+		m_clear (m);
 	else
-		m_free(m);
+		m_free (m);
 }
 
-void
-m_clear_user(int m, void (*free_h)(void *))
+void m_clear_user (int m, void (*free_h) (void *))
 {
-	m_free_user(m, free_h, 1);
+	m_free_user (m, free_h, 1);
 }
 
 /* free a list of lists */
-void
-m_free_list(int m)
+void m_free_list (int m)
 {
-	if(!m) return;
-	if( m_width(m) < sizeof(int) ) {
-		ERR("expected array of handles/int but list %d has width %d",
-		    m, m_width(m) );
+	if (!m)
+		return;
+	if (m_width (m) < sizeof (int)) {
+		ERR ("expected array of handles/int but list %d has width %d",
+		     m, m_width (m));
 	}
-	
-	m_free_user(m, m_free_ptr, 0);
+
+	m_free_user (m, m_free_ptr, 0);
 }
 
 /* clear a list of lists */
-void
-m_clear_list(int m)
-{
-	m_free_user(m, m_free_ptr, 1);
-}
+void m_clear_list (int m) { m_free_user (m, m_free_ptr, 1); }
 
 /* free a list of (malloced char*) */
-void
-m_free_stringlist(int m)
-{
-	m_free_user(m, free, 0);
-}
+void m_free_stringlist (int m) { m_free_user (m, free, 0); }
 
 /* clear a list of (malloced char*) */
-void
-m_clear_stringlist(int m)
-{
-	m_free_user(m, free, 1);
-}
+void m_clear_stringlist (int m) { m_free_user (m, free, 1); }
 
-void
-m_concat(int a, int b)
+void m_concat (int a, int b)
 {
 	if (!a || !b)
 		return;
 	int p;
 	void *d;
-	m_foreach(b, p, d) m_put(a, d);
+	m_foreach (b, p, d) m_put (a, d);
 }
 
 /** split a string by one character *delm into multiple m-array strings
  * @returns list of m-arrays
  **/
-int
-m_split_list(const char *s, const char *delm)
+int m_split_list (const char *s, const char *delm)
 {
-	int ls = m_create(2, sizeof(int));
+	int ls = m_create (2, sizeof (int));
 	int w = 0;
 	int p = 0;
 	int ch;
@@ -378,15 +341,15 @@ m_split_list(const char *s, const char *delm)
 	do {
 		ch = s[p];
 		if (!w) {
-			w = m_create(10, 1);
-			m_put(ls, &w);
+			w = m_create (10, 1);
+			m_put (ls, &w);
 		}
 
 		if (ch == *delm || ch == 0) {
-			m_putc(w, 0);
+			m_putc (w, 0);
 			w = 0;
 		} else {
-			m_putc(w, s[p]);
+			m_putc (w, s[p]);
 		}
 		p++;
 	} while (ch);
@@ -395,40 +358,37 @@ m_split_list(const char *s, const char *delm)
 }
 
 /* copy from s to buf[p] until *s == ch */
-int
-leftstr(int buf, int p, const char *s, int ch)
+int leftstr (int buf, int p, const char *s, int ch)
 {
 	int w;
 	if (buf < 2)
-		buf = m_create(10, 1);
-	m_setlen(buf, p);
+		buf = m_create (10, 1);
+	m_setlen (buf, p);
 
 	if (s)
 		while ((w = *s++)) {
 			if (w == ch || w == 0)
 				break;
-			m_putc(buf, w);
+			m_putc (buf, w);
 		}
-	m_putc(buf, 0);
+	m_putc (buf, 0);
 	return buf;
 }
-
 
 /* einfuegen von key in das array m falls key noch nicht
    existiert
    return: pos von key
 */
-int
-lookup_int(int m, int key)
+int lookup_int (int m, int key)
 {
-	void *obj = calloc(1, m_width(m));
-	memcpy(obj, &key, sizeof(key));
-	int p = m_binsert(m, obj, cmp_int, 0);
-	free(obj);
+	void *obj = calloc (1, m_width (m));
+	memcpy (obj, &key, sizeof (key));
+	int p = m_binsert (m, obj, cmp_int, 0);
+	free (obj);
 	if (p < 0) {
 		return (-p) - 1;
 	}
-	TRACE(1, "ADD pos:%d key:%d", p, key);
+	TRACE (1, "ADD pos:%d key:%d", p, key);
 	return p;
 }
 
@@ -456,15 +416,14 @@ lookup_int(int m, int key)
  * @param b The ending index of the portion to be copied.
  * @return The new list with the copied portion.
  */
-int
-m_slice(int dest, int offs, int m, int a, int b)
+int m_slice (int dest, int offs, int m, int a, int b)
 {
 	if (!m) {
 		if (dest > 0)
-			m_setlen(dest, offs);
+			m_setlen (dest, offs);
 		return dest;
 	}
-	int len = m_len(m);
+	int len = m_len (m);
 	if (b < 0) {
 		b += len;
 	}
@@ -481,82 +440,76 @@ m_slice(int dest, int offs, int m, int a, int b)
 	if (cnt < 0)
 		cnt = 1;
 	if (dest <= 0)
-		dest = m_create(cnt + offs, m_width(m));
-	m_setlen(dest, offs);
-	ASSERT(m_width(dest) == m_width(m));
+		dest = m_create (cnt + offs, m_width (m));
+	m_setlen (dest, offs);
+	ASSERT (m_width (dest) == m_width (m));
 	for (int i = a; i <= b; i++) {
-		void *d = m_peek(m, i);
-		m_put(dest, d);
+		void *d = m_peek (m, i);
+		m_put (dest, d);
 	}
 	return dest;
 }
 
 /* slice for strings: add a zero byte to the end */
-int
-s_slice(int dest, int offs, int m, int a, int b)
+int s_slice (int dest, int offs, int m, int a, int b)
 {
-	int ret = m_slice(dest, offs, m, a, b);
-	if (m_len(ret) == 0 || CHAR(ret, m_len(ret) - 1) != 0)
-		m_putc(ret, 0);
+	int ret = m_slice (dest, offs, m, a, b);
+	if (m_len (ret) == 0 || CHAR (ret, m_len (ret) - 1) != 0)
+		m_putc (ret, 0);
 	return ret;
 }
 
-int
-s_warn(int m)
+int s_warn (int m)
 {
 	if (m) {
-		if (m_width(m) != 1)
-			WARN("mstring %d to width: %d bytes", m, m_width(m));
-		if (m_len(m) && CHAR(m, m_len(m) - 1) != 0)
-			WARN("mstring %d not zero terminated", m);
+		if (m_width (m) != 1)
+			WARN ("mstring %d to width: %d bytes", m, m_width (m));
+		if (m_len (m) && CHAR (m, m_len (m) - 1) != 0)
+			WARN ("mstring %d not zero terminated", m);
 	}
 	return 0;
 }
 
 /* verify that m is a not zero-length zero terminated string */
-int
-s_isempty(int m)
+int s_isempty (int m)
 {
 	if (m == 0)
-		WARN("handle is zero");
+		WARN ("handle is zero");
 	else {
-		if (m_len(m) == 0) {
+		if (m_len (m) == 0) {
 			// WARN("strlen  is zero");
-		}
-		else {
-			if (CHAR(m, m_len(m) - 1))
-				WARN("last byte not zero");
-			if (CHAR(m, 0) == 0) {
+		} else {
+			if (CHAR (m, m_len (m) - 1))
+				WARN ("last byte not zero");
+			if (CHAR (m, 0) == 0) {
 				//	WARN("first byte is zero");
-			}					
+			}
 		}
 	}
 
-	return (m == 0 || m_len(m) == 0 || CHAR(m, 0) == 0 || m_width(m) != 1
-	        || CHAR(m, m_len(m) - 1) != 0);
+	return (m == 0 || m_len (m) == 0 || CHAR (m, 0) == 0 ||
+		m_width (m) != 1 || CHAR (m, m_len (m) - 1) != 0);
 }
 
-void
-s_write(int m, int n)
+void s_write (int m, int n)
 {
-	if (s_isempty(m))
+	if (s_isempty (m))
 		return;
 	char *d;
 	int p;
-	m_foreach(m, p, d)
+	m_foreach (m, p, d)
 	{
 		if (n <= 0 || *d == 0)
 			return;
-		putchar(*d);
+		putchar (*d);
 		n--;
 	}
 }
 
-void
-s_puts(int m)
+void s_puts (int m)
 {
-	s_write(m, m_len(m));
-	putchar(10);
+	s_write (m, m_len (m));
+	putchar (10);
 }
 
 /**
@@ -576,24 +529,23 @@ s_puts(int m)
  * @return 0 if 'pattern' matches 'm', or the difference between the values of
  * the last two compared characters if they don't match
  */
-int
-s_strncmp(int m, int offs, int pattern, int n)
+int s_strncmp (int m, int offs, int pattern, int n)
 {
 	/* empty pattern matches every char */
-	if (s_isempty(pattern) || n <= 0)
+	if (s_isempty (pattern) || n <= 0)
 		return 0;
 	/* empty source does not match */
-	if (s_isempty(m))
+	if (s_isempty (m))
 		return -1;
 
 	int p;
 	char *d;
 	int diff;
-	m_foreach(pattern, p, d)
+	m_foreach (pattern, p, d)
 	{
-		if (offs + p >= m_len(m))
+		if (offs + p >= m_len (m))
 			return -1;
-		diff = CHAR(m, offs + p) - *d;
+		diff = CHAR (m, offs + p) - *d;
 		if (diff)
 			return diff;
 		n--; /* when <0 after first match, ignore n */
@@ -603,15 +555,14 @@ s_strncmp(int m, int offs, int pattern, int n)
 	return 0;
 }
 
-int
-s_strstr(int m, int offs, int pattern)
+int s_strstr (int m, int offs, int pattern)
 {
-	if (s_isempty(m) || s_isempty(pattern) || offs < 0)
+	if (s_isempty (m) || s_isempty (pattern) || offs < 0)
 		return -1;
-	int plen = m_len(pattern);
-	int max = m_len(m) - plen;
+	int plen = m_len (pattern);
+	int max = m_len (m) - plen;
 	for (; offs <= max; offs++) {
-		if (s_strncmp(m, offs, pattern, plen - 1) == 0)
+		if (s_strncmp (m, offs, pattern, plen - 1) == 0)
 			return offs;
 	}
 	return -1;
@@ -638,284 +589,265 @@ s_strstr(int m, int offs, int pattern)
  *         The function will return the destination string after replacing up to
  * the specified count of pattern occurrences with the replacement value.
  */
-int
-s_replace(int dest, int src, int pattern, int replace, int count)
+int s_replace (int dest, int src, int pattern, int replace, int count)
 {
 	if (dest == 0)
-		dest = m_create(20, 1);
+		dest = m_create (20, 1);
 	else
-		m_clear(dest);
-	ASSERT(m_width(dest) == 1);
-	if (s_isempty(src) || s_isempty(pattern))
+		m_clear (dest);
+	ASSERT (m_width (dest) == 1);
+	if (s_isempty (src) || s_isempty (pattern))
 		return dest;
 	int offs = 0;
-	int replace_last = s_strlen(replace) - 1;
-	int pattern_len = s_strlen(pattern);
+	int replace_last = s_strlen (replace) - 1;
+	int pattern_len = s_strlen (pattern);
 	for (;;) {
-		int pos = s_strstr(src, offs, pattern);
+		int pos = s_strstr (src, offs, pattern);
 		if (pos < 0)
 			break;
-		m_slice(dest, m_len(dest), src, offs, pos - 1);
-		m_slice(dest, m_len(dest), replace, 0, replace_last);
+		m_slice (dest, m_len (dest), src, offs, pos - 1);
+		m_slice (dest, m_len (dest), replace, 0, replace_last);
 		offs = pos + pattern_len;
 		if (--count == 0)
 			break;
 	}
-	m_slice(dest, m_len(dest), src, offs, -1);
+	m_slice (dest, m_len (dest), src, offs, -1);
 	return dest;
 }
 
-int
-s_msplit(int dest, int src, int pattern)
+int s_msplit (int dest, int src, int pattern)
 {
 	if (dest == 0)
-		dest = m_create(10, sizeof(int));
+		dest = m_create (10, sizeof (int));
 	else
-		m_clear(dest);
-	if (s_isempty(src) || s_isempty(pattern))
+		m_clear (dest);
+	if (s_isempty (src) || s_isempty (pattern))
 		return dest;
 	int offs = 0;
-	int pattern_len = s_strlen(pattern);
+	int pattern_len = s_strlen (pattern);
 	int substr;
 	for (;;) {
-		int pos = s_strstr(src, offs, pattern);
+		int pos = s_strstr (src, offs, pattern);
 		if (pos < 0)
 			break;
-		substr = s_slice(0, 0, src, offs, pos - 1);
-		m_puti(dest, substr);
+		substr = s_slice (0, 0, src, offs, pos - 1);
+		m_puti (dest, substr);
 		offs = pos + pattern_len;
 	}
-	if (offs < m_len(src) - 1) {
-		m_puti(dest, m_slice(0, 0, src, offs, -1));
+	if (offs < m_len (src) - 1) {
+		m_puti (dest, m_slice (0, 0, src, offs, -1));
 	}
 
 	return dest;
 }
 
-int
-s_trim(int m)
+int s_trim (int m)
 {
 	if (m == 0)
 		return 0;
 	int a = 0;
-	int b = m_len(m) - 1;
+	int b = m_len (m) - 1;
 	if (b < 0) { /* make c-str */
-		m_putc(m, 0);
+		m_putc (m, 0);
 		return m;
 	}
-	if (CHAR(m, b) == 0)
+	if (CHAR (m, b) == 0)
 		b--;
-	while (a < b && isspace(CHAR(m, a)))
+	while (a < b && isspace (CHAR (m, a)))
 		a++;
-	while (b >= a && isspace(CHAR(m, b)))
+	while (b >= a && isspace (CHAR (m, b)))
 		b--;
 	if (a == 0) {
-		m_setlen(m, b + 1);
-		m_putc(m, 0);
+		m_setlen (m, b + 1);
+		m_putc (m, 0);
 		return m;
 	}
-	return s_slice(m, 0, m, a, b);
+	return s_slice (m, 0, m, a, b);
 }
 
-int
-s_lower(int m)
+int s_lower (int m)
 {
-	if (s_isempty(m))
+	if (s_isempty (m))
 		return m;
 	int p;
 	char *d;
-	m_foreach(m, p, d) *d = tolower(*d);
+	m_foreach (m, p, d) *d = tolower (*d);
 	return m;
 }
 
-int
-s_upper(int m)
+int s_upper (int m)
 {
-	if (s_isempty(m))
+	if (s_isempty (m))
 		return m;
 	int p;
 	char *d;
-	m_foreach(m, p, d) *d = toupper(*d);
+	m_foreach (m, p, d) *d = toupper (*d);
 	return m;
 }
 
-void
-m_map(int m, int (*fn)(int m, int p, void *ctx), void *ctx)
+void m_map (int m, int (*fn) (int m, int p, void *ctx), void *ctx)
 {
 	if (m == 0 || fn == 0)
 		return;
-	int n = m_len(m);
+	int n = m_len (m);
 	for (int i = 0; i < n; i++)
-		fn(m, i, ctx);
+		fn (m, i, ctx);
 }
 
-int
-s_strcpy_c(int out, const char *s)
+int s_strcpy_c (int out, const char *s)
 {
-	
-	if( out <= 0 ) out = m_create(1,1);
-	if( !s || !*s ) { m_putc(out,0); return out; }
-	m_write(out,0,s,strlen(s)+1);
+
+	if (out <= 0)
+		out = m_create (1, 1);
+	if (!s || !*s) {
+		m_putc (out, 0);
+		return out;
+	}
+	m_write (out, 0, s, strlen (s) + 1);
 	return out;
 }
 
+int s_strdup_c (const char *s) { return s_strcpy_c (0, s); }
 
-int
-s_strdup_c(const char *s)
-{
-	return s_strcpy_c(0,s);
-}
-
-int
-s_implode(int dest, int srcs, int seperator)
+int s_implode (int dest, int srcs, int seperator)
 {
 	if (dest == 0)
-		dest = m_create(10, 1);
+		dest = m_create (10, 1);
 	else
-		m_clear(dest);
-	if (srcs <= 0 || m_len(srcs) == 0 || s_isempty(seperator))
+		m_clear (dest);
+	if (srcs <= 0 || m_len (srcs) == 0 || s_isempty (seperator))
 		goto leave;
 
 	int p, *d;
-	m_foreach(srcs, p, d)
+	m_foreach (srcs, p, d)
 	{
 		if (p) {
-			m_slice(dest, m_len(dest), seperator, 0, -2);
+			m_slice (dest, m_len (dest), seperator, 0, -2);
 		}
-		m_slice(dest, m_len(dest), *d, 0, -2);
+		m_slice (dest, m_len (dest), *d, 0, -2);
 	}
 leave:
-	m_putc(dest, 0);
+	m_putc (dest, 0);
 	return dest;
 }
 
-int m_memset(int ln, char c, int w)
+int m_memset (int ln, char c, int w)
 {
-	if( ln  == 0 ) ln = m_create(w,1);
-	m_setlen(ln,w);
-	if( m_width(ln) == 1 )
-		memset(m_buf(ln),c,w);
+	if (ln == 0)
+		ln = m_create (w, 1);
+	m_setlen (ln, w);
+	if (m_width (ln) == 1)
+		memset (m_buf (ln), c, w);
 	else {
-		for(int i=0;i<w;i++) {
-			*(char *)mls(ln,i) = c;
-		}		
+		for (int i = 0; i < w; i++) {
+			*(char *)mls (ln, i) = c;
+		}
 	}
 	return ln;
 }
 
-
-
-void
-conststr_free(void)
+void conststr_free (void)
 {
-	m_free_list(CONSTSTR_DATA);
+	m_free_list (CONSTSTR_DATA);
 	CONSTSTR_DATA = 0;
 }
 
-void
-conststr_init(void)
+void conststr_init (void)
 {
 	if (!CONSTSTR_DATA) {
-		CONSTSTR_DATA = m_create(10, sizeof(int));
-		CS_ZERO = m_create(1, 1);
-		m_putc(CS_ZERO, 0);
-		m_puti(CONSTSTR_DATA, CS_ZERO);
+		CONSTSTR_DATA = m_create (10, sizeof (int));
+		CS_ZERO = m_create (1, 1);
+		m_putc (CS_ZERO, 0);
+		m_puti (CONSTSTR_DATA, CS_ZERO);
 	}
 }
 
-int
-cmp_mstr(const void *a, const void *b)
+int cmp_mstr (const void *a, const void *b)
 {
 	int k1 = *(const int *)a;
 	int k2 = *(const int *)b;
-	TRACE(1, "cmp %s %s", CHARP(k1), CHARP(k2));
-	return m_cmp(k1, k2);
+	TRACE (1, "cmp %s %s", CHARP (k1), CHARP (k2));
+	return m_cmp (k1, k2);
 }
 
 /* treat shorter strings as beeing lower than longer strings */
-int
-cmp_mstr_fast(const void *a, const void *b)
+int cmp_mstr_fast (const void *a, const void *b)
 {
 	int k1 = *(const int *)a;
 	int k2 = *(const int *)b;
-	TRACE(1, "cmp %s %s", CHARP(k1), CHARP(k2));
-	if (m_len(k1) < m_len(k2))
+	TRACE (1, "cmp %s %s", CHARP (k1), CHARP (k2));
+	if (m_len (k1) < m_len (k2))
 		return -1;
-	if (m_len(k1) > m_len(k2))
+	if (m_len (k1) > m_len (k2))
 		return 1;
-	return m_cmp(k1, k2);
+	return m_cmp (k1, k2);
 }
 
-int cmp_mstr_cstr_fast(const void *key, const void *b)
+int cmp_mstr_cstr_fast (const void *key, const void *b)
 {
 	const char *const *s = key;
-	int mstr = *(int*) b;
-	return -mstrcmp(mstr, 0, *s);	
+	int mstr = *(int *)b;
+	return -mstrcmp (mstr, 0, *s);
 }
 
-int s_strcmp_c( int mstr, const char *s )
-{
-	return mstrcmp(mstr, 0, s);
-}
+int s_strcmp_c (int mstr, const char *s) { return mstrcmp (mstr, 0, s); }
 
-static int
-mscmpc(const void *a, const void *b)
+static int mscmpc (const void *a, const void *b)
 {
 	const char *const *s = a;
 	const int *d = b;
-	return -mstrcmp(*d, 0, *s);
+	return -mstrcmp (*d, 0, *s);
 }
 
-int m_str_from_file( char *filename )
+int m_str_from_file (char *filename)
 {
-	FILE *fp = fopen( filename, "r" );
-	int db = m_create(100, sizeof(int));
-	if(!fp) return db;
+	FILE *fp = fopen (filename, "r");
+	int db = m_create (100, sizeof (int));
+	if (!fp)
+		return db;
 	int ln;
-	while(1) {
-		ln = m_create(100, 1);
-		if( m_fscan(ln, 10, fp) < 0 ) break;
-		m_puti(db, ln );
+	while (1) {
+		ln = m_create (100, 1);
+		if (m_fscan (ln, 10, fp) < 0)
+			break;
+		m_puti (db, ln);
 	}
-	m_free(ln);	
-	fclose(fp);	
-	return db;     
+	m_free (ln);
+	fclose (fp);
+	return db;
 }
-
 
 /* schau nach ob s schon vorhanden ist, wenn ja liefere die vorhandene kopie,
    sonst fuege ein kopie von s hinzu IDEE: x=m_create(); m_put(x,data); z=
    conststr_lookup(x); free(x);
  */
-int
-conststr_lookup(int s)
+int conststr_lookup (int s)
 {
-	if (s_empty(s))
+	if (s_empty (s))
 		return CS_ZERO;
-	int p = m_binsert(CONSTSTR_DATA, &s, cmp_mstr_fast, 0);
+	int p = m_binsert (CONSTSTR_DATA, &s, cmp_mstr_fast, 0);
 	if (p < 0) { // schon vorhanden
-		return INT(CONSTSTR_DATA, (-p) - 1);
+		return INT (CONSTSTR_DATA, (-p) - 1);
 	}
-	TRACE(1, "ADD %d %s", p, CHARP(s));
-	return INT(CONSTSTR_DATA, p) = m_dub(s);
+	TRACE (1, "ADD %d %s", p, CHARP (s));
+	return INT (CONSTSTR_DATA, p) = m_dub (s);
 }
 
-int
-conststr_lookup_c(const char *s)
+int conststr_lookup_c (const char *s)
 {
-	if (is_empty(s))
+	if (is_empty (s))
 		return CS_ZERO;
 	union {
 		const char *s;
 		int key;
 	} key;
 	key.s = s;
-	int p = m_binsert(CONSTSTR_DATA, &key, mscmpc, 0);
+	int p = m_binsert (CONSTSTR_DATA, &key, mscmpc, 0);
 	if (p < 0) {
-		return INT(CONSTSTR_DATA, (-p) - 1);
+		return INT (CONSTSTR_DATA, (-p) - 1);
 	}
-	int k = s_printf(0, 0, "%s", s);
-	INT(CONSTSTR_DATA, p) = k;
+	int k = s_printf (0, 0, "%s", s);
+	INT (CONSTSTR_DATA, p) = k;
 	return k;
 }
 
@@ -928,46 +860,43 @@ conststr_lookup_c(const char *s)
  *        - Otherwise, inserts the temporary string into the global storage and
  * returns it.
  */
-int
-cs_printf(const char *format, ...)
+int cs_printf (const char *format, ...)
 {
 	va_list ap;
-	va_start(ap, format);
-	int m = vas_printf(0, 0, format, ap);
-	va_end(ap);
-	int p = m_binsert(CONSTSTR_DATA, &m, cmp_mstr, 0);
+	va_start (ap, format);
+	int m = vas_printf (0, 0, format, ap);
+	va_end (ap);
+	int p = m_binsert (CONSTSTR_DATA, &m, cmp_mstr, 0);
 	if (p < 0) { // schon vorhanden
-		m_free(m);
-		return INT(CONSTSTR_DATA, (-p) - 1);
+		m_free (m);
+		return INT (CONSTSTR_DATA, (-p) - 1);
 	}
-	TRACE(1, "ADD const[%d]=%d:%s", p, m, CHARP(m));
+	TRACE (1, "ADD const[%d]=%d:%s", p, m, CHARP (m));
 	return m;
 }
 
-void
-conststr_stats(void)
+void conststr_stats (void)
 {
 	int len, *d, p;
-	int cnt = m_len(CONSTSTR_DATA);
-	TRACE(4, "Count: %d", cnt);
-	len = cnt * (sizeof(int) + sizeof(struct ls_st));
-	m_foreach(CONSTSTR_DATA, p, d) { len += m_len(*d); }
-	TRACE(4, "Memory: %d", len);
+	int cnt = m_len (CONSTSTR_DATA);
+	TRACE (4, "Count: %d", cnt);
+	len = cnt * (sizeof (int) + sizeof (struct ls_st));
+	m_foreach (CONSTSTR_DATA, p, d) { len += m_len (*d); }
+	TRACE (4, "Memory: %d", len);
 }
 
-int
-s_strncmp2(int s0, int p0, int s1, int p1, int len)
+int s_strncmp2 (int s0, int p0, int s1, int p1, int len)
 {
-	int l0 = m_len(s0);
-	int l1 = m_len(s1);
+	int l0 = m_len (s0);
+	int l1 = m_len (s1);
 
 	while (len--) {
 		if (p0 >= l0)
 			return -1;
 		if (p1 >= l1)
 			return 1;
-		int diff = CHAR(s0, p0) - CHAR(s1, p1);
-		if (diff || CHAR(s0, p0) == 0)
+		int diff = CHAR (s0, p0) - CHAR (s1, p1);
+		if (diff || CHAR (s0, p0) == 0)
 			return diff;
 		p0++;
 		p1++;
@@ -975,38 +904,35 @@ s_strncmp2(int s0, int p0, int s1, int p1, int len)
 	return 0;
 }
 
-int
-s_strncmpr(int str, int suffix)
+int s_strncmpr (int str, int suffix)
 {
 	if (!str || !suffix)
 		return 0;
-	size_t lenstr = m_len(str);
-	size_t lensuffix = m_len(suffix);
+	size_t lenstr = m_len (str);
+	size_t lensuffix = m_len (suffix);
 	if (lensuffix > lenstr)
 		return 0;
-	return s_strncmp2(str, lenstr - lensuffix, suffix, 0, lensuffix) == 0;
+	return s_strncmp2 (str, lenstr - lensuffix, suffix, 0, lensuffix) == 0;
 }
-
 
 /* read a line of text
    this function must be called once, after all data is read, to find the eof.
    if the last line is terminated by eof this function returns success!
    returns: 0 - success, -1 no more data
 */
-int
-s_readln(int buf, FILE *fp)
+int s_readln (int buf, FILE *fp)
 {
-	m_clear(buf);
-	int ret = m_fscan(buf, 10, fp);
-	if( ret < 0 && m_len(buf) <= 1 ) return -1;	
+	m_clear (buf);
+	int ret = m_fscan (buf, 10, fp);
+	if (ret < 0 && m_len (buf) <= 1)
+		return -1;
 	return 0;
 }
 
-int
-s_regex(int res, char *regex, int buf)
+int s_regex (int res, char *regex, int buf)
 {
-	m_regex(res, regex, m_str(buf));
-	return m_len(res);
+	m_regex (res, regex, m_str (buf));
+	return m_len (res);
 }
 
 /* LICENSE Dual MIT/GPL
@@ -1041,8 +967,8 @@ s_regex(int res, char *regex, int buf)
  *
  * An opening bracket without a matching close is matched literally.
  */
-bool
-glob_match(char const *pat, char const *str, const char **a, const char **b)
+bool glob_match (char const *pat, char const *str, const char **a,
+		 const char **b)
 {
 	/*
 	 * Backtrack to previous * on mismatch and retry starting one
@@ -1051,7 +977,8 @@ glob_match(char const *pat, char const *str, const char **a, const char **b)
 	 * never a need to backtrack multiple levels.
 	 */
 	char const *back_pat = NULL, *back_str;
-	if( a ) *a=NULL;
+	if (a)
+		*a = NULL;
 	/*
 	 * Loop over each token (character or class) in pat, matching
 	 * it against the remaining unmatched tail of str.  Return false
@@ -1069,12 +996,12 @@ glob_match(char const *pat, char const *str, const char **a, const char **b)
 		case ')': /* stop expr */
 			if (b)
 				*b = --str;
-			break;	
+			break;
 		case '?': /* Wildcard: anything but nul */
 			if (c == '\0')
 				return false;
 			break;
-		case '*':                 /* Any-length wildcard */
+		case '*':		  /* Any-length wildcard */
 			if (*pat == '\0') /* Optimize trailing * case */
 				return true;
 			back_pat = pat;

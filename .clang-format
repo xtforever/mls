@@ -1,0 +1,21 @@
+# Linux Kernel style for clang-format
+# Used by: find . -name "*.c" -o -name "*.h" | xargs clang-format -i
+BasedOnStyle: LLVM
+IndentWidth: 8
+UseTab: Always
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: false
+IndentCaseLabels: false
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+PointerAlignment: Right
+ColumnLimit: 80
+ContinuationIndentWidth: 8
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: Always
+SpaceInEmptyParentheses: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
