@@ -1,0 +1,23 @@
+# Suppress unusedFunction warnings as this is a library
+unusedFunction
+# Suppress missingIncludeSystem for cleaner output
+missingIncludeSystem
+# Suppress const suggestions for now
+constParameterPointer
+constVariablePointer
+constVariable
+# Suppress shadow warnings
+shadowVariable
+shadowArgument
+# Suppress void pointer arithmetic (common in this lib)
+arithOperationsOnVoidPointer
+# Suppress knownConditionTrueFalse for now
+knownConditionTrueFalse
+# Suppress variableScope
+variableScope
+# Suppress unreadVariable
+unreadVariable
+# Suppress varFuncNullUB (NULL in variadic)
+varFuncNullUB
+# Suppress unusedStructMember
+unusedStructMember

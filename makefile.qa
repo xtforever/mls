@@ -1,0 +1,37 @@
+# Variablen
+CC = clang
+CFLAGS = -Wall -Wextra -Wpedantic -g -Ilib
+SRC = $(wildcard lib/*.c)
+OBJ = $(SRC:.c=.o)
+LIB_NAME = mls
+
+# --- 1. Statische Analyse (Linting) ---
+check-static:
+	@echo "--- Running Cppcheck ---"
+	cppcheck --enable=all --suppressions-list=.cppcheck_suppressions --error-exitcode=1 lib/
+	
+	@echo "--- Running Clang-Tidy ---"
+	# Benötigt eine 'compile_commands.json' (erzeugbar via 'bear -- make')
+	# Wir ignorieren hier Fehler für den ersten Lauf, da clang-tidy sehr streng sein kann
+	-clang-tidy $(SRC) -checks=*,-clang-analyzer-alpha* -- $(CFLAGS)
+
+# --- 2. Dynamische Analyse (Sanitizers) ---
+# Hier wird die Library mit speziellen Instrumenten gebaut
+# Wir testen beispielhaft test_autofree.c
+check-runtime:
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer \
+		$(SRC) tests/test_autofree.c -o test_runner
+	./test_runner
+	@echo "Falls kein Crash kam: Sanity Check passed!"
+
+# Führe alle Tests mit ASAN aus (nutzt das bestehende Makefile in tests/)
+check-tests-asan:
+	cd tests && make clean && make production=0 OBJ=d CC=clang CFLAGS="-g -fsanitize=address,undefined -I../lib" ALL
+
+# --- 3. Alles zusammen ---
+check-all: check-static check-runtime
+
+clean:
+	rm -f test_runner
+	cd tests && make clean
+

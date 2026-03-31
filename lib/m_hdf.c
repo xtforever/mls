@@ -56,14 +56,10 @@ static const char *parse_raw_string (const char *p, int *node)
 				p++;
 			}
 			if (*p == ']' && end_equals == equals) {
-				int tmp = s_strdup_c (start);
-				int s_h = m_alloc (0, 1, MFREE);
-				s_slice (s_h, 0, tmp, 0,
-					 (end_cand - start) - 1);
-				// No easy way to free tmp if it's a conststr,
-				// but s_strdup_c in m_tool.h might return a
-				// regular handle. Looking at m_tool.h:
-				// s_strdup_c(const char *s)
+				int len = end_cand - start;
+				int s_h = m_alloc (len + 1, 1, MFREE);
+				m_write (s_h, 0, start, len);
+				m_putc (s_h, 0);
 				*node = create_node (HDF_TYPE_STRING, s_h);
 				return p + 1;
 			}
@@ -108,6 +104,7 @@ static const char *parse_quoted_string (const char *p, int *node)
 	}
 	if (*p == '"')
 		p++;
+	m_putc (s_h, 0);
 	*node = create_node (HDF_TYPE_STRING, s_h);
 	return p;
 }

@@ -1,0 +1,5 @@
+(server
+  (port 20001)
+  (bind (path "/") (call "index_handler"))
+  (bind (path "/api/hello") (call "api_hello"))
+)

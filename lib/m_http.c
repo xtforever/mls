@@ -166,7 +166,7 @@ static int parse_hex (int data_h, int start, int max_chars, int *out)
 
 static int parse_header (int data_h, int start, int end, int *key_h, int *val_h)
 {
-	int line_h = m_slice (0, 0, data_h, start, end);
+	int line_h = s_slice (0, 0, data_h, start, end);
 	char *colon = strchr (m_str (line_h), ':');
 	if (!colon) {
 		m_free (line_h);
@@ -193,7 +193,7 @@ static int parse_header (int data_h, int start, int end, int *key_h, int *val_h)
 static int parse_request (int data_h, int start, int end, int *method, int *uri,
 			  int *version)
 {
-	int line_h = m_slice (0, 0, data_h, start, end);
+	int line_h = s_slice (0, 0, data_h, start, end);
 	int parts = m_alloc (0, sizeof (char *), MFREE_STR);
 	m_str_split (parts, m_str (line_h), " ", 1);
 
@@ -213,7 +213,7 @@ static int parse_request (int data_h, int start, int end, int *method, int *uri,
 static int parse_response (int data_h, int start, int end, int *version,
 			   int *status_code, int *reason)
 {
-	int line_h = m_slice (0, 0, data_h, start, end);
+	int line_h = s_slice (0, 0, data_h, start, end);
 	int parts = m_alloc (0, sizeof (char *), MFREE_STR);
 	m_str_split (parts, m_str (line_h), " ", 1);
 
