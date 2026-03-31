@@ -2191,6 +2191,7 @@ int s_copy (int m, int first_char, int last_char)
 	if (first_char + size > m_len (m))
 		size = m_len (m) - first_char;
 	int ret = m_create (size, 1);
+	m_setlen (ret, size);
 	m_write (ret, 0, mls (m, first_char), size);
 	if (CHAR (ret, m_len (ret) - 1) != 0)
 		m_putc (ret, 0);

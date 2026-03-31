@@ -175,6 +175,8 @@ void *m_add (int m);
 int m_next (int m, int *p, void *d);
 int m_init ();
 void m_destruct ();
+void conststr_init (void);
+void conststr_free (void);
 
 int m_create (int max, int w); /* deprecated: use m_alloc */
 
