@@ -67,7 +67,6 @@ int leftstr (int buf, int p, const char *s, int ch);
 int cmp_mstr (const void *a, const void *b);
 int cmp_int (const void *a0, const void *b0);
 int lookup_int (int m, int key);
-int m_slice (int dest, int offs, int m, int a, int b);
 int s_slice (int dest, int offs, int m, int a, int b);
 int s_replace (int dest, int src, int pattern, int replace, int count);
 void s_puts (int m);

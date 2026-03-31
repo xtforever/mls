@@ -247,10 +247,8 @@ int s_sub (int h, int pos, int len)
 		return s_new ();
 	if (pos + len > h_len)
 		len = h_len - pos;
-	int new_h = s_new ();
-	m_write (new_h, 0, m_str (h) + pos, len);
-	m_putc (new_h, 0);
-	return new_h;
+
+	return m_slice (0, 0, h, pos, pos + len - 1);
 }
 
 int s_left (int h, int n) { return s_sub (h, 0, n); }
@@ -448,14 +446,6 @@ int m_strncpy (int dst, int src, int max)
 	return dst;
 }
 
-static void array_copy (int dest, int destp, int src, int srcp, int src_count)
-{
-	void *from = mls (src, srcp);
-	void *to = mls (dest, destp);
-	size_t n = src_count * m_width (src);
-	memcpy (to, from, n);
-}
-
 static void element_copy (int dest, int destp, int src, int srcp, int src_count,
 			  int width)
 {
@@ -475,55 +465,30 @@ static void element_copy (int dest, int destp, int src, int srcp, int src_count,
  */
 int m_mcopy (int dest, int destp, int src, int srcp, int src_count)
 {
-	int dest_len;
-	int src_len = m_len (src);
+	if (src <= 0)
+		return dest;
 
 	if (srcp < 0)
 		srcp = 0;
-	/* if no lenght is given or length outside of array, copy full array */
+	if (src_count < 0 || srcp + src_count > m_len (src))
+		src_count = m_len (src) - srcp;
 
-	if (src_count < 0 || src_count + srcp > m_len (src)) {
-		src_count = src_len - srcp;
+	if (destp < 0)
+		destp = m_len (dest);
+
+	/* if widths match, we can use m_slice */
+	if (dest <= 0 || m_width (dest) == m_width (src)) {
+		return m_slice (dest, destp, src, srcp, srcp + src_count - 1);
 	}
 
-	/* so far, we have checked srcp,src_count, now look at the others */
-
-	/* check number of elements in destination array: dest_len,
-	   create dest array if it doesn't exists
-	   if no dest offset is given assume user wants to append
-	*/
-	if (dest <= 0) {
-		if (destp > 0)
-			dest_len = destp + src_count;
-		else
-			dest_len = src_count;
-		dest = m_create (dest_len, m_width (src));
-	} else {
-
-		if (destp < 0) {
-			destp = m_len (dest); /* this means: append to src to
-						 dest array */
-		}
-		dest_len = destp + src_count;
-	}
-
-	/* resize dest to fit src array only if it is currently too small */
+	/* manual copy for different widths */
+	int dest_len = destp + src_count;
 	if (m_len (dest) < dest_len)
-		m_setlen (dest, destp + src_count);
+		m_setlen (dest, dest_len);
 
-	/* shortcurt, nothing to copy */
 	if (src_count == 0)
 		return dest;
 
-	/* now we have checked: dest_len,dest,src_count,srcp,destp */
-
-	/* check if src and dest are of same element size */
-	if (m_width (src) == m_width (dest)) {
-		array_copy (dest, destp, src, srcp, src_count);
-		return dest;
-	}
-
-	/* copy each element from src to dest */
 	int width = Min (m_width (src), m_width (dest));
 	element_copy (dest, destp, src, srcp, src_count, width);
 	return dest;
@@ -646,64 +611,6 @@ int lookup_int (int m, int key)
 	}
 	TRACE (1, "ADD pos:%d key:%d", p, key);
 	return p;
-}
-
-/**
- * @brief Copies a portion of the list `m` starting at index `a` and ending at
- * index `b` to a new list at position `offs`, and returns the new list.
- *
- * - If `dest` is zero, a new destination list is created.
- * - Indices can be positive or negative:
- *   - Negative indices count from the end to the start of the list.
- *   - The first element is 0, and the last element is -1.
- *
- * Example:
- * @code
- *   m:    0    1    2    3    4
- *       -5   -4   -3   -2   -1
- * @endcode
- *
- * @param dest The destination list where the portion is copied. If set to 0, a
- * new list is created.
- * @param offs The offset position in the destination list where the copied
- * portion is placed.
- * @param m The source list from which the portion is copied.
- * @param a The starting index of the portion to be copied.
- * @param b The ending index of the portion to be copied.
- * @return The new list with the copied portion.
- */
-int m_slice (int dest, int offs, int m, int a, int b)
-{
-	if (!m) {
-		if (dest > 0)
-			m_setlen (dest, offs);
-		return dest;
-	}
-	int len = m_len (m);
-	if (b < 0) {
-		b += len;
-	}
-	if (a < 0) {
-		a += len;
-	}
-	if (b >= len)
-		b = len - 1;
-	if (a >= len)
-		a = len - 1;
-	if (a < 0)
-		a = 0;
-	int cnt = b - a + 1;
-	if (cnt < 0)
-		cnt = 1;
-	if (dest <= 0)
-		dest = m_create (cnt + offs, m_width (m));
-	m_setlen (dest, offs);
-	ASSERT (m_width (dest) == m_width (m));
-	for (int i = a; i <= b; i++) {
-		void *d = m_peek (m, i);
-		m_put (dest, d);
-	}
-	return dest;
 }
 
 /* slice for strings: add a zero byte to the end */

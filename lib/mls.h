@@ -198,6 +198,7 @@ void *m_pop (int m);
 int m_ins (int m, int p, int n);
 int m_width (int m);
 void m_resize (int m, int new_size);
+int m_slice (int dest, int offs, int m, int a, int b);
 void m_remove (int m, int p, int n);
 static inline char *m_str (int m) { return m && m_len (m) ? m_buf (m) : ""; };
 
