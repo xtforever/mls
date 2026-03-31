@@ -5,10 +5,36 @@
 #include "mls.h"
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /* how man strings before forced exit(122) to prevent OOM Killer */
 #define CONSTSTR_MAX 9000
 
+int s_new (void);
+void s_free (int h);
+int s_dup (const char *s);
+int s_clone (int h);
+int s_resize (int h, int len);
+void s_clear (int h);
+int s_has_prefix (int h, const char *prefix);
+int s_has_suffix (int h, const char *suffix);
+int s_from_long (long val);
+uint32_t s_hash (int h);
+int s_join (const char *sep, ...) __attribute__ ((__sentinel__ (0)));
+int s_cmp (int a, int b);
+int s_ncmp (int a, int b, int n);
+int s_chr (int h, int c, int off);
+int s_rchr (int h, int c);
+int s_find (int h, const char *sub);
+int s_spn (int h, const char *accept);
+int s_cspn (int h, const char *reject);
+int s_cat (int h, const char *src);
+int s_ncat (int h, const char *src, int n);
+int s_sub (int h, int pos, int len);
+int s_left (int h, int n);
+int s_right (int h, int n);
+int s_replace_c (int h, const char *old, const char *replacement);
+int s_trim_c (int h, const char *chars);
 void m_register_printf (void);
 
 /* m string (ms) : m-array of (char*) */

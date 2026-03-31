@@ -6,6 +6,9 @@ EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
 ALL: $(EXE_TARGETS) error-handler
 
+test_m_string.exe${OBJ}: test_m_string.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
 test_mls_core.exe${OBJ}: test_mls_core.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 

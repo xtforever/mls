@@ -52,6 +52,262 @@ void m_register_printf ()
 	}
 }
 
+int s_new (void) { return m_alloc (16, 1, MFREE); }
+
+void s_free (int h) { m_free (h); }
+
+int s_dup (const char *s)
+{
+	if (s == NULL || *s == 0)
+		return s_new ();
+	int h = s_new ();
+	s_app1 (h, (char *)s);
+	return h;
+}
+
+int s_clone (int h) { return m_dub (h); }
+
+int s_resize (int h, int len)
+{
+	if (h == 0 || len < 0)
+		return h;
+	m_setlen (h, len + 1);
+	CHAR (h, len) = 0;
+	return h;
+}
+
+void s_clear (int h) { m_clear (h); }
+
+int s_has_prefix (int h, const char *prefix)
+{
+	if (h == 0 || prefix == NULL)
+		return 0;
+	int pre_len = strlen (prefix);
+	int h_len = s_strlen (h);
+	if (pre_len > h_len)
+		return 0;
+	return strncmp (m_str (h), prefix, pre_len) == 0;
+}
+
+int s_has_suffix (int h, const char *suffix)
+{
+	if (h == 0 || suffix == NULL)
+		return 0;
+	int suf_len = strlen (suffix);
+	int h_len = s_strlen (h);
+	if (suf_len > h_len)
+		return 0;
+	const char *p = m_str (h) + h_len - suf_len;
+	return strcmp (p, suffix) == 0;
+}
+
+int s_from_long (long val)
+{
+	int h = s_new ();
+	s_printf (h, 0, "%ld", val);
+	return h;
+}
+
+uint32_t s_hash (int h)
+{
+	const char *s = m_str (h);
+	uint32_t hash = 5381;
+	int c;
+	while ((c = *s++))
+		hash = ((hash << 5) + hash) + c;
+	return hash;
+}
+
+int s_join (const char *sep, ...)
+{
+	int h = s_new ();
+	va_list ap;
+	char *s;
+	int first = 1;
+
+	va_start (ap, sep);
+	while ((s = va_arg (ap, char *)) != NULL) {
+		if (!first && sep && *sep)
+			s_app1 (h, (char *)sep);
+		first = 0;
+		s_app1 (h, s);
+	}
+	va_end (ap);
+	return h;
+}
+
+int s_cmp (int a, int b)
+{
+	if (a == 0 && b == 0)
+		return 0;
+	if (a == 0)
+		return -1;
+	if (b == 0)
+		return 1;
+	int len_a = s_strlen (a);
+	int len_b = s_strlen (b);
+	int min_len = len_a < len_b ? len_a : len_b;
+	int res = strncmp (m_str (a), m_str (b), min_len);
+	if (res != 0)
+		return res;
+	return len_a - len_b;
+}
+
+int s_ncmp (int a, int b, int n)
+{
+	if (a == 0 || b == 0 || n <= 0)
+		return 0;
+	const char *s1 = m_str (a);
+	const char *s2 = m_str (b);
+	return strncmp (s1, s2, n);
+}
+
+int s_chr (int h, int c, int off)
+{
+	if (h == 0 || off < 0)
+		return -1;
+	const char *s = m_str (h);
+	int len = s_strlen (h);
+	if (off >= len)
+		return -1;
+	const char *p = strchr (s + off, c);
+	if (p == NULL)
+		return -1;
+	return p - s;
+}
+
+int s_rchr (int h, int c)
+{
+	if (h == 0)
+		return -1;
+	const char *s = m_str (h);
+	int len = s_strlen (h);
+	for (int i = len - 1; i >= 0; i--) {
+		if (s[i] == c)
+			return i;
+	}
+	return -1;
+}
+
+int s_find (int h, const char *sub)
+{
+	if (h == 0 || sub == NULL || *sub == 0)
+		return -1;
+	const char *s = m_str (h);
+	const char *p = strstr (s, sub);
+	if (p == NULL)
+		return -1;
+	return p - s;
+}
+
+int s_spn (int h, const char *accept)
+{
+	if (h == 0 || accept == NULL)
+		return 0;
+	return strspn (m_str (h), accept);
+}
+
+int s_cspn (int h, const char *reject)
+{
+	if (h == 0 || reject == NULL)
+		return 0;
+	return strcspn (m_str (h), reject);
+}
+
+int s_cat (int h, const char *src)
+{
+	if (h == 0)
+		h = s_new ();
+	if (src)
+		s_app1 (h, (char *)src);
+	return h;
+}
+
+int s_ncat (int h, const char *src, int n)
+{
+	if (h == 0)
+		h = s_new ();
+	if (src && n > 0) {
+		size_t src_len = strlen (src);
+		int len = n < (int)src_len ? n : (int)src_len;
+		m_write (h, s_strlen (h), src, len);
+		m_putc (h, 0);
+	}
+	return h;
+}
+
+int s_sub (int h, int pos, int len)
+{
+	if (h == 0)
+		return s_new ();
+	int h_len = s_strlen (h);
+	if (pos < 0)
+		pos = 0;
+	if (len < 0 || pos >= h_len)
+		return s_new ();
+	if (pos + len > h_len)
+		len = h_len - pos;
+	int new_h = s_new ();
+	m_write (new_h, 0, m_str (h) + pos, len);
+	m_putc (new_h, 0);
+	return new_h;
+}
+
+int s_left (int h, int n) { return s_sub (h, 0, n); }
+
+int s_right (int h, int n)
+{
+	if (h == 0 || n <= 0)
+		return s_new ();
+	int h_len = s_strlen (h);
+	if (n >= h_len)
+		return s_clone (h);
+	return s_sub (h, h_len - n, n);
+}
+
+int s_replace_c (int h, const char *old, const char *replacement)
+{
+	if (h == 0 || old == NULL || *old == 0)
+		return s_clone (h);
+	if (replacement == NULL)
+		replacement = "";
+
+	int new_h = s_new ();
+	const char *s = m_str (h);
+	const char *start = s;
+	const char *p;
+	int old_len = strlen (old);
+
+	while ((p = strstr (start, old)) != NULL) {
+		if (p > start)
+			s_ncat (new_h, start, p - start);
+		s_cat (new_h, replacement);
+		start = p + old_len;
+	}
+	s_cat (new_h, start);
+	return new_h;
+}
+
+int s_trim_c (int h, const char *chars)
+{
+	if (h == 0)
+		return s_new ();
+	if (chars == NULL || *chars == 0)
+		chars = " \t\n\r";
+
+	const char *s = m_str (h);
+	int len = s_strlen (h);
+	int start = 0;
+	int end = len - 1;
+
+	while (start <= end && strchr (chars, s[start]))
+		start++;
+	while (end >= start && strchr (chars, s[end]))
+		end--;
+
+	return s_sub (h, start, end - start + 1);
+}
+
 int m_str_va_app (int m, va_list ap)
 {
 	char *name;
