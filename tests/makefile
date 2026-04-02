@@ -21,8 +21,8 @@ test_mls_core.exe${OBJ}: test_mls_core.o${OBJ} $(DEPS)
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-error-handler: error-handler.c ../lib/mls.c ../lib/mls.h ../lib/m_tool.c  ../lib/m_tool.h
-	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls.c ../lib/m_tool.c -I ../lib
+error-handler: error-handler.c mls.c mls.h m_tool.c  m_tool.h m_table.h m_table.c
+	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls.c ../lib/m_tool.c ../lib/m_table.c -I ../lib
 
 test_ssplit.exe${OBJ}: test_ssplit.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -91,7 +91,7 @@ check-leaks: $(EXE_TARGETS)
 	done
 
 clean:
-	-${RM} $(EXE_TARGETS) *.o *.od *~ *.lex.* *.tab.* error-handler
+	-${RM} $(EXE_TARGETS) *.o *.od *~ *.lex.* *.tab.* ../lib/*.od ../lib/*.o error-handler
 
 
 extra: clean ALL

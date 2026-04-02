@@ -14,7 +14,6 @@ static int field_escape (int s2, char *s, int quotes);
 static void repl_char (int buf, char ch);
 
 /* alphabetisch sortierte liste von mstr */
-static int CONSTSTR_DATA = 0;
 static int CS_ZERO = -1;
 
 /* Relocated Core Utilities */
@@ -1327,4 +1326,130 @@ int s_readln (int buf, FILE *fp)
 	m_putc (buf, 0);
 	m_setlen (buf, m_len (buf) - 1);
 	return m_len (buf);
+}
+
+
+/**
+ * Creates a ring buffer (circular buffer) of integers.
+ *
+ * @param size The capacity of the ring buffer.
+ * @return The handle of the new ring buffer.
+ */
+int ring_create (int size)
+{
+	int r = m_create (size + 1, sizeof (int));
+	lst_t *lp = exported_get_list (r);
+	int *rd = lst_peek (*lp, 0);
+	int *wr = &(*lp)->l;
+	*rd = -1;
+	*wr = 1;
+	return r;
+}
+
+/**
+ * Checks if a ring buffer is empty.
+ *
+ * @param r The ring buffer handle.
+ * @return 1 if empty, 0 otherwise.
+ */
+int ring_empty (int r)
+{
+	lst_t *lp = exported_get_list (r);
+	int *rd = lst_peek (*lp, 0);
+	return (*rd < 0);
+}
+
+/**
+ * Checks if a ring buffer is full.
+ *
+ * @param r The ring buffer handle.
+ * @return 1 if full, 0 otherwise.
+ */
+int ring_full (int r)
+{
+	lst_t *lp = exported_get_list (r);
+	int *rd = lst_peek (*lp, 0);
+	int *wr = &(*lp)->l;
+	return (*rd == *wr);
+}
+
+/**
+ * Appends an integer to a ring buffer.
+ *
+ * @param r The ring buffer handle.
+ * @param data The integer to append.
+ * @return 0 on success, -1 if the buffer is full.
+ */
+int ring_put (int r, int data)
+{
+	lst_t *lp = exported_get_list (r);
+	int *rd = lst_peek (*lp, 0);
+	int *wr = &(*lp)->l;
+	int max = (*lp)->max;
+	int *d = lst_peek (*lp, *wr);
+	if (*rd == *wr)
+		return -1;
+	*d = data;
+	if (*rd < 0)
+		*rd = *wr;
+	(*wr)++;
+	if (*wr >= max)
+		*wr = 1;
+	return 0;
+}
+
+/**
+ * Retrieves and removes the oldest integer from a ring buffer.
+ *
+ * @param r The ring buffer handle.
+ * @return The integer retrieved, or -1 if the buffer is empty.
+ */
+int ring_get (int r)
+{
+	lst_t *lp = exported_get_list (r);
+	int *rd = lst_peek (*lp, 0);
+	int *wr = &(*lp)->l;
+	int max = (*lp)->max;
+	if (*rd < 0)
+		return -1;
+	int *d = lst_peek (*lp, *rd);
+	(*rd)++;
+	if (*rd >= max)
+		*rd = 1;
+	if (*rd == *wr)
+		*rd = -1;
+	return *d;
+}
+
+/**
+ * Frees a ring buffer.
+ *
+ * @param r The ring buffer handle.
+ */
+void ring_free (int r) { m_free (r); }
+
+
+/**
+ * Specialized free function for lists containing dynamically allocated strings (char *).
+ * Frees each string in the list and optionally the list handle itself.
+ *
+ * @param list The handle of the string list.
+ * @param CLEAR_ONLY If non-zero, the strings are freed and the list is cleared, but the handle remains.
+ *                   If zero, the handle itself is also freed.
+ */
+void m_free_strings (int list, int CLEAR_ONLY)
+{
+	int index;
+	char **strp;
+	if (list < 1)
+		return;
+	for (index = -1; m_next (list, &index, &strp);) {
+		if (*strp)
+			free (*strp);
+		*strp = NULL;
+	}
+	if (CLEAR_ONLY)
+		m_clear (list);
+	else
+		m_free (list);
 }

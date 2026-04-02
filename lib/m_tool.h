@@ -166,4 +166,15 @@ void escape_buf (int buf, char *src);
 
 enum { VAR_APPEND = -1, VAR_RENAME = 0, VAR_SET = 1 };
 
+
+void ring_free (int r);
+int ring_get (int r);
+int ring_put (int r, int data);
+int ring_full (int r);
+int ring_empty (int r);
+int ring_create (int size);
+
+void m_free_strings (int list, int CLEAR_ONLY);
+
+
 #endif

@@ -91,13 +91,24 @@ enum predefined_free_handler {
 	MFREE_EACH = 2,
 	MFREE_MAX = 2
 };
-
+typedef void (*free_fn_t) ( int m );
+	
+/* the function free_fn will be called if m_free(this array) is called
+   the free_fn can now iterate and clean all elements of the array,
+   before this array is removed.
+   the returned value is the handle id that you supply to m_alloc.
+*/
+int m_reg_freefn ( free_fn_t free_fn );
 int m_alloc (int max, int w, uint8_t hfree);
 int m_free (int m);
-int m_reg_freefn (int n, void (*free_fn) (lst_t l));
+	
 int m_is_freed (int h);
 int m_free_hdl (int h);
 
+	
+
+
+	
 int m_len (int m);
 void *m_buf (int m);
 
@@ -147,16 +158,8 @@ int _m_alloc (int ln, const char *fn, const char *fun, int n, int w,
 #define m_cat(h, s) m_write (h, m_len (h), (s), strlen ((s)))
 #define MSTR(x) ((char *)mls (x, 0))
 
-void ring_free (int r);
-int ring_get (int r);
-int ring_put (int r, int data);
-int ring_full (int r);
-int ring_empty (int r);
-int ring_create (int size);
-
 typedef char utf8_char_t[6];
 void m_bzero (int m);
-void m_free_strings (int list, int CLEAR_ONLY);
 void m_skip (int m, int n);
 int m_fscan2 (int m, char delim, FILE *fp);
 int m_fscan (int m, char delim, FILE *fp);

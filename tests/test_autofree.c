@@ -62,16 +62,18 @@ void test_mfree_each ()
 }
 
 static int custom_free_called = 0;
-void my_custom_free (lst_t l) { custom_free_called++; }
+void my_custom_free ( int x ) { custom_free_called++; }
 
 void test_custom_free ()
 {
 	printf ("Testing custom free handler...\n");
-	int hdl = m_reg_freefn (MFREE_MAX + 1, my_custom_free);
+	int hdl = m_reg_freefn (my_custom_free);
 	int m = m_alloc (10, sizeof (int), hdl);
 	int val = 99;
 	m_put (m, &val);
-
+	val--;
+	m_put (m, &val);
+	custom_free_called = 0;
 	m_free (m);
 	assert (custom_free_called == 1);
 	assert (m_is_freed (m));

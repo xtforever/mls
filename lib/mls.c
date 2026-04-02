@@ -1,5 +1,9 @@
+
+/* disable macros to override m_alloc, ... */
 #define MLS_DEBUG_DISABLE
 #include "mls.h"
+
+
 #include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -10,6 +14,11 @@
 /* Debug globals */
 int trace_level = 0;
 static int error_occurred = 0;
+static lst_t freefn = 0;
+/* this could be a define but that is not easy to debug */
+static inline int REAL_HDL( int m ) { return (m &  0xffffff) - 1; }
+static int UAF_PROTECTION = 0;
+
 
 /**
  * Prints an error message with file and line information and terminates the program.
@@ -486,35 +495,36 @@ int lst_write (lst_t *lp, int p, const void *data, int n)
 	return 0;
 }
 
-static lst_t freefn = 0;
+
 
 /**
  * Internal function to retrieve a pointer to the list structure associated with a handle.
  * Performs validation checks for handle range, existence, and UAF protection.
- *
- * @param ln Line number of the caller.
- * @param fn Filename of the caller.
- * @param fun Function name of the caller.
  * @param m The handle to look up.
  * @return A pointer to the list structure pointer in the master list.
  */
-static lst_t *_get_list (int ln, const char *fn, const char *fun, int m)
-{
-	if (!ML)
-		deb_err (ln, fn, fun, "Not Init.");
-	int i = (m & 0xffffff) - 1;
-	if (i < 0 || i >= ML->l)
-		deb_err (ln, fn, fun, "Invalid Handle %d", m);
-	lst_t *l = (lst_t *)lst (ML, i);
-	if (!*l)
-		deb_err (ln, fn, fun, "Handle %d already freed", m);
-	if (((m >> 24) & 0x7f) != (**l).uaf_protection) {
-		deb_err (ln, fn, fun, "Handle %d protection pattern mismatch: expected %d, got %d", m, (m >> 24) & 0x7f, (**l).uaf_protection);
+
+static inline lst_t * get_list(int m) {
+	if ( ML == 0 ) {
+		ERR("Not initialized");
 	}
+	int idx =  (m & 0xffffff) - 1;
+	int uaf =  ((m >> 24) & 0x7f);
+	if (idx < 0 || idx >= ML->l) {
+		ERR( "Invalid Handle %d", idx );
+	}
+	lst_t *l = (lst_t *)lst(ML, idx);
+	if (*l == NULL) {
+		ERR("List %d not allocated", idx );
+	}
+	
+	if ( (*l)->uaf_protection != uaf ) {
+		ERR("uaf protection pattern does not match, expected:%d, got:%d",
+		    (*l)->uaf_protection, uaf );
+	}
+
 	return l;
 }
-
-#define get_list(m) _get_list(__LINE__, __FILE__, __FUNCTION__, m)
 
 /**
  * Public accessor for getting a list pointer from a handle.
@@ -527,18 +537,18 @@ lst_t *exported_get_list (int r) { return get_list (r); }
 extern void m_free_strings (int list, int CLEAR_ONLY);
 
 /**
- * Wrapper for m_free_strings to be used as a custom free handler.
+ * same as m_free_strings to be used as a custom free handler.
  *
  * @param l The list structure being freed.
  */
-static void free_strings_wrap (lst_t l)
+static void free_strings_wrap (int h)
 {
-	int p = -1;
-	char **strp;
-	while (lst_next (l, &p, &strp)) {
-		if (*strp)
-			free (*strp);
-		*strp = NULL;
+	int p; char **d;
+	m_foreach(h,p,d) {
+		if (*d) {
+			free (*d);
+			*d = NULL;
+		}
 	}
 }
 
@@ -547,12 +557,24 @@ static void free_strings_wrap (lst_t l)
  *
  * @param l The list structure being freed.
  */
-static void free_list_wrap (lst_t l)
+static void free_list_wrap (int h)
 {
-	int p = -1, *d;
-	while (lst_next (l, &p, &d)) {
-		if (*d > 0 && !m_is_freed (*d)) {
+	TRACE(1,"HDL:%d", REAL_HDL(h));
+	int p, *d;
+	m_foreach(h,p,d) {
+		/* what happens when a list is inserted twice ? 
+		   can we check if we freed the list? then it is not an error.
+		   right now, we just ignore double-free error
+		 */
+		if(  m_is_freed(*d) ) {
+			TRACE(1,"not freeing list %d allready freed", *d );
+		}
+		else {	
+		#ifdef MLS_DEBUG
+			_m_free (__LINE__, __FILE__, __FUNCTION__, (*d));
+		#else
 			m_free (*d);
+		#endif
 		}
 	}
 }
@@ -570,7 +592,7 @@ int m_init ()
 	ML = lst_create (100, sizeof (lst_t));
 	FR = lst_create (100, sizeof (int));
 	freefn = lst_create (MFREE_MAX + 1, sizeof (void *));
-	void (*f) (lst_t) = NULL; /* Stub for simple free */
+	free_fn_t f = NULL;
 	lst_put (&freefn, &f);
 	f = free_strings_wrap;
 	lst_put (&freefn, &f);
@@ -634,6 +656,7 @@ int m_alloc (int max, int w, uint8_t hfree)
 	lst_t *l = (lst_t *)lst (ML, h);
 	*l = lst_create (max, w);
 	(*l)->free_hdl = hfree;
+	(*l)->uaf_protection = UAF_PROTECTION;
 	int res = (h + 1) | (((int)(*l)->uaf_protection) << 24);
 	return res;
 }
@@ -656,49 +679,52 @@ int m_create (int max, int w) { return m_alloc (max, w, MFREE); }
  */
 int m_free (int m)
 {
-	if (m == DEB && DEB > 0) {
-	}
+	TRACE(1, "Hdl:%d real: %d", m, REAL_HDL(m) );
+	if( m == 0 ) return 0;
 	lst_t *lp = get_list (m);
 	lst_t l_ptr = *lp;
 	int hdl = l_ptr->free_hdl;
+	int realh =  REAL_HDL(m);
+	
+	if( hdl == 255 ) {
+		TRACE(1, "HDL %d free-in-progress", realh );
+		return 0;
+	};
+
+
 	if (hdl >= freefn->l)
-		ERR ("No free handler for %d", m);
+		ERR ("free handler %d for list %d is invalid max: %d", hdl, realh, freefn->l );
+	
+	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
 
-	/* Mark handle as being freed by setting to 0 in slot, 
-	   and increment pattern immediately to prevent re-entry 
-	   via m_is_freed checks in free handlers.
-	*/
-	*lp = 0;
-	l_ptr->uaf_protection = (l_ptr->uaf_protection + 1) & 0x7f;
-
-	void (*f) (lst_t) = *(void (**) (lst_t))lst (freefn, hdl);
-	if (f) {
-		f (l_ptr);
+	if ( hdl >  0 ) { 
+		l_ptr->free_hdl = 255; /* Mark handle as being freed */
+		free_fn_t *xfree = lst (freefn, hdl);
+		if (*xfree) (*xfree) (m);
 	}
 
-	free (l_ptr);
-	int i = (m & 0xffffff) - 1;
-	lst_put (&FR, &i);
+	free(*lp);
+	*lp=0;
+	lst_put(&FR, &realh);
+	TRACE(1, "freed: %d, real:%d", m, realh );
+
+	
 	return 0;
 }
 
 /**
- * Registers a custom free handler function at a specific index.
+ * @brief Registers a  a cleanup callback for managed arrays 
+ * The @p free_fn is triggered automatically when m_free() is called.
+ * This allows for custom iteration and deallocation of array elements
+ * before the array container itself is removed.
  *
- * @param n The index (handler ID) to register at.
  * @param free_fn The function to be called when freeing handles with this handler ID.
- * @return The handler ID on success, -1 if index is invalid.
+ * @return The handler ID on success, -1 if handler is invalid or too many handlers registered.
  */
-int m_reg_freefn (int n, void (*free_fn) (lst_t l))
+int m_reg_freefn ( free_fn_t  free_fn )
 {
-	if (n < 0)
-		return -1;
-	if (n >= freefn->max)
-		lst_resize (&freefn, n + 1);
-	if (n >= freefn->l)
-		freefn->l = n + 1;
-	*(void (**) (lst_t))lst (freefn, n) = free_fn;
-	return n;
+	if( freefn->l >= 255 || ! free_fn ) return -1;
+	return lst_put ( &freefn, & free_fn );
 }
 
 /**
@@ -719,6 +745,7 @@ int m_is_freed (int h)
 		return 1;
 	if (((h >> 24) & 0x7f) != (**l).uaf_protection)
 		return 1;
+	if( (**l).free_hdl == 255 ) return 1;
 	return 0;
 }
 
@@ -742,11 +769,8 @@ int m_free_hdl (int h)
  */
 int m_len (int m)
 {
-	if (!ML) return 0;
-	int i = (m & 0xffffff) - 1;
-	if (i < 0 || i >= ML->l) return 0;
-	lst_t l = ((lst_t *)ML->d)[i];
-	return l ? l->l : 0;
+  lst_t *lp = get_list(m);
+  return (**lp).l;
 }
 
 /**
@@ -757,11 +781,7 @@ int m_len (int m)
  */
 void *m_buf (int m)
 {
-	if (!ML) return NULL;
-	int i = (m & 0xffffff) - 1;
-	if (i < 0 || i >= ML->l) return NULL;
-	lst_t l = ((lst_t *)ML->d)[i];
-	return l ? l->d : NULL;
+	return m_peek(m, 0);
 }
 
 /**
@@ -790,10 +810,6 @@ void *mls (int m, int i)
  */
 int m_new (int m, int n)
 {
-	if (m == DEB && DEB > 0) {
-		/* Accessing ML[0] just for debugging trigger/breakpoint */
-		(void)lst(ML, 0);
-	}
 	lst_t *lp = get_list (m);
 	return lst_new (lp, n);
 }
@@ -1028,8 +1044,13 @@ int m_slice (int dest, int offs, int m, int a, int b)
 	int cnt = b - a + 1;
 	if (cnt < 0)
 		cnt = 0;
-	if (dest <= 0)
-		dest = m_create_internal (cnt + offs, m_width (m));
+	if (dest <= 0) {
+                #ifdef MLS_DEBUG
+		dest = _m_create (__LINE__, __FILE__, __FUNCTION__, cnt + offs, m_width (m) );
+		#else
+		dest = m_create (cnt + offs, m_width (m));		
+		#endif
+	}
 	m_setlen (dest, offs);
 	if (cnt > 0) {
 		m_write (dest, offs, mls (m, a), cnt);
@@ -1051,30 +1072,6 @@ void m_remove (int m, int p, int n)
 	lst_remove (lp, p, n);
 }
 
-/**
- * Specialized free function for lists containing dynamically allocated strings (char *).
- * Frees each string in the list and optionally the list handle itself.
- *
- * @param list The handle of the string list.
- * @param CLEAR_ONLY If non-zero, the strings are freed and the list is cleared, but the handle remains.
- *                   If zero, the handle itself is also freed.
- */
-void m_free_strings (int list, int CLEAR_ONLY)
-{
-	int index;
-	char **strp;
-	if (list < 1)
-		return;
-	for (index = -1; m_next (list, &index, &strp);) {
-		if (*strp)
-			free (*strp);
-		*strp = NULL;
-	}
-	if (CLEAR_ONLY)
-		m_clear (list);
-	else
-		m_free (list);
-}
 
 /**
  * Zeroes out the entire data buffer of a handle's list.
@@ -1085,26 +1082,6 @@ void m_bzero (int m)
 {
 	lst_t *lp = get_list (m);
 	memset ((**lp).d, 0, (**lp).l * (**lp).w);
-}
-
-/**
- * Removes n elements from the beginning of a handle's list.
- * Remaining elements are shifted to the start of the buffer.
- *
- * @param m The handle.
- * @param n The number of elements to skip.
- */
-void m_skip (int m, int n)
-{
-	lst_t *lp = get_list (m);
-	if (n <= 0)
-		return;
-	if (n >= (**lp).l) {
-		(**lp).l = 0;
-		return;
-	}
-	memmove ((**lp).d, lst (*lp, n), ((**lp).l - n) * (**lp).w);
-	(**lp).l -= n;
 }
 
 /**
@@ -1462,104 +1439,6 @@ int m_bsearch_int (int buf, int key)
 	return m_bsearch (&key, buf, cmp_int);
 }
 
-/**
- * Creates a ring buffer (circular buffer) of integers.
- *
- * @param size The capacity of the ring buffer.
- * @return The handle of the new ring buffer.
- */
-int ring_create (int size)
-{
-	int r = m_create_internal (size + 1, sizeof (int));
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
-	*rd = -1;
-	*wr = 1;
-	return r;
-}
-
-/**
- * Checks if a ring buffer is empty.
- *
- * @param r The ring buffer handle.
- * @return 1 if empty, 0 otherwise.
- */
-int ring_empty (int r)
-{
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	return (*rd < 0);
-}
-
-/**
- * Checks if a ring buffer is full.
- *
- * @param r The ring buffer handle.
- * @return 1 if full, 0 otherwise.
- */
-int ring_full (int r)
-{
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
-	return (*rd == *wr);
-}
-
-/**
- * Appends an integer to a ring buffer.
- *
- * @param r The ring buffer handle.
- * @param data The integer to append.
- * @return 0 on success, -1 if the buffer is full.
- */
-int ring_put (int r, int data)
-{
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
-	int max = (*lp)->max;
-	int *d = lst_peek (*lp, *wr);
-	if (*rd == *wr)
-		return -1;
-	*d = data;
-	if (*rd < 0)
-		*rd = *wr;
-	(*wr)++;
-	if (*wr >= max)
-		*wr = 1;
-	return 0;
-}
-
-/**
- * Retrieves and removes the oldest integer from a ring buffer.
- *
- * @param r The ring buffer handle.
- * @return The integer retrieved, or -1 if the buffer is empty.
- */
-int ring_get (int r)
-{
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
-	int max = (*lp)->max;
-	if (*rd < 0)
-		return -1;
-	int *d = lst_peek (*lp, *rd);
-	(*rd)++;
-	if (*rd >= max)
-		*rd = 1;
-	if (*rd == *wr)
-		*rd = -1;
-	return *d;
-}
-
-/**
- * Frees a ring buffer.
- *
- * @param r The ring buffer handle.
- */
-void ring_free (int r) { m_free (r); }
 
 /* Debug implementations */
 
@@ -1632,7 +1511,7 @@ int _m_create (int ln, const char *fn, const char *fun, int n, int w)
 	lo->fn = fn;
 	lo->fun = fun;
 	lo->allocated = 42;
-	TRACE (1, "NEW LIST %d allocated by %s:%d in %s", m, fun, ln, fn);
+	TRACE (1, "NEW LIST %d (real: %d) allocated by %s:%d in %s", m_uaf, m-1, fun, ln, fn);
 	return m_uaf;
 }
 
@@ -1659,7 +1538,7 @@ int _m_free (int ln, const char *fn, const char *fun, int m)
 	o->ln = -ln;
 	o->fun = fun;
 	o->fn = fn;
-	TRACE (1, "Free List %d", h);
+	TRACE (1, "DEB Free List %d", h);
 	return 0;
 }
 
