@@ -20,10 +20,12 @@ Simply include `lib/mls.h` in your project and link against `lib/mls.c` or the c
 gcc -I./lib your_program.c lib/mls.c -o your_program
 ```
 
-## Key Modules
-- **`lib/`**: The core `mls` library (`mls.h`, `mls.c`).
-- **`m_tool/`**: Utility tools for the `mls` ecosystem.
-- **`m_table/`**: A dictionary-like data structure for storing MLS handles, accessible by name or integer, with introspection.
+## Key Modules (all in `lib/`)
+- **`mls.h/c`**: The core `mls` library and handle management.
+- **`m_tool.h/c`**: Comprehensive string handling (`s_printf`, `s_app`, `s_split`, `s_join`), variables, and the `se_string` expansion system.
+- **`m_extra.h/c`**: Extended string utilities (case-insensitive comparison, padding, reversal, classification).
+- **`m_table.h/c`**: A dictionary-like data structure for storing MLS handles, accessible by name or integer, with introspection.
+- **`m_http.h/c`, `m_hdf.h/c`, `m_flask.h/c`**: Web and data format extensions.
 
 ## Usage
 
@@ -31,6 +33,14 @@ gcc -I./lib your_program.c lib/mls.c -o your_program
 
 #### MLS Library
 The core of the library is the handle system. Instead of managing pointers to structures, you receive an `int` handle. All operations (adding, reading, deleting) are performed using this handle.
+
+### Advanced String Handling
+Beyond simple arrays, `mls` provides a powerful suite of string utilities:
+- **`s_printf(h, p, fmt, ...)`**: Build strings with automatic resizing.
+- **`se_string(vl, fmt)`**: Modern string interpolation with variable expansion (`$var`, `$var[index]`, `$var[*]`).
+- **`m_extra`**: Case-insensitive comparisons, directional trimming, padding, and more.
+
+[Read the String Documentation](docs/strings.md) and [Expansion Documentation](docs/string_expansion.md).
 
 #### Handles
 A handle is a 32-bit integer. The lower 24 bits represent the index in the global list of arrays, while the upper 8 bits are used for UAF (Use-After-Free) protection.

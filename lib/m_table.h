@@ -31,6 +31,9 @@ typedef enum {
 // Returns a table handle (int) or 0 on error.
 int m_table_create ();
 
+// Returns 1 if the handle is a table, 0 otherwise.
+int m_is_table (int table_h);
+
 // Frees the table and its contents recursively.
 // Cleans up all string handles, list handles, and nested table handles.
 void m_table_free (int table_h);

@@ -43,6 +43,7 @@ void flask_status (int res, int code);
 void flask_set_header (int res, const char *key, const char *val);
 void flask_printf (int res, const char *fmt, ...)
 	__attribute__ ((format (printf, 2, 3)));
+void flask_render (int req, int res, const char *fmt);
 void flask_json (int res, int status, const char *json);
 void flask_json_h (int res, int status, int json_h);
 void flask_file (int res, const char *path);

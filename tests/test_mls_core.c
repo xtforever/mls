@@ -1,4 +1,5 @@
 #include "mls.h"
+#include "m_tool.h"
 /* Conflict resolution: mls.h defines ASSERT, so does greatest.h.
    We undefine the one from mls.h before including greatest.h */
 #undef ASSERT

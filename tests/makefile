@@ -1,12 +1,18 @@
 include ../rules.mk
 
-TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced
-DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ}
+TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string
+DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
 ALL: $(EXE_TARGETS) error-handler
 
 test_m_string.exe${OBJ}: test_m_string.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_extra.exe${OBJ}: test_extra.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_se_string.exe${OBJ}: test_se_string.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_mls_core.exe${OBJ}: test_mls_core.o${OBJ} $(DEPS)

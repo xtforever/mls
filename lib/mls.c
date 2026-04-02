@@ -1,55 +1,112 @@
-#ifdef S_SPLINT_S
-#define __BEGIN_DECLS
-#endif
-
 #define MLS_DEBUG_DISABLE
 #include "mls.h"
-
 #include <errno.h>
-#include <limits.h>
-#include <search.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-static const char *Version =
-	"Version:$Id: mls.c,v 1.1.1.1 2010-02-12 08:04:52 jens Exp $";
+/* Debug globals */
+int trace_level = 0;
+static int error_occurred = 0;
 
-// HISTORY:
-//
-// 2007/11/23 nomux BUG: lst_new, m_new: LP->max not updated when array is
-// resized
-//
-// 2007/12/18 nomux OPT: m_free, m_create: dont scan for free entries, just put
-// them into a new list.
-//
-// 2007-12-25 nomux: m_free(): ignore h==0 instead of abort with error
-//
-// 2011-02-04 nomux: m_ins: added n==0 -> error, keine erlaubnis 0 elemente
-// einzufÃ¼gen
-//
-// 2012-03-09 nomux: deb_err: removed "debi.me=0". es sollte verhindert werden
-// das nach einem internen fehler noch ueberflÃ¼ssige melden erscheinen. dies
-// funktionierte ganz und gar nicht. stattdessen wurde die
-// fehler-rÃ¼ckverfolgung abgeschaltet.
-//
-// 2012-03-12 nomux: m_setlen verwendet jetzt lst_resize um neuen speicher zu
-// allokieren
+/**
+ * Prints an error message with file and line information and terminates the program.
+ * Sets the error_occurred flag for post-mortem analysis.
+ *
+ * @param line The line number where the error occurred.
+ * @param file The source file where the error occurred.
+ * @param function The function where the error occurred.
+ * @param format The format string for the error message.
+ */
+void deb_err (int line, const char *file, const char *function,
+	      const char *format, ...)
+{
+	error_occurred = 1;
+	va_list ap;
+	char buf[1024];
+	int err = errno;
+	va_start (ap, format);
+	vsnprintf (buf, sizeof (buf), format, ap);
+	va_end (ap);
+	fprintf (stderr, "\n[mls error] %s:%d %s(): %s\n", file, line, function,
+		 buf);
+	if (err)
+		perror ("  system error");
+	exit (1);
+}
 
-// 2014-02-16 lst_remove remove multiple items bug, m_init, _m_init do not
-// terminate prog 2014-06-30 lst_resize, lst_create - fill allocated memory with
-// 0 2014-07-09 m_utf8getchar - benutzt jetzt neue UTF8CHAR 2014-07-09 void
-// m_qsort( int list, int(*compar)(const void *, const void *)) 2016-11-27
-// mstr_to_long 2018-12-28 m_write, lst_write
-//            lst_write bug: if m_len(m) and count=0 -> error
-// 2019-03-13 BUG: buffer overflow in deb_xxx better use vsnprintf :-)
-// 2021-05-11 m_next do nothing if list==0
-// 2021-11-22 BUG: lst_resize - fill new memory with zero
-// 2023-12-18 FEATURE: m_next : allow data==NULL
-// 2024-03-20 m_free_list( (void) user_free( void*, void* ), void *user_data )
-// 2024-06-09 BUG: s_index missing p++
-// -----------------------------------------------------------------------------------------------------
+/**
+ * Prints a warning message with file and line information.
+ *
+ * @param line The line number where the warning occurred.
+ * @param file The source file where the warning occurred.
+ * @param function The function where the warning occurred.
+ * @param format The format string for the warning message.
+ */
+void deb_warn (int line, const char *file, const char *function,
+	       const char *format, ...)
+{
+	va_list ap;
+	char buf[1024];
+	va_start (ap, format);
+	vsnprintf (buf, sizeof (buf), format, ap);
+	va_end (ap);
+	fprintf (stderr, "[mls warn] %s:%d %s(): %s\n", file, line, function,
+		 buf);
+}
+
+/**
+ * Prints a trace message if the provided level is greater than or equal to trace_level.
+ *
+ * @param l The trace level of this message.
+ * @param line The line number where the trace occurred.
+ * @param file The source file where the trace occurred.
+ * @param function The function where the trace occurred.
+ * @param format The format string for the trace message.
+ */
+void deb_trace (int l, int line, const char *file, const char *function,
+		const char *format, ...)
+{
+	va_list ap;
+	char buf[1024];
+	va_start (ap, format);
+	vsnprintf (buf, sizeof (buf), format, ap);
+	va_end (ap);
+	fprintf (stderr, "[mls trace %d] %s(): %s\n", l, function, buf);
+}
+
+// ********************************************
+//
+// lst_XXX and
+// m_XXX implementation
+//
+// ********************************************
+
+lst_t ML = 0; // stack allocated vars
+lst_t FR = 0; // stack freed vars
+
+/**
+ * Returns the current size of the master list (stack of allocated handles).
+ *
+ * @return The number of handles in the master list.
+ */
+int print_stacksize ()
+{
+	if (!ML)
+		return 0;
+	return ML->l;
+}
+
+/**
+ * Returns a pointer to the element at the specified index in a list structure.
+ *
+ * @param l The list structure.
+ * @param i The index of the element.
+ * @return A pointer to the element data.
+ */
+void *lst (lst_t l, int i) { return &l->d[l->w * i]; }
 
 struct lst_owner_st {
 	int allocated;
@@ -68,786 +125,20 @@ struct debug_info_st {
 };
 
 static struct debug_info_st debi;
-static int m_free_simple (int h); /* was: m_free */
-
-//
-// Error Reporting
-// Run-time TRACE
-//
-
-int trace_level = 0;
-static char buf[4096];
-
-void deb_err (int line, const char *file, const char *function,
-	      const char *format, ...)
-{
-
-	va_list argptr;
-	int err = errno;
-	va_start (argptr, format);
-	vsnprintf (buf, sizeof (buf), format, argptr);
-	va_end (argptr);
-
-	fprintf (stderr, "\n[mls error] %s:%d %s(): %s\n", file, line, function,
-		 buf);
-	if (err)
-		perror ("  system error");
-	exit (1);
-}
-
-void deb_warn (int line, const char *file, const char *function,
-	       const char *format, ...)
-{
-
-	va_list argptr;
-
-	va_start (argptr, format);
-	vsnprintf (buf, sizeof (buf), format, argptr);
-	va_end (argptr);
-
-	fprintf (stderr, "[mls warning] %s:%d %s(): %s\n", file, line, function,
-		 buf);
-}
-
-void deb_trace (int l, int line, const char *file, const char *function,
-		const char *format, ...)
-{
-
-	va_list argptr;
-	(void)line;
-	(void)file;
-
-	va_start (argptr, format);
-	vsnprintf (buf, sizeof (buf), format, argptr);
-	va_end (argptr);
-
-	fprintf (stderr, "[mls trace %d] %s(): %s\n", l, function, buf);
-}
-
-//
-// Error Checking:
-//   lst
-//     Out of Memory --> exit(1)
-//     Wrong Args    --> exit(1)
-//
-//
-//  mlsdb
-//     saves caller
-//     gathers informations on alloc/free
-//
-//
-// ********************************************
-//
-// lst_XXX and
-// m_XXX implementation
-//
-// ********************************************
-
-lst_t ML = 0; // stack allocated vars
-lst_t FR = 0; // stack freed vars
-
-int print_stacksize ()
-{
-	printf ("STACKSIZE: %d\n", ML->l);
-	return 0;
-}
-
-/** this functions calls realloc and fills the newly allocated memory with zeros
- * in case realloc returns zero this exits with an error message
- */
-void *reallocz (void *pBuffer, size_t oldSize, size_t newSize)
-{
-	void *pNew = realloc (pBuffer, newSize);
-	if (!pNew)
-		ERR ("could not realloc buffer");
-	if (newSize > oldSize && pNew) {
-		size_t diff = newSize - oldSize;
-		void *pStart = ((char *)pNew) + oldSize;
-		memset (pStart, 0, diff);
-	}
-	return pNew;
-}
-
-// returns: ptr to element i
-// R: NULL - index out of bounds
-void *lst (lst_t l, int i)
-{
-	if (i >= l->l || i < 0)
-		ERR ("Index %d out of bounds (used: %d, max: %d)", i, l->l,
-		     l->max);
-	return &l->d[l->w * i];
-}
-
-//! X!
-// R: NULL - out of memory
-lst_t lst_create (int max, int w)
-{
-	lst_t l = (lst_t)calloc (1, (max * w) + sizeof (struct ls_st));
-	if (!l)
-		ERR ("Out of Memory");
-	l->max = max;
-	l->l = 0;
-	l->w = w;
-	return l;
-}
-
-// alloc space for (n) items
-// if n == 1: if neccessary optimize resize
-// if n > 1: alloc at most n items
-// returns: -1 - error, >=0 - index of new item
-int lst_new (lst_t *LP, int n)
-{
-	int max = (**LP).max;
-	int len = (**LP).l;
-	int space = max - len - n;
-
-	// not enough space left
-	if (space < 0) {
-		if (space == -1) // resize by 1.5
-			max = (max >> 1) + 1 + max;
-		else
-			max = len + n;
-		int new_size = max * (**LP).w + sizeof (struct ls_st);
-		int old_size = (**LP).max * (**LP).w + sizeof (struct ls_st);
-		*LP = (lst_t)reallocz (*LP, old_size, new_size);
-		(**LP).max = max;
-	}
-	(**LP).l += n;
-	return len;
-}
-
-void lst_resize (lst_t *LP, int new_len)
-{
-	int len = (**LP).l;
-	if (new_len < 0)
-		ERR ("need new_size>=0. but new_size=%d", new_len);
-	int new_size = new_len * (**LP).w + sizeof (struct ls_st);
-	int old_size = (**LP).max * (**LP).w + sizeof (struct ls_st);
-	if (new_size == old_size)
-		return;
-	*LP = (lst_t)reallocz (*LP, old_size, new_size);
-	(**LP).max = new_len;
-	if (new_len < len)
-		(**LP).l = new_len;
-}
-
-// append item
-// returns: -1: error, index of new item
-int lst_put (lst_t *LP, const void *d)
-{
-	int n;
-	if (!d)
-		ERR ("NULL-Ptr");
-	n = lst_new (LP, 1);
-	if (n >= 0)
-		memcpy (lst (*LP, n), d, (*LP)->w);
-	return n;
-}
-
-// get ptr to element after *p and increment p by one
-// if *p is out of range *p is set to array-length
-// params: p - pointer to index-var. *p should be init.
-// with -1, data is ptr to ptr to array data.
-// returns: 1 - ok and *data is a ptr to
-// element, 0 - no more elements
-int lst_next (lst_t l, int *p, void *data)
-{
-	*p += 1;
-	if (*p > l->l || *p < 0) {
-		*p = (int)l->l;
-		return 0;
-	}
-	if (*p == (int)l->l)
-		return 0;
-	if (data)
-		*(void **)data = lst (l, *p);
-	return 1;
-}
-
-// exits if realloc fails. returns zero if arg (p) is out of bounds
-void *lst_ins (lst_t *lp, int p, int n)
-{
-	int cnt;
-	void *src, *dst;
-	lst_t l = *lp;
-	if ((uint)p > (uint)l->l)
-		return NULL;
-	if (l->l + n > l->max) { // Optimize resize if we resize by one
-		int old_size = l->max * l->w + sizeof (struct ls_st);
-		int new_max = l->l + n;
-		if (new_max - l->max == 1)
-			new_max <<= 1;
-		l->max = new_max;
-		int new_size = l->max * l->w + sizeof (struct ls_st);
-		l = (lst_t)reallocz (l, old_size, new_size);
-		*lp = l;
-	}
-	cnt = (l->l - p) * l->w;
-	l->l += n;
-	src = lst (l, p);
-	if (cnt > 0) // Do not app
-	{
-		dst = lst (l, p + n);
-		memmove (dst, src, cnt);
-	}
-	bzero (src, n * l->w);
-	return src;
-}
-
-// remove item inside array
-void lst_del (lst_t l, int p)
-{
-	void *dest, *src;
-	size_t n;
-
-	if (l->l > p + 1) {
-		dest = lst (l, p);
-		src = lst (l, p + 1);
-		n = l->l - p - 1;
-		if (n) {
-			n *= l->w;
-			memmove (dest, src, n);
-		}
-	}
-	l->l--;
-}
-
-// remove n items inside array starting at p
-void lst_remove (lst_t *lp, int p, int n)
-{
-	void *dest, *src;
-	lst_t l = *lp;
-	size_t len;
-
-	if (n <= 0 || p < 0)
-		return;
-	if (p >= l->l)
-		return;
-	if (p + n >= l->l) {
-		l->l = p;
-		return;
-	}
-
-	dest = lst (l, p);
-	src = lst (l, p + n);
-	len = l->l - p - n;
-	len *= l->w;
-	memmove (dest, src, len);
-	l->l -= n;
-}
-
-//! X!
-// returns address of element i
-void *lst_peek (lst_t l, int i)
-{
-	if (i < 0 || i > l->max)
-		ERR ("Out of bounds");
-	return &l->d[l->w * i];
-}
-
-// returns zero on succ.
-// n==0 is aceptable, no error
-int lst_write (lst_t *lp, int p, const void *data, int n)
-{
-	void *mem;
-	lst_t l = *lp;
-	if (p < 0 || n < 0)
-		return -1;
-	if (n == 0)
-		return 0;
-	if (p + n > l->max) {
-		l->max = p + n;
-		l = (lst_t)realloc (l, l->max * l->w + sizeof (struct ls_st));
-		if (!l)
-			ERR ("could not realloc");
-		*lp = l; // write-back new ptr
-	}
-	if (p + n > l->l)
-		l->l = p + n;
-	mem = lst (l, p);
-	memcpy (mem, data, n * l->w);
-	return 0;
-}
-
-// copy n items from array l at (p) to *data
-// if *data == 0 alloc memory
-int lst_read (lst_t l, int p, void **data, int n)
-{
-	if (p < 0 || n < 0 || data == NULL)
-		ERR ("Wrong arguments");
-	if (*data == 0)
-		*data = malloc (l->w * n);
-	if (!*data)
-		ERR ("Out of Memory");
-	memcpy (*data, lst (l, p), n * l->w);
-	return 0;
-}
-
-// ********************************************
-//
-// array handling functions
-//
-//
-// ********************************************
-
-// hole zeiger auf das array m
-// ist das array nicht allociert oder
-// ist ML nicht init. oder m ausserhalb der
-// mÃ¶glichen grenzen wird NULL Ã¼bergeben
-// ansonsten ein zeiger auf auf den array-header
-static inline lst_t *_get_list (int m)
-{
-	if (ML == 0 || m < 1)
-		ERR ("Not initialized (handle: %d)", m);
-	lst_t *l = (lst_t *)lst (ML, m & 0xffffff);
-	if (*l == NULL)
-		ERR ("List handle %d is not allocated", m & 0xffffff);
-	if ((*l)->uaf_protection != (m >> 24)) {
-		ERR ("UAF protection mismatch for handle %d: expected %d, got "
-		     "%d",
-		     m & 0xffffff, (*l)->uaf_protection, (m >> 24));
-	}
-
-	return l;
-}
-
-void *mls (int m, int i)
-{
-	lst_t *lp = _get_list (m);
-	return lst (*lp, i);
-}
-
-/* add n elements, return index of first element */
-int m_new (int m, int n)
-{
-	lst_t *lp = _get_list (m);
-	return lst_new (lp, n);
-}
-
-/* add single element, return its address */
-void *m_add (int m) { return mls (m, m_new (m, 1)); }
-
-void m_resize (int m, int new_size)
-{
-	lst_t *lp = _get_list (m);
-	return lst_resize (lp, new_size);
-}
 
 /**
- * @brief Copies a portion of the list `m` starting at index `a` and ending at
- * index `b` to a new list at position `offs`, and returns the new list.
+ * Records caller information for the current MLS operation.
+ * Used by debug wrappers to provide context for error messages.
  *
- * - If `dest` is zero, a new destination list is created.
- * - Indices can be positive or negative:
- *   - Negative indices count from the end to the start of the list.
- *   - The first element is 0, and the last element is -1.
- *
- * Example:
- * @code
- *   m:    0    1    2    3    4
- *       -5   -4   -3   -2   -1
- * @endcode
- *
- * @param dest The destination list where the portion is copied. If set to 0, a
- * new list is created.
- * @param offs The offset position in the destination list where the copied
- * portion is placed.
- * @param m The source list from which the portion is copied.
- * @param a The starting index of the portion to be copied.
- * @param b The ending index of the portion to be copied.
- * @return The new list with the copied portion.
+ * @param me The name of the function being wrapped.
+ * @param ln The line number of the call.
+ * @param fn The filename of the call.
+ * @param fun The function name of the caller.
+ * @param args Bitmask indicating which arguments are valid (1:handle, 2:index, 4:data).
+ * @param handle The MLS handle involved in the operation.
+ * @param index The index involved in the operation.
+ * @param data Pointer to data involved in the operation.
  */
-int m_slice (int dest, int offs, int m, int a, int b)
-{
-	if (!m) {
-		if (dest > 0)
-			m_setlen (dest, offs);
-		return dest;
-	}
-	int len = m_len (m);
-	if (b < 0) {
-		b += len;
-	}
-	if (a < 0) {
-		a += len;
-	}
-	if (b >= len)
-		b = len - 1;
-	if (a >= len)
-		a = len - 1;
-	if (a < 0)
-		a = 0;
-	int cnt = b - a + 1;
-	if (cnt < 0)
-		cnt = 1;
-	if (dest <= 0)
-		dest = m_create (cnt + offs, m_width (m));
-	m_setlen (dest, offs);
-	ASSERT (m_width (dest) == m_width (m));
-	for (int i = a; i <= b; i++) {
-		void *d = m_peek (m, i);
-		m_put (dest, d);
-	}
-	return dest;
-}
-
-// remove n items inside array starting at p
-void m_remove (int m, int p, int n)
-{
-	lst_t *lp = _get_list (m);
-	return lst_remove (lp, p, n);
-}
-
-/**
-    @brief hole den zeiger auf das folgende element
-    @param p - zeiger auf das zuletzt geholte element, -1 falls das erste
-   gewünscht wird
-    @param d - zeiger auf zeiger auf die gewünschte datenstruktur
-    @param m - die liste
-    @return 1 if element exists, 0 otherwise
-*/
-int m_next (int m, int *p, void *d)
-{
-	if (!m || !m_len (m))
-		return 0;
-	lst_t *lp = _get_list (m);
-	if (!d)
-		ERR ("Data address d is ZERO");
-	return lst_next (*lp, p, d);
-}
-
-// static int deep_protect = 0;
-static int MF = 0;
-static void free_wrap (int m);
-static void free_strings_wrap (int m);
-static void free_list_wrap (int m);
-
-// returns 0 - ok, 1 - liste schon initialisiert
-int m_init ()
-{
-	static lst_t zero = 0;
-	if (ML)
-		return 1; // schon initialisiert
-	ML = lst_create (100, sizeof (lst_t));
-	lst_put (&ML, &zero);
-	FR = lst_create (100, sizeof (int));
-	// -- m_init ready --
-	MF = m_create (10, sizeof (void *));
-	void *p;
-	p = free_wrap;
-	m_put (MF, &p);
-	p = free_strings_wrap;
-	m_put (MF, &p);
-	p = free_list_wrap;
-	m_put (MF, &p);
-	return 0;
-}
-
-// returns ZERO
-void m_destruct ()
-{
-	int p;
-	lst_t *d;
-	if (!ML)
-		ERR ("Not Init.");
-	m_free_simple (MF);
-	// -- m_destruct start --
-	for (p = -1; lst_next (ML, &p, &d);)
-		if (*d) {
-			free (*d);
-			TRACE (1, "m_free %d\n", p);
-		}
-	free (ML);
-	ML = 0;
-	free (FR);
-	FR = 0;
-}
-
-static int UAF_PROTECTION = 0;
-
-int m_create (int max, int w)
-{
-	int i;
-	lst_t lp;
-	if (!ML || max < 0 || w <= 0)
-		ERR ("Wrong args");
-	lp = lst_create (max, w);
-	lp->uaf_protection = UAF_PROTECTION;
-
-	// falls FR->l > 0 nehme freie plätze aus FR
-	if (FR->l > 0) { /* re-use old handles, common case */
-		i = *(int *)lst (FR, FR->l - 1);
-		FR->l--;
-		*(lst_t *)lst (ML, i) = lp;
-	} else { /* create new handle */
-		i = lst_put (&ML, &lp);
-		if (i >= 0xffffff)
-			ERR ("too many arrays allocated");
-	}
-
-	i = (UAF_PROTECTION << 24) | i;
-	return i;
-}
-
-//! X!
-// free memory for list h
-// Returns Zero
-//
-// OPT: speichert die nummer des freigegebenen arrays
-// JH 2007-12-25 ignore h==0 instead of abort with error
-int m_free_simple (int h)
-{
-	if (!ML || h < 0)
-		ERR ("Wrongs Args ML=%p h=%d", ML, h);
-	if (!h)
-		return 0;
-	lst_t *l = _get_list (h);
-	/* uaf protection */
-	{
-		h &= 0xffffff; /* do not store uaf protection */
-		/* pattern as part of handle to be reused */
-		UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
-	}
-
-	free (*l);
-	*l = 0;
-	TRACE (1, "Free List %d", h);
-	lst_put (&FR, &h);
-	return 0;
-}
-
-// append *data to array m
-// returns: -1 error, >=0 index of new item
-int m_put (int m, const void *data)
-{
-	lst_t *lp = _get_list (m);
-	return lst_put (lp, data);
-}
-
-#ifdef MLS_DEBUG
-int m_len_simple (int m)
-{
-	lst_t *lp = _get_list (m);
-	return (**lp).l;
-}
-
-int m_len (int m) { return m_len_simple (m); }
-#endif
-
-#ifdef MLS_DEBUG
-void *m_buf (int m) { return m_peek (m, 0); }
-#endif
-
-int m_bufsize (int m)
-{
-	lst_t *lp = _get_list (m);
-	return (**lp).max;
-}
-
-/**
- * @brief Insert 'n' elements at position 'p' in the array pointed to by 'm'.
- *
- * Inserts 'n' elements at position 'p' in the array pointed to by 'm'.
- * If 'p' is negative or 'n' is non-positive, an error is raised.
- *
- * @param m Pointer to the array where elements are to be inserted.
- * @param p The position at which to insert the elements.
- * @param n The number of elements to insert.
- * @return The start position 'p' after insertion.
- *
- * @note This function assumes 'm' points to a valid array.
- * @note The position 'p' should be within the bounds of the array.
- */
-int m_ins (int m, int p, int n)
-{
-	lst_t *lp;
-	if (p < 0 || n <= 0)
-		ERR ("Wrong Args Start:%d Count:%d", p, n);
-	lp = _get_list (m);
-	lst_ins (lp, p, n);
-	return p;
-}
-
-// !X!
-// decrements the number of used elements
-// returns a ptr to the last item, or NULL.
-void *m_pop (int m)
-{
-	lst_t *lp;
-	lp = _get_list (m);
-	if ((**lp).l < 1)
-		return NULL;
-	(**lp).l--;
-	return (*lp)->d + ((*lp)->w * (*lp)->l);
-}
-
-// remove element
-void m_del (int m, int p)
-{
-	lst_t *lp;
-	if (p < 0)
-		return;
-	lp = _get_list (m);
-	lst_del (*lp, p);
-}
-
-// clears array, sets used ptr to zero
-void m_clear_simple (int m)
-{
-	lst_t *lp;
-	lp = _get_list (m);
-	(**lp).l = 0;
-}
-
-void m_clear (int m) { m_clear_simple (m); }
-
-/**
- * @brief Set the length of the array pointed to by 'm' to the specified length.
- *
- * Sets the length of the array pointed to by 'm' to the specified length 'len'.
- * If 'len' is greater than the current maximum length of the array, the array
- * is resized to accommodate the new length. If 'len' is negative, an error is
- * raised.
- *
- * @param m Pointer to the array whose length is to be set.
- * @param len The new length to set for the array.
- * @return 0 on success, -1 on error.
- *
- * @note This function only grows the array and does not shrink it.
- */
-int m_setlen (int m, int len)
-{
-	lst_t *lp;
-	if (len < 0)
-		ERR ("Wrong Arg len=%d", len);
-	lp = _get_list (m);
-	if (len > (**lp).max)
-		lst_resize (lp, len);
-	(**lp).l = len;
-	return 0;
-}
-
-void *m_peek (int m, int i)
-{
-	lst_t *lp;
-	lp = _get_list (m);
-	return lst_peek (*lp, i);
-}
-
-// copy |n| elements from |data| to array |m| at position |p|
-// returns the array |m|
-int m_write (int m, int p, const void *data, int n)
-{
-	lst_t *lp;
-	if (n <= 0)
-		return m;
-	lp = _get_list (m);
-	lst_write (lp, p, data, n);
-	return m;
-}
-
-// copy n items from array (m) at (p) to data
-int m_read (int m, int p, void **data, int n)
-{
-	lst_t *lp;
-	lp = _get_list (m);
-	return lst_read (*lp, p, data, n);
-}
-
-int m_width (int m)
-{
-	lst_t *lp;
-	lp = _get_list (m);
-	return (**lp).w;
-}
-
-int m_free (int m)
-{
-	if (m < 1)
-		return 0;
-
-	lst_t *lp = _get_list (m);
-	uint8_t h = (*lp)->free_hdl;
-	if (h == 255)
-		return 0; /* this prevents recursion, if a list contains itself
-			   */
-	if (h == 0) {	  /* the simple case first */
-		m_free_simple (m);
-		return 0;
-	}
-
-	if (h >= m_len (MF)) {
-		ERR ("FREE Hander %d undefined", h);
-	}
-	(*lp)->free_hdl = 255; // mark this list as 'freeing in progress'
-	void (**fn) (int m);
-	fn = mls (MF, h);
-	if (!*fn) {
-		ERR ("FREE Hander %d is NULL", h);
-	}
-	(*fn) (m);
-	/* clean this list, use a non on-debug-override function
-	   because we could be called from a debug function */
-	m_free_simple (m);
-
-	return 0;
-}
-
-int m_reg_freefn (int n, void (*free_fn) (int m))
-{
-	void (**fn) (int m);
-	int p;
-	for (p = -1; m_next (MF, &p, &fn);) {
-		if (*fn == free_fn)
-			return p;
-	}
-	return m_put (MF, &free_fn);
-}
-
-int m_alloc (int max, int w, uint8_t free_hdl)
-{
-	if (MF && free_hdl >= m_len (MF)) {
-		ERR ("FREE Hander %d undefined", free_hdl);
-	}
-	int h = m_create (max, w);
-	lst_t *lp = _get_list (h);
-	(*lp)->free_hdl = free_hdl;
-	return h;
-}
-
-int m_free_hdl (int h)
-{
-	lst_t *lp = _get_list (h);
-	return (*lp)->free_hdl;
-}
-
-int m_is_freed (int h)
-{
-	if (!FR)
-		return 0;
-	h &= 0xffffff;
-	for (int i = 0; i < FR->l; i++) {
-		if (*(int *)lst_peek (FR, i) == h)
-			return 1;
-	}
-	return 0;
-}
-
-// ********************************************
-//
-//  Debug-Function Implementation
-//
-// ********************************************
-#define CASSERT(a, l, f, n) ASERR (a, "Caller %s() in %s:%d", (n), (f), (l))
-
-// !X!
-// create caller message in the form:
-// Funtion: _m_put was called by loop_test:2142 in 'rounders.c'
-// args:
-// bit 0: check handle
-// bit 1: check index
-// bit 2: check data
-//
 static void _mlsdb_caller (const char *me, int ln, const char *fn,
 			   const char *fun, int args, int handle, int index,
 			   const void *data)
@@ -862,7 +153,12 @@ static void _mlsdb_caller (const char *me, int ln, const char *fn,
 	debi.data = data;
 }
 
-static void perr (char *format, ...)
+/**
+ * Prints a formatted error message to stderr, followed by a newline.
+ *
+ * @param format The format string.
+ */
+static void perr (const char *format, ...)
 {
 	va_list argptr;
 	va_start (argptr, format);
@@ -871,32 +167,33 @@ static void perr (char *format, ...)
 	va_end (argptr);
 }
 
-//! X!
-// check for handle error
-// R: 0 if handle seems correct
+/**
+ * Validates the handle stored in the current debug info.
+ * Prints detailed information about the handle's state and allocation source.
+ *
+ * @return 0 if the handle is valid, -1 otherwise.
+ */
 static int _mlsdb_check_handle ()
 {
 	lst_t *lp;
 	lst_owner *o;
 	int orig = debi.handle;
-	int h = orig & 0xffffff;
-	perr ("  Handle:    %d (UAF protection: %d)", h, orig >> 24);
+	int h = (orig & 0xffffff);
+	perr ("  Handle:    %d (UAF protection: %d)", h, (orig >> 24) & 0x7f);
 
 	if (h < 1 || h > m_len (DEB)) {
 		perr ("  Status:    Handle out of range (max=%d)", m_len (DEB));
 		return -1;
 	}
 
-	lp = (lst_t *)lst (ML, h);
+	lp = (lst_t *)lst (ML, h - 1);
 	if (*lp == NULL) {
-		perr ("  Status:    List base address for handle %d is not "
-		      "allocated",
+		perr ("  Status:    List base address for handle %d is not allocated",
 		      h);
 	} else {
-		if ((*lp)->uaf_protection != (orig >> 24)) {
-			perr ("  Status:    uaf protection pattern does not "
-			      "match, expected:%d, got:%d",
-			      (*lp)->uaf_protection, (orig >> 24));
+		if ((**lp).uaf_protection != ((orig >> 24) & 0x7f)) {
+			perr ("  Status:    uaf protection pattern does not match, expected:%d, got:%d",
+			      (**lp).uaf_protection, (orig >> 24) & 0x7f);
 			return -1;
 		}
 	}
@@ -908,19 +205,28 @@ static int _mlsdb_check_handle ()
 	}
 
 	if (o->ln < 0) {
-		perr ("  Status:    Previously removed by %s() at %s:%d",
-		      o->fun, o->fn, -o->ln);
+		perr ("  Status:    Previously removed by %s() at %s:%d", o->fun,
+		      o->fn, -o->ln);
 		return -1;
 	}
 
 	perr ("  Created by: %s() at %s:%d", o->fun, o->fn, o->ln);
 
-	perr ("  Metadata:  struct=%p, data=%p, width=%d\n"
-	      "  Buffer:    used=%d, max=%d",
-	      *lp, (*lp)->d, (*lp)->w, (*lp)->l, (*lp)->max);
+	if (*lp) {
+		perr ("  Metadata:  struct=%p, data=%p, width=%d\n"
+		      "  Buffer:    used=%d, max=%d",
+		      *lp, (**lp).d, (**lp).w, (**lp).l, (**lp).max);
+	}
 
 	return 0;
 }
+
+/**
+ * Validates the index stored in the current debug info against its handle.
+ * Prints an error message if the index is out of bounds.
+ *
+ * @return 0 if the index is valid, -1 otherwise.
+ */
 static int _mlsdb_check_index ()
 {
 	int i = debi.index, h = debi.handle;
@@ -930,17 +236,20 @@ static int _mlsdb_check_index ()
 	}
 
 	if (i >= m_len (h)) {
-		perr ("  Index:     %d is out of bounds (len=%d)", i,
-		      m_len (h));
+		perr ("  Index:     %d is out of bounds (len=%d)", i, m_len (h));
 		return -1;
 	}
 
 	return 0;
 }
 
+/**
+ * Performs a post-mortem analysis of the last recorded MLS operation.
+ * Registered as an atexit handler. Only runs if an error was detected.
+ */
 void exit_error ()
 {
-	if (!debi.me)
+	if (!error_occurred || !debi.me)
 		return;
 
 	perr ("\n[mls post-mortem analysis]");
@@ -968,264 +277,788 @@ void exit_error ()
 		}
 }
 
-int _m_init ()
+/**
+ * Resizes a list structure to a new maximum size.
+ *
+ * @param lp Pointer to the list structure pointer.
+ * @param new_size The new maximum number of elements.
+ */
+void lst_resize (lst_t *lp, int new_size)
 {
-	/*  if( ML || DEB ) { ERR("mls/debug already initialized"); } */
-	if (DEB)
-		return 1;
-
-	m_init ();
-	DEB = m_create (100, sizeof (lst_owner));
-	atexit (exit_error);
-	return 0;
-}
-
-void _m_destruct ()
-{
-	// check for allocated lists
-	lst_owner *o;
-	int i;
-
-	for (i = -1; m_next (DEB, &i, &o);) {
-		if (o->allocated == 42 && o->ln > 0) {
-			WARN ("List %d still allocated. "
-			      "Source: %s() in %s:%d",
-			      i + 1, o->fun, o->fn, o->ln);
-		}
+	int oldSize, diff;
+	int w = (**lp).w;
+	oldSize = (**lp).max * w + sizeof (struct ls_st);
+	*lp = (lst_t)realloc (*lp, new_size * w + sizeof (struct ls_st));
+	if (!*lp)
+		ERR ("Out of Memory");
+	if (new_size > (**lp).max) {
+		diff = (new_size - (**lp).max) * w;
+		memset (((char *)*lp) + oldSize, 0, diff);
 	}
-	m_free_simple (DEB);
-	m_destruct ();
-	debi.me = NULL;
+	(**lp).max = new_size;
 }
 
-int _m_create (int ln, const char *fn, const char *fun, int n, int w)
+/**
+ * Creates a new list structure.
+ *
+ * @param max The initial maximum number of elements.
+ * @param w The width of each element in bytes.
+ * @return The newly created list structure.
+ */
+lst_t lst_create (int max, int w)
 {
-	lst_owner *lo;
-	int len, m, m_uaf;
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 0, 0, 0, 0);
-	m_uaf = m_create (n, w);
-
-	m = m_uaf & 0xffffff; /* uaf protection */
-	len = m_len (DEB);
-	if (m > len)
-		m_new (DEB, m - len);
-	lo = (lst_owner *)mls (DEB, m - 1);
-
-	lo->ln = ln;
-	lo->fn = fn;
-	lo->fun = fun;
-	lo->allocated = 42;
-	TRACE (1, "NEW LIST %d allocated by %s:%d in %s", m, fun, ln, fn);
-	return m_uaf;
+	lst_t l = (lst_t)calloc (1, (max * w) + sizeof (struct ls_st));
+	if (!l)
+		ERR ("Out of Memory");
+	l->max = max;
+	l->l = 0;
+	l->w = w;
+	return l;
 }
 
-int _m_alloc (int ln, const char *fn, const char *fun, int n, int w,
-	      uint8_t free_hdl)
+/**
+ * Reserves space for n new elements in a list.
+ *
+ * @param lp Pointer to the list structure pointer.
+ * @param n The number of elements to reserve.
+ * @return The index of the first newly reserved element.
+ */
+int lst_new (lst_t *lp, int n)
 {
-	int h = _m_create (ln, fn, fun, n, w);
-	lst_t *lp = _get_list (h);
-	(*lp)->free_hdl = free_hdl;
-	return h;
+	int p = (**lp).l;
+	int max = (**lp).max;
+	if (p + n > max) {
+		int newsiz = max + n;
+		newsiz = increase_by_percent (newsiz, 50);
+		lst_resize (lp, newsiz);
+	}
+	(**lp).l += n;
+	return p;
 }
 
-int _m_free (int ln, const char *fn, const char *fun, int m)
+/**
+ * Appends an element to a list.
+ *
+ * @param lp Pointer to the list structure pointer.
+ * @param d Pointer to the element data to append.
+ * @return The index of the appended element.
+ */
+int lst_put (lst_t *lp, const void *d)
 {
-	if (!m)
+	int p = lst_new (lp, 1);
+	memcpy (lst (*lp, p), d, (**lp).w);
+	return p;
+}
+
+/**
+ * Returns a pointer to the element at the specified index without bounds checking.
+ *
+ * @param l The list structure.
+ * @param i The index of the element.
+ * @return A pointer to the element data, or NULL if index is out of bounds.
+ */
+void *lst_peek (lst_t l, int i)
+{
+	if (i >= l->l || i < 0)
+		return NULL;
+	return lst (l, i);
+}
+
+/**
+ * Deletes an element at the specified index from a list.
+ *
+ * @param l The list structure.
+ * @param p The index of the element to delete.
+ */
+void lst_del (lst_t l, int p)
+{
+	if (p < 0 || p >= l->l)
+		ERR ("Wrong Arg p=%d", p);
+	int w = l->w;
+	int n = l->l - p - 1;
+	if (n > 0)
+		memmove (lst (l, p), lst (l, p + 1), n * w);
+	l->l--;
+}
+
+/**
+ * Removes n elements starting from the specified index from a list.
+ *
+ * @param lp Pointer to the list structure pointer.
+ * @param p The starting index.
+ * @param n The number of elements to remove.
+ */
+void lst_remove (lst_t *lp, int p, int n)
+{
+	if (p < 0 || n < 0 || p + n > (**lp).l)
+		ERR ("Wrong Arg p=%d n=%d", p, n);
+	int w = (**lp).w;
+	int move_n = (**lp).l - (p + n);
+	if (move_n > 0)
+		memmove (lst (*lp, p), lst (*lp, p + n), move_n * w);
+	(**lp).l -= n;
+}
+
+/**
+ * Inserts n empty elements at the specified index in a list.
+ *
+ * @param lp Pointer to the list structure pointer.
+ * @param p The insertion index.
+ * @param n The number of elements to insert.
+ * @return A pointer to the first newly inserted element.
+ */
+void *lst_ins (lst_t *lp, int p, int n)
+{
+	int cnt;
+	if (p < 0 || p > (**lp).l)
 		return 0;
+	cnt = (**lp).l - p;
+	lst_new (lp, n);
+	if (cnt > 0)
+		memmove (lst (*lp, p + n), lst (*lp, p), cnt * (**lp).w);
+	memset (lst (*lp, p), 0, n * (**lp).w);
+	return lst (*lp, p);
+}
 
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, m, 0, 0);
-	m_free (m);
+/**
+ * Iterates to the next element in a list.
+ *
+ * @param l The list structure.
+ * @param p Pointer to the current index. Should be initialized to -1.
+ * @param data Pointer to store the address of the next element.
+ * @return 1 if an element was found, 0 otherwise.
+ */
+int lst_next (lst_t l, int *p, void *data)
+{
+	if (!l)
+		return 0;
+	(*p)++;
+	if (*p < 0) {
+		ERR ("Wrong Arg p=%d", *p);
+		return 0;
+	}
+	if (*p == (int)l->l)
+		return 0;
+	if (data)
+		*(void **)data = lst (l, *p);
+	return 1;
+}
 
-	m &= 0xffffff; /* uaf protection */
-	lst_owner *o = (lst_owner *)mls (DEB, m - 1);
-	o->ln = -ln;
-	o->fun = fun;
-	o->fn = fn;
-	TRACE (1, "Free List %d", m);
+/**
+ * Reads n elements from a list into a buffer.
+ *
+ * @param l The list structure.
+ * @param p The starting index.
+ * @param data Pointer to the destination buffer pointer. If *data is 0, a buffer is allocated.
+ * @param n The number of elements to read.
+ * @return 0 on success.
+ */
+int lst_read (lst_t l, int p, void **data, int n)
+{
+	if (p < 0 || n < 0 || data == NULL)
+		ERR ("Wrong arguments");
+	if (*data == 0)
+		*data = malloc (l->w * n);
+	if (!*data)
+		ERR ("Out of Memory");
+	memcpy (*data, lst (l, p), n * l->w);
 	return 0;
 }
 
-void *_m_buf (int ln, const char *fn, const char *fun, int m)
+/**
+ * Writes n elements from a buffer into a list at the specified index.
+ *
+ * @param lp Pointer to the list structure pointer.
+ * @param p The starting index.
+ * @param data Pointer to the source data buffer.
+ * @param n The number of elements to write.
+ * @return 0 on success.
+ */
+int lst_write (lst_t *lp, int p, const void *data, int n)
 {
-	if (!m)
-		return 0;
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, m, 0, 0);
-	return m_buf (m);
+	if (p < 0 || n < 0 || data == NULL)
+		ERR ("Wrong arguments");
+	if (p + n > (**lp).max)
+		lst_resize (lp, p + n);
+	if (p + n > (**lp).l)
+		(**lp).l = p + n;
+	memcpy (lst (*lp, p), data, n * (**lp).w);
+	return 0;
 }
 
-void *_mls (int ln, const char *fn, const char *fun, int h, int i)
+static lst_t freefn = 0;
+
+/**
+ * Internal function to retrieve a pointer to the list structure associated with a handle.
+ * Performs validation checks for handle range, existence, and UAF protection.
+ *
+ * @param ln Line number of the caller.
+ * @param fn Filename of the caller.
+ * @param fun Function name of the caller.
+ * @param m The handle to look up.
+ * @return A pointer to the list structure pointer in the master list.
+ */
+static lst_t *_get_list (int ln, const char *fn, const char *fun, int m)
 {
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, i, 0);
-	return mls (h, i);
+	if (!ML)
+		deb_err (ln, fn, fun, "Not Init.");
+	int i = (m & 0xffffff) - 1;
+	if (i < 0 || i >= ML->l)
+		deb_err (ln, fn, fun, "Invalid Handle %d", m);
+	lst_t *l = (lst_t *)lst (ML, i);
+	if (!*l)
+		deb_err (ln, fn, fun, "Handle %d already freed", m);
+	if (((m >> 24) & 0x7f) != (**l).uaf_protection) {
+		deb_err (ln, fn, fun, "Handle %d protection pattern mismatch: expected %d, got %d", m, (m >> 24) & 0x7f, (**l).uaf_protection);
+	}
+	return l;
 }
 
-int _m_next (int ln, const char *fn, const char *fun, int h, int *i, void *d)
+#define get_list(m) _get_list(__LINE__, __FILE__, __FUNCTION__, m)
+
+/**
+ * Public accessor for getting a list pointer from a handle.
+ *
+ * @param r The handle.
+ * @return A pointer to the list structure pointer.
+ */
+lst_t *exported_get_list (int r) { return get_list (r); }
+
+extern void m_free_strings (int list, int CLEAR_ONLY);
+
+/**
+ * Wrapper for m_free_strings to be used as a custom free handler.
+ *
+ * @param l The list structure being freed.
+ */
+static void free_strings_wrap (lst_t l)
 {
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 7, h, i ? *i : -1, d);
-	return m_next (h, i, d);
-}
-
-int _m_put (int ln, const char *fn, const char *fun, int h, const void *d)
-{
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 5, h, 0, d);
-	return m_put (h, d);
-}
-
-void _m_clear (int ln, const char *fn, const char *fun, int h)
-{
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, h, 0, 0);
-	m_clear (h);
-}
-
-/*
-   -------------------------------------------------------------------------
-
-   UTILITY
-
- -------------------------------------------------------------------------
-*/
-
-#undef MLS_DEBUG_DISABLE
-#include "mls.h"
-
-/* should not be called anytime */
-static void free_wrap (int m)
-{
-	// if  MLS_DEBUG is enabled, we may be called by   _m_free() -> m_free()
-	// -> free_wrap() we need m_free_simple to avoid a loop but wait: if we
-	// are called by free_list_wrap() and we are in debug mode we need to
-	// call
-	//  _m_free for the list to clear debug-list information
-	m_free_simple (m);
-
-#if 0
-	_mlsdb_caller(__FUNCTION__,AUTO_ln, AUTO_fn,AUTO_fun, 1, m, 0, 0);
-	m &= 0xffffff; /* uaf protection */
-	lst_owner *o = (lst_owner *)mls(DEB, m - 1);
-	o->ln = -ln;
-	o->fun = fun;
-	o->fn = fn;
-	TRACE(1, "Free List %d", m);
-#endif
-}
-
-static void free_strings_wrap (int list)
-{
-	int index;
+	int p = -1;
 	char **strp;
-	TRACE (1, "Free List %d", list & 0xffffff);
-	if (list < 1)
-		return;
-
-	lst_t *lp = _get_list (list);
-	for (index = -1; lst_next (*lp, &index, &strp);) {
-		if (*strp) {
+	while (lst_next (l, &p, &strp)) {
+		if (*strp)
 			free (*strp);
-			*strp = NULL;
-		}
+		*strp = NULL;
 	}
 }
 
-static void free_list_wrap (int m)
+/**
+ * Custom free handler that recursively frees MLS handles stored in a list.
+ *
+ * @param l The list structure being freed.
+ */
+static void free_list_wrap (lst_t l)
 {
-	TRACE (1, "Free List %d", m & 0xffffff);
-	int p, *d;
-	m_foreach (m, p, d)
-	{
+	int p = -1, *d;
+	while (lst_next (l, &p, &d)) {
 		if (*d > 0 && !m_is_freed (*d)) {
 			m_free (*d);
 		}
 	}
-	// list m is marked with free_hdl=255 before this function was
-	// called, so we will not get a recursion
-	// if this list 'm' contains itself
 }
 
-void m_print_version ()
+/**
+ * Initializes the MLS library system.
+ * Allocates the master handle list and registers default free handlers.
+ *
+ * @return 0 on success, 1 if already initialized.
+ */
+int m_init ()
 {
-	puts ("MLS - Secure, Easy, Low-Overhead Array-Memory-Mangement");
-	puts (Version);
+	if (ML)
+		return 1;
+	ML = lst_create (100, sizeof (lst_t));
+	FR = lst_create (100, sizeof (int));
+	freefn = lst_create (MFREE_MAX + 1, sizeof (void *));
+	void (*f) (lst_t) = NULL; /* Stub for simple free */
+	lst_put (&freefn, &f);
+	f = free_strings_wrap;
+	lst_put (&freefn, &f);
+	f = free_list_wrap;
+	lst_put (&freefn, &f);
+	return 0;
 }
 
-void m_bzero (int m)
+/**
+ * Destroys the MLS library system.
+ * Explicitly frees all remaining allocated handles and their contents.
+ */
+void m_destruct ()
 {
-	lst_t lp = *_get_list (m);
-	bzero (lp->d, lp->max * lp->w);
+	int idx;
+	lst_t *d;
+	if (!ML)
+		ERR ("Not Init.");
+
+	idx = -1;
+	while (lst_next (ML, &idx, &d)) {
+		if (*d) {
+			int m = (idx + 1) | (((int)(**d).uaf_protection) << 24);
+			m_free (m);
+		}
+	}
+
+	if (FR) {
+		free (FR);
+		FR = 0;
+	}
+
+	if (ML) {
+		free (ML);
+		ML = 0;
+	}
+
+	if (freefn) {
+		free (freefn);
+		freefn = 0;
+	}
 }
 
-// ********************************************
-//
-// Helper functions, keep it simple
-//
-// ********************************************
+/**
+ * Allocates a new MLS handle with a specific free handler.
+ *
+ * @param max Initial maximum elements.
+ * @param w Width of each element in bytes.
+ * @param hfree The ID of the registered free handler to use.
+ * @return A new 1-based MLS handle with UAF protection pattern.
+ */
+int m_alloc (int max, int w, uint8_t hfree)
+{
+	int h;
+	if (FR->l > 0) {
+		h = *(int *)lst (FR, FR->l - 1);
+		FR->l--;
+	} else {
+		h = lst_new (&ML, 1);
+	}
+	lst_t *l = (lst_t *)lst (ML, h);
+	*l = lst_create (max, w);
+	(*l)->free_hdl = hfree;
+	int res = (h + 1) | (((int)(*l)->uaf_protection) << 24);
+	return res;
+}
 
-//! X! speicher das char c an das ende von marray m
-int m_putc (int m, char c) { return *(char *)m_add (m) = c; }
+/**
+ * Creates a new MLS handle with the default free handler (MFREE).
+ *
+ * @param max Initial maximum elements.
+ * @param w Width of each element.
+ * @return A new handle.
+ */
+int m_create (int max, int w) { return m_alloc (max, w, MFREE); }
 
-//! X! speicher ein int an das ende von marray m
-int m_puti (int m, int c) { return *(int *)m_add (m) = c; }
+/**
+ * Frees an MLS handle and its associated list data.
+ * The handle is marked as freed and returned to the free list for reuse.
+ *
+ * @param m The handle to free.
+ * @return 0 on success.
+ */
+int m_free (int m)
+{
+	if (m == DEB && DEB > 0) {
+	}
+	lst_t *lp = get_list (m);
+	lst_t l_ptr = *lp;
+	int hdl = l_ptr->free_hdl;
+	if (hdl >= freefn->l)
+		ERR ("No free handler for %d", m);
 
-// Vorteile:
-// Übergabe eines Speicherbereichs an eine Funktion die
-// ggf. den Speicher vergrößern muss:
-//
-// Vorher:
-//
-/* FILE * fp; */
-/*            char * line = NULL; */
-/*            size_t len = 0; */
-/*            ssize_t read; */
+	/* Mark handle as being freed by setting to 0 in slot, 
+	   and increment pattern immediately to prevent re-entry 
+	   via m_is_freed checks in free handlers.
+	*/
+	*lp = 0;
+	l_ptr->uaf_protection = (l_ptr->uaf_protection + 1) & 0x7f;
 
-/*            fp = fopen("/etc/motd", "r"); */
-/*            if (fp == NULL) */
-/*                exit(EXIT_FAILURE); */
+	void (*f) (lst_t) = *(void (**) (lst_t))lst (freefn, hdl);
+	if (f) {
+		f (l_ptr);
+	}
 
-/*            while ((read = getline(&line, &len, fp)) != -1) { */
-//
-//
-// Nachher:
-//
-/* FILE * fp; */
-/*            int line=m_create(100,1); */
-/*            ssize_t read; */
+	free (l_ptr);
+	int i = (m & 0xffffff) - 1;
+	lst_put (&FR, &i);
+	return 0;
+}
 
-/*            fp = fopen("/etc/motd", "r"); */
-/*            if (fp == NULL) */
-/*                exit(EXIT_FAILURE); */
+/**
+ * Registers a custom free handler function at a specific index.
+ *
+ * @param n The index (handler ID) to register at.
+ * @param free_fn The function to be called when freeing handles with this handler ID.
+ * @return The handler ID on success, -1 if index is invalid.
+ */
+int m_reg_freefn (int n, void (*free_fn) (lst_t l))
+{
+	if (n < 0)
+		return -1;
+	if (n >= freefn->max)
+		lst_resize (&freefn, n + 1);
+	if (n >= freefn->l)
+		freefn->l = n + 1;
+	*(void (**) (lst_t))lst (freefn, n) = free_fn;
+	return n;
+}
 
-/*            while ((read = getline(line, fp)) != -1) { */
-//
-//
-//
-// wenn der Puffer auf den "line" verweist vergrößert werden muss bleibt
-// "line" unverändert.
-// zudem wird durch die funktion sofort klar, das hier speicher reserviert wurde
-// und am ende der funktion eine freigabe "m_free(line)" stehen muss.
-//
-// vorher war es notwendig zusätzlich die funktionen von getline zu kennen,
-// um zu wissen das "line" ein zeiger auf einen reservierten speicherbereich
-// sein kann.
-//
+/**
+ * Checks if an MLS handle is valid and hasn't been freed.
+ *
+ * @param h The handle to check.
+ * @return 1 if the handle is freed or invalid, 0 if it is active.
+ */
+int m_is_freed (int h)
+{
+	if (h < 1 || !ML)
+		return 1;
+	int i = (h & 0xffffff) - 1;
+	if (i < 0 || i >= ML->l)
+		return 1;
+	lst_t *l = (lst_t *)lst (ML, i);
+	if (!*l)
+		return 1;
+	if (((h >> 24) & 0x7f) != (**l).uaf_protection)
+		return 1;
+	return 0;
+}
 
-// TODO: Erkläre Stringlist
-//  String-Liste
-//  Eine String-Liste besteht aus einer Liste von Datenblöcken beliebiger Größe.
-//  Jeder Datenblock der Stringliste enthält als erstes einen
-//  Zeiger auf einen Speicherbereich mit einem Null-terminierten String.
-//
-//  struct my_data_st { char *string; int x, y,z; }
-//  mlsCreate( 100, sizeof( my_data_st ))
-//
-//  my_data_st m; m.string = strdup("Hello"); m_put( ll, &m );
-//
-//
+/**
+ * Returns the free handler ID associated with an MLS handle.
+ *
+ * @param h The handle.
+ * @return The free handler ID.
+ */
+int m_free_hdl (int h)
+{
+	lst_t *lp = get_list (h);
+	return (**lp).free_hdl;
+}
 
-//! X!
-// Loesche alle Zeilen einer String-Liste
-// wird CLEAR_ONLY gesetzt werden die Inhalte
-// der String-Liste geloescht sonst
-// auch die Liste selber
-//
+/**
+ * Returns the number of elements in the list associated with a handle.
+ *
+ * @param m The handle.
+ * @return The number of elements.
+ */
+int m_len (int m)
+{
+	if (!ML) return 0;
+	int i = (m & 0xffffff) - 1;
+	if (i < 0 || i >= ML->l) return 0;
+	lst_t l = ((lst_t *)ML->d)[i];
+	return l ? l->l : 0;
+}
+
+/**
+ * Returns a pointer to the raw data buffer of the list associated with a handle.
+ *
+ * @param m The handle.
+ * @return A pointer to the data buffer, or NULL if handle is invalid.
+ */
+void *m_buf (int m)
+{
+	if (!ML) return NULL;
+	int i = (m & 0xffffff) - 1;
+	if (i < 0 || i >= ML->l) return NULL;
+	lst_t l = ((lst_t *)ML->d)[i];
+	return l ? l->d : NULL;
+}
+
+/**
+ * Returns a pointer to the element at the specified index with bounds checking.
+ *
+ * @param m The handle.
+ * @param i The index.
+ * @return A pointer to the element.
+ */
+void *mls (int m, int i)
+{
+	lst_t *lp = get_list (m);
+	void *res = lst_peek (*lp, i);
+	if (!res)
+		ERR ("Index %d out of bounds for handle %d (len %d)", i, m,
+		     (**lp).l);
+	return res;
+}
+
+/**
+ * Reserves space for n new elements in a handle's list.
+ *
+ * @param m The handle.
+ * @param n The number of elements to reserve.
+ * @return The index of the first newly reserved element.
+ */
+int m_new (int m, int n)
+{
+	if (m == DEB && DEB > 0) {
+		/* Accessing ML[0] just for debugging trigger/breakpoint */
+		(void)lst(ML, 0);
+	}
+	lst_t *lp = get_list (m);
+	return lst_new (lp, n);
+}
+
+/**
+ * Appends one new element to a handle's list and returns a pointer to it.
+ *
+ * @param m The handle.
+ * @return A pointer to the new element.
+ */
+void *m_add (int m)
+{
+	int p = m_new (m, 1);
+	return mls (m, p);
+}
+
+/**
+ * Iterates through the elements of a handle's list.
+ *
+ * @param m The handle.
+ * @param p Pointer to the current index.
+ * @param d Pointer to store the address of the next element.
+ * @return 1 if an element was found, 0 otherwise.
+ */
+int m_next (int m, int *p, void *d)
+{
+	lst_t *lp = get_list (m);
+	return lst_next (*lp, p, d);
+}
+
+/**
+ * Appends an element to a handle's list.
+ *
+ * @param m The handle.
+ * @param data Pointer to the element data to append.
+ * @return The index of the appended element.
+ */
+int m_put (int m, const void *data)
+{
+	lst_t *lp = get_list (m);
+	return lst_put (lp, data);
+}
+
+/**
+ * Sets the logical length of a handle's list.
+ *
+ * @param m The handle.
+ * @param len The new length.
+ * @return 0 on success.
+ */
+int m_setlen (int m, int len)
+{
+	if (len < 0)
+		ERR ("Wrong Arg len=%d", len);
+	lst_t *lp = get_list (m);
+	if (len > (**lp).max)
+		lst_resize (lp, len);
+	(**lp).l = len;
+	return 0;
+}
+
+/**
+ * Returns the currently allocated capacity (buffer size) of a handle's list.
+ *
+ * @param m The handle.
+ * @return The maximum number of elements before a realloc is needed.
+ */
+int m_bufsize (int m)
+{
+	lst_t *lp = get_list (m);
+	return (**lp).max;
+}
+
+/**
+ * Returns a pointer to the element at the specified index without bounds checking.
+ *
+ * @param m The handle.
+ * @param i The index.
+ * @return A pointer to the element, or NULL if index is out of bounds.
+ */
+void *m_peek (int m, int i)
+{
+	lst_t *lp = get_list (m);
+	return lst_peek (*lp, i);
+}
+
+/**
+ * Writes data to a handle's list starting at a specific index.
+ * Resizes the list if necessary.
+ *
+ * @param m The handle.
+ * @param p The starting index.
+ * @param data Pointer to the source data.
+ * @param n The number of elements to write.
+ * @return 0 on success.
+ */
+int m_write (int m, int p, const void *data, int n)
+{
+	lst_t *lp = get_list (m);
+	return lst_write (lp, p, data, n);
+}
+
+/**
+ * Reads data from a handle's list into a buffer.
+ *
+ * @param h The handle.
+ * @param p The starting index.
+ * @param data Pointer to the destination buffer pointer.
+ * @param n The number of elements to read.
+ * @return 0 on success.
+ */
+int m_read (int h, int p, void **data, int n)
+{
+	lst_t *lp = get_list (h);
+	return lst_read (*lp, p, data, n);
+}
+
+/**
+ * Sets the logical length of a handle's list to zero.
+ *
+ * @param m The handle.
+ */
+void m_clear (int m)
+{
+	lst_t *lp = get_list (m);
+	(**lp).l = 0;
+}
+
+/**
+ * Deletes an element at the specified index from a handle's list.
+ * Remaining elements are shifted to close the gap.
+ *
+ * @param m The handle.
+ * @param p The index of the element to delete.
+ */
+void m_del (int m, int p)
+{
+	lst_t *lp = get_list (m);
+	lst_del (*lp, p);
+}
+
+/**
+ * Removes and returns a pointer to the last element of a handle's list.
+ *
+ * @param m The handle.
+ * @return A pointer to the element, or NULL if the list is empty.
+ */
+void *m_pop (int m)
+{
+	lst_t *lp = get_list (m);
+	if ((**lp).l == 0)
+		return NULL;
+	(**lp).l--;
+	return lst (*lp, (**lp).l);
+}
+
+/**
+ * Inserts n empty (zero-initialized) elements at a specific index in a handle's list.
+ *
+ * @param m The handle.
+ * @param p The insertion index.
+ * @param n The number of elements to insert.
+ * @return 1 on success, 0 on failure.
+ */
+int m_ins (int m, int p, int n)
+{
+	lst_t *lp = get_list (m);
+	return (lst_ins (lp, p, n) != NULL);
+}
+
+/**
+ * Returns the width of each element in a handle's list in bytes.
+ *
+ * @param m The handle.
+ * @return The element width.
+ */
+int m_width (int m)
+{
+	lst_t *lp = get_list (m);
+	return (**lp).w;
+}
+
+/**
+ * Resizes the allocated capacity of a handle's list.
+ *
+ * @param m The handle.
+ * @param new_size The new maximum number of elements.
+ */
+void m_resize (int m, int new_size)
+{
+	lst_t *lp = get_list (m);
+	lst_resize (lp, new_size);
+}
+
+#ifdef MLS_DEBUG
+#define m_create_internal(n, w) _m_create (__LINE__, __FILE__, __FUNCTION__, (n), (w))
+#define m_alloc_internal(n, w, h) _m_alloc (__LINE__, __FILE__, __FUNCTION__, (n), (w), (h))
+#else
+#define m_create_internal(n, w) m_create (n, w)
+#define m_alloc_internal(n, w, h) m_alloc (n, w, h)
+#endif
+
+/**
+ * Extracts a sub-range of elements from one list and appends or writes them into another.
+ * Supports negative indices (relative to end of list).
+ *
+ * @param dest The destination handle. If <= 0, a new handle is created.
+ * @param offs The offset in the destination list to start writing.
+ * @param m The source handle.
+ * @param a The starting index in the source list.
+ * @param b The ending index in the source list (inclusive).
+ * @return The destination handle.
+ */
+int m_slice (int dest, int offs, int m, int a, int b)
+{
+	if (!m) {
+		if (dest > 0)
+			m_setlen (dest, offs);
+		return dest;
+	}
+	int len = m_len (m);
+	if (b < 0)
+		b += len;
+	if (a < 0)
+		a += len;
+	if (b >= len)
+		b = len - 1;
+	if (a >= len)
+		a = len - 1;
+	if (a < 0)
+		a = 0;
+	int cnt = b - a + 1;
+	if (cnt < 0)
+		cnt = 0;
+	if (dest <= 0)
+		dest = m_create_internal (cnt + offs, m_width (m));
+	m_setlen (dest, offs);
+	if (cnt > 0) {
+		m_write (dest, offs, mls (m, a), cnt);
+	}
+	return dest;
+}
+
+/**
+ * Removes n elements starting from the specified index from a handle's list.
+ * Remaining elements are shifted to close the gap.
+ *
+ * @param m The handle.
+ * @param p The starting index.
+ * @param n The number of elements to remove.
+ */
+void m_remove (int m, int p, int n)
+{
+	lst_t *lp = get_list (m);
+	lst_remove (lp, p, n);
+}
+
+/**
+ * Specialized free function for lists containing dynamically allocated strings (char *).
+ * Frees each string in the list and optionally the list handle itself.
+ *
+ * @param list The handle of the string list.
+ * @param CLEAR_ONLY If non-zero, the strings are freed and the list is cleared, but the handle remains.
+ *                   If zero, the handle itself is also freed.
+ */
 void m_free_strings (int list, int CLEAR_ONLY)
 {
 	int index;
@@ -1238,178 +1071,188 @@ void m_free_strings (int list, int CLEAR_ONLY)
 		*strp = NULL;
 	}
 	if (CLEAR_ONLY)
-		m_clear (list); // reset array size to zero
-	else {
-		lst_t *lp = _get_list (list);
-		(*lp)->free_hdl = 0;
-		m_free (list); // free simple array and if ncc. debug info
-	}
+		m_clear (list);
+	else
+		m_free (list);
 }
 
 /**
- * @brief Splits the string `s` at each occurrence of the character `c` and
- * copies the handles to the resulting substrings into the array list `m`.
+ * Zeroes out the entire data buffer of a handle's list.
  *
- *
- * - An empty string results in an entry with a string of length zero.
- * - A string containing only the separator results in a string list with two
- * entries, both empty.
- * - If `m` is set to 0, a new string list is created. Otherwise, the existing
- * list is cleared and used.
- * - If `remove_wspace` is non-zero, leading and trailing whitespace characters
- * in the resulting substrings are removed.
- *
- * @param m The string list to which the substrings are copied. If set to 0, a
- * new list is created.
- * @param s The input string to be split.
- * @param c The character used as the delimiter for splitting the string.
- * @param remove_wspace Flag to indicate whether leading and trailing whitespace
- * should be removed from the substrings.
- * @return The generated string list.
+ * @param m The handle.
  */
-int s_split (int m, const char *s, int c, int remove_wspace)
+void m_bzero (int m)
 {
-	int p = 0, start = 0, end;
-	char *szTemp;
-
-	if (m)
-		m_free_strings (m, 1);
-	else
-		m = m_alloc (10, sizeof (char *), MFREE_STR);
-
-	for (;;) {
-
-		// leading white-space
-		if (remove_wspace)
-			while (isspace (s[p]) && s[p] != c)
-				p++;
-		start = p;
-
-		// delimeter
-		while (s[p] && s[p] != c)
-			p++;
-
-		//  trailing whitespace before delimeter, zero - length: end <
-		//  start
-		if (remove_wspace) {
-			end = p;
-			while (end > start && isspace (s[--end]))
-				;
-			if (end >= start && !isspace (s[end])) {
-				szTemp = strndup (s + start, end - start + 1);
-			} else
-				szTemp = strdup ("");
-		} else {
-			end = p;
-			if (end > start) {
-				szTemp = strndup (s + start, end - start);
-			} else
-				szTemp = strdup ("");
-		}
-		m_put (m, &szTemp);
-
-		if (s[p])
-			p++;
-		else
-			break;
-	}
-
-	return m;
+	lst_t *lp = get_list (m);
+	memset ((**lp).d, 0, (**lp).l * (**lp).w);
 }
-
-#include <regex.h>
 
 /**
- !X!
- Match DIGIT: [[:digit:]]
- Match DIGIT AND/OR a-f or A-F: [a-f[:digit:]A-F]
- Subexpresssion-Match: (first)##*(second)
- Matches the string: first#####second and
- returns the substring-list
- "first", "second"
- Returns: StringList
- len(m) == 0 : NO MATCH
- len(m) == 1 : matched string
- len(m) > 1  : matched string and matched subexpressions
- returns:  substring-list
- restrictions:
- bei jedem lauf wird die regex kompiliert
- pos. der substrings im zu durchsuchenden str. geht verloren
- todo: bei bedarf eine find-all funktion die alle passenden
- stellen fuer ein pattern sucht
-
-
- @PARAMS: int m - eine string-liste oder 0. wird mit m_free_strings gelöscht.
- char *regex - die expression
- char *s - der zu durchsuchende string
-
- @RETURNS: eine stringliste
-
-*/
-
-int m_regex (int m, const char *regex, const char *s)
+ * Removes n elements from the beginning of a handle's list.
+ * Remaining elements are shifted to the start of the buffer.
+ *
+ * @param m The handle.
+ * @param n The number of elements to skip.
+ */
+void m_skip (int m, int n)
 {
-	char *szTemp;
-	regex_t regc;
-	regmatch_t *pm;
-	int i, error;
-
-	int subexp = 1;
-	int p = 0;
-
-	error = regcomp (&regc, regex, REG_EXTENDED);
-	if (error)
-		ERR ("REG_EXPRESSION %s not valid", regex);
-
-	while (regex[p]) {
-		if (regex[p] == '(')
-			subexp++;
-		p++;
+	lst_t *lp = get_list (m);
+	if (n <= 0)
+		return;
+	if (n >= (**lp).l) {
+		(**lp).l = 0;
+		return;
 	}
-	pm = (regmatch_t *)malloc (sizeof (regmatch_t) * subexp);
-
-	if (m > 1)
-		m_free_strings (m, 1);
-	else
-		m = m_alloc (subexp + 1, sizeof (char *), MFREE_STR);
-
-	error = regexec (&regc, s, subexp, pm, 0);
-	if (!error) {
-		for (i = 0; i < subexp; i++) {
-			if (pm[i].rm_so == -1)
-				break;
-			szTemp = strndup (s + pm[i].rm_so,
-					  pm[i].rm_eo - pm[i].rm_so);
-			m_put (m, &szTemp);
-		}
-	}
-	free (pm);
-	regfree (&regc);
-	return m;
+	memmove ((**lp).d, lst (*lp, n), ((**lp).l - n) * (**lp).w);
+	(**lp).l -= n;
 }
 
-//! X! Copy List m
-int m_dub (int m)
+/**
+ * Scans a file until a delimiter character is encountered or EOF is reached.
+ * Appends the scanned characters to a handle's list.
+ *
+ * @param m The handle.
+ * @param delim The delimiter character.
+ * @param fp The file pointer to read from.
+ * @return The delimiter character read, or EOF.
+ */
+int m_fscan2 (int m, char delim, FILE *fp)
 {
-	int h = m_free_hdl (m);
-	int r = m_alloc (m_len (m), m_width (m), h);
-	m_write (r, 0, mls (m, 0), m_len (m));
-	return r;
+	int c;
+	m_clear (m);
+	while ((c = fgetc (fp)) != EOF) {
+		if (c == delim)
+			break;
+		m_putc (m, c);
+	}
+	return c;
 }
 
-/*
-0xxxxxxx
-10111111   illegal
-110xxxxx   10xxxxxx
-1110xxxx   10xxxxxx 10xxxxxx
-11110xxx   10xxxxxx 10xxxxxx 10xxxxxx
-*/
+/**
+ * Similar to m_fscan2, but returns the length of the data scanned.
+ *
+ * @param m The handle.
+ * @param delim The delimiter character.
+ * @param fp The file pointer.
+ * @return The number of characters scanned, or EOF if no characters were read before EOF.
+ */
+int m_fscan (int m, char delim, FILE *fp)
+{
+	int c = m_fscan2 (m, delim, fp);
+	if (c == EOF && m_len (m) == 0)
+		return EOF;
+	return m_len (m);
+}
+
+/**
+ * Compares two handle's lists element-by-element using memcmp.
+ *
+ * @param a The first handle.
+ * @param b The second handle.
+ * @return <0 if a < b, 0 if a == b, >0 if a > b.
+ */
+int m_cmp (int a, int b)
+{
+	if (a == b)
+		return 0;
+	int len_a = m_len (a);
+	int len_b = m_len (b);
+	int min_len = len_a < len_b ? len_a : len_b;
+	int res = memcmp (m_buf (a), m_buf (b), min_len * m_width (a));
+	if (res != 0)
+		return res;
+	return len_a - len_b;
+}
+
+/**
+ * Looks up a key (represented by a handle) in a list of handles.
+ * If not found, the key is appended to the list.
+ *
+ * @param m The handle of the list to search.
+ * @param key The handle to look for.
+ * @return The handle found or inserted.
+ */
+int m_lookup (int m, int key)
+{
+	int p, *d;
+	if (m_len (key) == 0)
+		ERR ("Key of zero size");
+	m_foreach (m, p, d) if (m_cmp (*d, key) == 0) return *d;
+	m_put (m, &key);
+	return key;
+}
+
+/**
+ * Looks up an object of fixed size in a list.
+ * If not found, the object is appended.
+ *
+ * @param m The handle of the list to search.
+ * @param obj Pointer to the object to look for.
+ * @param size The size of the object in bytes.
+ * @return The index of the object.
+ */
+int m_lookup_obj (int m, void *obj, int size)
+{
+	int p;
+	void *d;
+	m_foreach (m, p, d) if (memcmp (d, obj, size) == 0) return p;
+	p = m_new (m, 1);
+	memcpy (mls (m, p), obj, size);
+	return p;
+}
+
+/**
+ * Looks up a string in a list of strings (char *).
+ * If not found and NOT_INSERT is 0, the string is duplicated and appended.
+ *
+ * @param m The handle of the string list.
+ * @param key The string to look for.
+ * @param NOT_INSERT If non-zero, do not insert the string if not found.
+ * @return The index of the string, or -1 if not found and NOT_INSERT is set.
+ */
+int m_lookup_str (int m, const char *key, int NOT_INSERT)
+{
+	int p;
+	char **d;
+	if (!key || strlen (key) == 0)
+		ERR ("Key of zero size");
+	m_foreach (m, p, d)
+	{
+		if (*d == NULL)
+			continue;
+		if (strcmp (*d, key) == 0)
+			return p;
+	}
+	if (NOT_INSERT)
+		return -1;
+	p = m_new (m, 1);
+	*(char **)mls (m, p) = strdup (key);
+	return p;
+}
+
+/**
+ * Appends a single character to a handle's list.
+ *
+ * @param m The handle.
+ * @param c The character to append.
+ * @return The character appended.
+ */
+int m_putc (int m, char c) { return *(char *)m_add (m) = c; }
+
+/**
+ * Appends a single integer to a handle's list.
+ *
+ * @param m The handle.
+ * @param c The integer to append.
+ * @return The integer appended.
+ */
+int m_puti (int m, int c) { return *(int *)m_add (m) = c; }
+
 #define UTF8GET()                                                              \
 	if (EOS ())                                                            \
 		return -1;                                                     \
 	c = GETCH ();                                                          \
 	INC ();                                                                \
-                                                                               \
 	if ((c & 0x80) == 0)                                                   \
 		return c;                                                      \
 	if ((c & 0x40) == 0)                                                   \
@@ -1440,7 +1283,6 @@ int m_dub (int m)
 		goto read;                                                     \
 	}                                                                      \
 	return 0xFFFD;                                                         \
-                                                                               \
 	read:                                                                  \
 	ret = c;                                                               \
 	while (len > 0) {                                                      \
@@ -1448,922 +1290,188 @@ int m_dub (int m)
 		if (EOS ())                                                    \
 			return -1;                                             \
 		c = GETCH ();                                                  \
-		if ((c & 0xc0) != 0x80) /* wrong header */                     \
+		if ((c & 0xc0) != 0x80)                                        \
 			return 0xFFFD;                                         \
 		INC ();                                                        \
 		ret = (ret << 6) | (c & 0x3f);                                 \
 	}                                                                      \
-                                                                               \
 	return ret
 
-/* get current char (32bit) and increment p by character length
-   -1 is reserved as end of stream indicator
-*/
+/**
+ * Decodes a UTF-8 character from a handle's list starting at index p.
+ * Increments p by the number of bytes consumed.
+ *
+ * @param buf The handle of the buffer.
+ * @param p Pointer to the current index.
+ * @return The decoded Unicode character point, or -1 on error/EOF.
+ */
 int m_utf8char (int buf, int *p)
 {
 	unsigned char c;
 	uint32_t ret;
 	int len;
-
 #define GETCH() (*(unsigned char *)mls (buf, (*p)))
 #define EOS() ((*p) >= m_len (buf))
 #define INC() ((*p)++)
-
 	UTF8GET ();
-
 #undef GETCH
 #undef EOS
 #undef INC
 }
 
-/* get current char (32bit) and increment (*s) by character length
-   -1 is reserved as end of stream indicator
-*/
+/**
+ * Decodes a UTF-8 character from a string pointer.
+ * Increments the pointer by the number of bytes consumed.
+ *
+ * @param s Pointer to a string pointer.
+ * @return The decoded Unicode character point, or -1 on error/EOF.
+ */
 int utf8char (char **s)
 {
 	unsigned char c;
 	uint32_t ret;
 	int len;
-
 #define GETCH() (**s)
 #define EOS() ((**s) == 0)
 #define INC() ((*s)++)
-
 	UTF8GET ();
-
 #undef GETCH
 #undef EOS
 #undef INC
 }
 
+/**
+ * Reads a single UTF-8 character from a file pointer.
+ *
+ * @param fp The file pointer.
+ * @param buf Buffer to store the UTF-8 byte sequence (null-terminated if len < 6).
+ * @return The number of bytes in the UTF-8 character, or EOF.
+ */
 int utf8_getchar (FILE *fp, utf8_char_t buf)
 {
 	int len, ch, nx, i;
-
 read_single:
 	ch = fgetc (fp);
-
 parse_next_char:
-	if (ch < 0x80) // valid char or EOF, Lower Than instead of Logic AND
-	{
+	if (ch < 0x80) {
 		len = 1;
 		goto read_multi_byte;
 	}
-
-	if ((ch & 0x40) == 0) // invalid, discard
-	{
+	if (ch < 0xC0)
 		goto read_single;
-	}
-	if ((ch & 0x20) == 0) // Bit 7=0
-	{
+	if (ch < 0xE0)
 		len = 2;
-		goto read_multi_byte;
-	}
-
-	if ((ch & 0x10) == 0) // Bit 6=0
-	{
+	else if (ch < 0xF0)
 		len = 3;
-		goto read_multi_byte;
-	}
-
-	if ((ch & 0x08) == 0) // 4 byte
-	{
+	else if (ch < 0xF8)
 		len = 4;
-		goto read_multi_byte;
-	}
-
-	if ((ch & 0x04) == 0) // 5 byte
-	{
+	else if (ch < 0xFC)
 		len = 5;
-		goto read_multi_byte;
-	}
-
-	if ((ch & 0x02) == 0) // 6 byte
-	{
+	else
 		len = 6;
-		goto read_multi_byte;
-	}
-
-	// illegal char, read next
-	goto read_single;
-
 read_multi_byte:
-	buf[0] = len;
-	buf[1] = ch < 0 ? 0xff : ch;
-	i = 1;
-	while (i++ < len) {
+	buf[0] = ch;
+	for (i = 1; i < len; i++) {
 		nx = fgetc (fp);
-		if (nx < 0)
-			return -1;
-		if ((nx & 0xc0) != 0x80) { // wrong header, discard char
+		if (nx == EOF)
+			return EOF;
+		if ((nx & 0xC0) != 0x80) {
 			ch = nx;
 			goto parse_next_char;
 		}
 		buf[i] = nx;
 	}
-	return ch;
+	return len;
 }
 
-// lese aus fp und speicher in m, falls m>0,
-// bis EOF oder das Zeichen delim gefunden wurde.
-// returns: -1 EOF, delim - OK
-// wird m>0 übergeben, erhält man einen mit null-terminierten string
-//
-int m_fscan (int m, char delim, FILE *fp)
-{
-	int ch;
-	utf8_char_t buf;
-	buf[0] = 0;
-	for (;;) {
-		ch = utf8_getchar (fp, buf);
-		if (ch < 0 || ch == delim) {
-			if (m) {
-				buf[0] = 0;
-				m_put (m, buf);
-			}
-			return ch;
-		}
-		if (m)
-			m_write (m, m_len (m), buf + 1, *buf);
-	}
-}
-
-//
-// lese aus fp und speicher in m, falls m>0,
-// bis EOF oder das Zeichen delim gefunden wurde.
-// returns: -1 = EOF, oder 'delim'
-// wird m>0 übergeben, erhält man einen mit null-terminierten string
-// führende und folgende Leerzeichen werden nicht gespeichert
-// es werden doppelte leerzeichen zu einem reduziert (squeeze).
-// tabs werden zu leerzeichen
-// die gelesenen daten werden an m angehängt, falls m existiert (i.e. m>0)!
-int m_fscan2 (int m, char delim, FILE *fp)
-{
-	int ch;
-	int IN = 1;
-	char SPACE = 0;
-	utf8_char_t buf;
-	buf[0] = 0;
-	for (;;) {
-		ch = utf8_getchar (fp, buf);
-		if (ch < 0 || ch == delim) {
-			if (m) {
-				buf[0] = 0;
-				m_put (m, buf);
-			}
-			return ch;
-		}
-		if (m) {
-			if (isspace (ch)) {
-				if (IN)
-					continue;
-				if (SPACE)
-					continue;
-				SPACE = 32;
-				continue;
-			} else {
-				if (IN)
-					IN = 0;
-				if (SPACE && m)
-					m_put (m, &SPACE);
-				SPACE = 0;
-			}
-			m_write (m, m_len (m), buf + 1, *buf);
-		}
-	}
-}
-
-//! X! vergleiche zwei marrays mit strncmp
-// returns: 0 wenn beide gleich sind, sonst !=0
-// beide strings müssen mit 0 enden
-int m_cmp (int a, int b)
-{
-	int l1, l2;
-	l1 = m_len (a);
-	l2 = m_len (b);
-	l1 = Min (l1, l2);
-	return strncmp ((char *)mls (a, 0), (char *)mls (b, 0), l1);
-}
-
-/* suche nach obj in der liste m
-   ist obj noch nicht vorhanden wird es der liste hinzugefügt
-   RETURNS:
-   index von obj
-*/
-int m_lookup_obj (int m, void *obj, int size)
-{
-	int p;
-	void *d;
-
-	m_foreach (m, p, d) if (memcmp (d, obj, size) == 0) return p;
-
-	p = m_new (m, 1);
-	memcpy (mls (m, p), obj, size);
-	return p;
-}
-
-//! X! lookup-table verwaltung
-// suche nach key in liste m
-// falls key gefunden gebe den treffer zurück
-// ansonsten füge key hinzu und gebe key zurück
-// m - marray [ int ]
-// key - marray [ char ], type: ZMSTRING zero-terminated string in marray
-// returns: entweder wird (key) zurückgegeben, dann wurde key hinzugefügt,
-// oder es wird ein wert !=key zurückgegeben, dann existiert der schlüssel
-// schon und der rückgabewert zeigt auf den existieren schlüssel.
-//
-int m_lookup (int m, int key)
-{
-	int p, *d;
-
-	if (m_len (key) == 0)
-		ERR ("Key of zero size");
-	m_foreach (m, p, d) if (m_cmp (*d, key) == 0) return *d;
-
-	m_put (m, &key);
-	return key;
-}
-
-int m_lookup_str (int m, const char *key, int NOT_INSERT)
-{
-	int p;
-	char **d;
-
-	if (!key || strlen (key) == 0)
-		ERR ("Key of zero size");
-	m_foreach (m, p, d)
-	{
-		if (*d == NULL)
-			continue;
-		if (strcmp (*d, key) == 0)
-			return p;
-	}
-
-	if (NOT_INSERT)
-		return -1;
-
-	p = m_new (m, 1);
-	*(char **)mls (m, p) = strdup (key);
-	return p;
-}
-
-/* binary search/insert functions for lists where the first element is integer
- * sortable */
+/**
+ * Comparison function for integers, suitable for qsort or binary search.
+ *
+ * @param a0 Pointer to first integer.
+ * @param b0 Pointer to second integer.
+ * @return a0 - b0.
+ */
 int cmp_int (const void *a0, const void *b0)
 {
-	const int *a = a0;
-	const int *b = b0;
-	return (*a) - (*b);
+	return (*(const int *)a0) - (*(const int *)b0);
 }
 
-int m_binsert_int (int buf, int key)
-{
-	return m_blookup_int (buf, key, NULL, NULL);
-}
-
-int m_bsearch_int (int buf, int key) { return m_bsearch (&key, buf, cmp_int); }
-
-/* return pos of array-entry that matches `key`, insert `key` if not found and
-   call the new() function if defined.
-*/
+/**
+ * Looks up an integer in a sorted list using binary search and inserts it if not found.
+ *
+ * @param buf The handle of the sorted list.
+ * @param key The integer to look for.
+ * @param new Optional callback function called when a new element is inserted.
+ * @param ctx Context pointer for the callback.
+ * @return The index of the integer in the list.
+ */
 int m_blookup_int (int buf, int key, void (*new) (void *, void *), void *ctx)
 {
 	void *obj = calloc (1, m_width (buf));
 	*(int *)obj = key;
+	extern int m_binsert (int buf, const void *data,
+			      int (*cmpf) (const void *a, const void *b),
+			      int with_duplicates);
 	int p = m_binsert (buf, obj, cmp_int, 0);
 	free (obj);
-	if (p < 0) { /* entry exists */
+	if (p < 0)
 		return (-p) - 1;
-	}
 	if (new)
 		new (mls (buf, p), ctx);
 	return p;
 }
 
+/**
+ * Similar to m_blookup_int, but returns a pointer to the element.
+ *
+ * @param buf The handle of the sorted list.
+ * @param key The integer to look for.
+ * @param new Optional callback function.
+ * @param ctx Context pointer.
+ * @return A pointer to the element.
+ */
 void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),
 		       void *ctx)
 {
 	return mls (buf, m_blookup_int (buf, key, new, ctx));
 }
 
-// ***********
-//  VARIABLES
-// ***********
-// initalize a new set of variables
-int v_init (void) { return m_create (100, sizeof (int)); }
-
-// free  a  set of variables
-void v_free (int vl)
-{
-	int p, *d;
-	m_foreach (vl, p, d) m_free_strings (*d, 0);
-	m_free (vl);
-}
-
-// using variable name
-
-//
-int v_set (int vs, const char *name, const char *value, int pos)
-{
-	int key = v_lookup (vs, name);
-	v_kset (key, value, pos);
-	return key;
-}
-
-// v_vaset( vs   [, name,value]*
-// set a list of variables
-void v_vaset (int vs, ...)
-{
-	va_list argptr;
-	char *name, *value;
-
-	va_start (argptr, vs);
-
-	while ((name = va_arg (argptr, char *)) != NULL) {
-		value = va_arg (argptr, char *);
-		v_set (vs, name, value, VAR_APPEND);
-	}
-
-	va_end (argptr);
-}
-
-void v_clr (int vs, const char *name) { return v_kclr (v_lookup (vs, name)); }
-
-char *v_get (int vs, const char *name, int pos)
-{
-	return v_kget (v_lookup (vs, name), pos);
-}
-
-int v_len (int vs, const char *name) { return v_klen (v_lookup (vs, name)); }
-
-// returns index of variable "name" in list vs
-int v_find_key (int vs, const char *name)
-{
-	char *s;
-	int p, *d;
-	m_foreach (vs, p, d)
-	{
-		s = STR (*d, 0);
-		if (strcmp (s, name) == 0)
-			return p;
-	}
-	return -1;
-}
-
-void v_remove (int vs, const char *name)
-{
-	int pos = v_find_key (vs, name);
-	if (pos >= 0) {
-		m_free_strings (INT (vs, pos), 0);
-		m_del (vs, pos);
-	}
-}
-
-/* return key to access variable "name" inside "vl" */
-int v_lookup (int vl, const char *name)
-{
-	if (is_empty (name))
-		return -1;
-
-	int p = v_find_key (vl, name);
-	if (p >= 0) {
-		return INT (vl, p);
-	}
-
-	TRACE (1, "Create on Stack (%d) Var: %s", vl, name);
-	int var = m_create (2, sizeof (char *));
-	char *s = strdup (name);
-	m_put (var, &s);
-	m_put (vl, &var);
-	return var;
-}
-
-// Access Stringlist Var
-//
-// row=0 - varname
-// row=1 - first value ...
-//
-// row < 0 OR row==Len : Append val
-// row > len : Error, exit
-void v_kset (int var, const char *v, int row)
-{
-	char *val = NULL;
-	if (v)
-		val = strdup (v);
-
-	if (row < 0 || row >= m_len (var)) // append-value
-	{
-		m_put (var, &val);
-	} else // replace value
-	{
-		char **d = (char **)mls (var, row);
-		if (*d)
-			free (*d);
-		*d = val;
-	}
-}
-
-void v_kclr (int var)
-{
-	int i = 0;
-	char **d;
-	while (m_next (var, &i, &d))
-		if (*d) {
-			free (*d);
-			*d = NULL;
-		}
-
-	m_setlen (var, 1);
-}
-
-char *v_kget (int var, int row)
-{
-	if (var <= 0)
-		return "";
-	int len = m_len (var);
-	if (row >= len)
-		return "";
-	char *s = STR (var, row);
-	if (s == NULL)
-		return "";
-	return s;
-}
-
-int v_klen (int key) { return m_len (key) - 1; }
-
-void se_init (str_exp_t *se) { memset (se, 0, sizeof *se); }
-
-void se_free (str_exp_t *se)
-{
-	m_free_strings (se->splitbuf, 0);
-	m_free (se->values);
-	m_free (se->indices);
-	m_free (se->buf);
-	memset (se, 0, sizeof *se);
-}
-
-void se_realloc_buffers (str_exp_t *se)
-{
-	if (!se->buf) {
-		se->splitbuf = m_create (10, sizeof (char *));
-		se->values = m_create (10, sizeof (char *));
-		se->indices = m_create (10, sizeof (int));
-		se->buf = m_create (100, 1);
-		return;
-	}
-
-	m_free_strings (se->splitbuf, 1);
-	m_clear (se->values);
-	m_clear (se->indices);
-	m_clear (se->buf);
-	se->max_row = 0;
-}
-
-// tbd
-// returns:
-//  1 ALL
-//  2..n SINGLE
-//  0 ERROR
-//
-static int parse_index (const char **s)
-{
-	int val;
-	const char *p = *s;
-
-	if (*p != '[')
-		return 0;
-	p++;
-	if (*p == '*' && p[1] == ']') {
-		*s = p + 2;
-		return 1;
-	}
-
-	val = 0;
-	while (isdigit (*p)) {
-		val *= 10;
-		val += *p - '0';
-		p++;
-	}
-	if (*p == ']') {
-		*s = p + 1;
-		return val + 2;
-	}
-
-	return 0;
-}
-
-void se_parse (str_exp_t *se, const char *frm)
-{
-	ASSERT (frm && se);
-
-	se_realloc_buffers (se); // alloc, or clear buffer
-
-	int b = se->splitbuf;
-	char *cp, prev;
-	const char *s, *s0;
-
-	prev = 0;
-	s = frm;
-	s0 = s;
-
-	for (;;) {
-
-		if (*s == 0 || (*s == '$' && prev != '\\')) {
-			// prefix ?
-			if (s0 != s) {
-				cp = strndup (s0, s - s0); // copy without *s
-				m_put (b, &cp);
-			}
-			if (*s == 0)
-				break; // exit
-
-			// cut out varname
-			s0 = s; //  token start (with $-prefix)
-			s++;	// skip leading $
-
-			if (*s == '\'') {
-				s++;
-			} // expand with single quotes
-
-			while (isalnum (*s) || *s == '_')
-				s++; // UNTIL DELIMITER FOUND
-			// copy without delimiter
-			cp = strndup (s0, s - s0);
-			m_put (b, &cp);
-			m_put (se->values, &cp);
-
-			int index = parse_index (&s);
-			m_put (se->indices, &index);
-			if (*s == 0)
-				break; // exit
-
-			s0 = s; // s0 points to delimiter
-		}
-		prev = *s;
-		s++;
-	}
-};
-
-// str_replace(array('\\', "\0", "\n", "\r", "'", '"', "\x1a"), array('\\\\',
-// '\\0', '\\n', '\\r', "\\'", '\\"', '\\Z')
-
-static void repl_char (int buf, char ch)
-{
-	char tab[] = {'\\', '\0', '\n', '\r', '\'', '"', '\x1a'};
-	char rep[] = {'\\', '0', 'n', 'r', '\'', '"', 'Z'};
-
-	int i;
-	for (i = 0; i < sizeof tab; i++)
-		if (tab[i] == ch) {
-			m_putc (buf, '\\');
-			m_putc (buf, rep[i]);
-			return;
-		}
-	m_putc (buf, ch);
-}
-
-void escape_buf (int buf, char *src)
-{
-	while (*src)
-		repl_char (buf, *src++);
-}
-
-int escape_str (int buf, char *src)
-{
-	if (!buf)
-		buf = m_create (100, 1);
-	else
-		m_clear (buf);
-	escape_buf (buf, src);
-	m_putc (buf, 0);
-	return buf;
-}
-
-/** @brief erzeugt aus *s einen string mit escape zeichen
-    @param s2 - 0 oder mls liste
-    @param s - ein string der umgewandelt werden soll
-    @param quotes - falls quotes==1 werden einfache anführungszeichen um die
-   variable gesetzt
-    @return gültiger mls string (liste mit breite 1, string ohne Nullbyte)
+/**
+ * Inserts an integer into a sorted list using binary search.
+ *
+ * @param buf The handle of the sorted list.
+ * @param key The integer to insert.
+ * @return The index where the integer was inserted or found.
  */
-static int field_escape (int s2, char *s, int quotes)
+int m_binsert_int (int buf, int key)
 {
-	// "*s" ist der zu speichernde string
-	// um das sql-kommando zu generieren werden sonderzeichen
-	// "escaped". dies ist ein gutes beispiel warum die "mls"
-	// speicherverwaltung vorteile bietet. der benötigte speicher
-	// von mysql_escape_string muss abgeschätzt und reserviert werden.
-	// die gleiche funktion in mls ist viel einfacher zu verwenden
-	if (quotes)
-		m_putc (s2, '\'');
-	escape_buf (s2, s);
-	if (quotes)
-		m_putc (s2, '\'');
-	return s2;
+	return m_blookup_int (buf, key, NULL, NULL);
 }
 
 /**
-    @return einen gültigen string - immer
+ * Searches for an integer in a sorted list using binary search.
+ *
+ * @param buf The handle of the sorted list.
+ * @param key The integer to search for.
+ * @return The index of the integer, or -1 if not found.
  */
-char *se_expand (str_exp_t *se, int vl, int row)
+int m_bsearch_int (int buf, int key)
 {
-	int var, index;
-	int p, vn;
-	char **d, *s;
-	int quotes = 0;
-	m_clear (se->buf);
-	int buf = se->buf;
-	vn = 0; // number of variables
-
-	// string zusammenfügen
-	// variablen werden durch ihren wert ersetzt
-	// variablen werden durch ein führendes "$" erkannt
-	// folgt dem $ ein "'" wird der eingesetzte wert durch "'" umschlossen
-	//
-	m_foreach (se->splitbuf, p, d)
-	{
-		s = *d;
-
-		if (*s != '$') { // einfacher text-baustein, nur anhängen
-			m_write (buf, m_len (buf), s, strlen (s));
-		} else // variable found
-		{
-			if (s[1] == '\'') {
-				quotes = 1;
-				s++;
-			} else
-				quotes = 0;
-			var = v_lookup (vl, s + 1);
-			index = INT (se->indices, vn);
-			vn++;
-
-			// expand var
-			if (index == 1) { // erzeuge eine liste von werten
-				field_escape (buf, STR (var, 1), quotes);
-				for (index = 2; index < m_len (var); index++) {
-					m_putc (buf, ',');
-					field_escape (buf, STR (var, index),
-						      quotes);
-				}
-			} else { // index != 1  i.e. not expand all i.e. index
-				 // != [*]
-				if (index == 0)
-					index = row; // falls kein index
-						     // angegeben wurde, benutze
-						     // (row)
-				else
-					index -= 2;
-
-				if (index < v_klen (var))
-					field_escape (buf, STR (var, index + 1),
-						      quotes);
-			}
-		} // variable expandiert
-	}
-
-	m_putc (buf, 0);
-	return mls (buf, 0);
+	extern int m_bsearch (const void *key, int list,
+			      int (*compar) (const void *, const void *));
+	return m_bsearch (&key, buf, cmp_int);
 }
 
-/** expandiert den string frm mit den variablen aus vl
- * @return	einen Zeiger auf den expandierten string
- *		dieser string wird auch als variable
- *		unter dem namen se_string in vl gespeichert
+/**
+ * Creates a ring buffer (circular buffer) of integers.
+ *
+ * @param size The capacity of the ring buffer.
+ * @return The handle of the new ring buffer.
  */
-char *se_string (int vl, const char *frm)
-{
-	str_exp_t se;
-	int data;
-
-	se_init (&se);
-	se_parse (&se, frm);
-	se_expand (&se, vl, 0);
-	data = v_set (vl, "se_string", mls (se.buf, 0), 1);
-	se_free (&se);
-	return STR (data, 1);
-}
-
-/* returns: length of string */
-int s_strlen (int m)
-{
-	int p = m_len (m);
-	return p && CHAR (m, p - 1) == 0 ? p - 1 : p;
-}
-
-/** append cstring to mstr
- * returns: mstr
- */
-int s_app1 (int m, char *s)
-{
-	int p = s_strlen (m);
-	m_write (m, p, s, strlen (s) + 1);
-	return m;
-}
-
-static int vas_app (int m, va_list ap)
-{
-	char *name;
-	while ((name = va_arg (ap, char *)) != NULL) {
-		s_app1 (m, name);
-	}
-	return m;
-}
-
-/** anhängen der char* strings an |m| */
-int s_app (int m, ...)
-{
-	va_list ap;
-	if (!m)
-		m = m_create (10, 1);
-	va_start (ap, m);
-	vas_app (m, ap);
-	va_end (ap);
-	return m;
-}
-
-int vas_printf (int m, int p, const char *format, va_list ap)
-{
-	int len;
-	va_list copy;
-
-	// Patch für 64Bit machines 08.10.14
-	va_copy (copy, ap);
-
-	len = vsnprintf (0, 0, format, ap); /* get string size */
-	len++;				    /* with terminating zero */
-	if (m == 0) {
-		m = m_create (len, 1);
-		p = 0;
-	}
-
-	if (p < 0 || p > m_len (m)) /* append to string */
-		p = s_strlen (m);
-
-	m_setlen (m, p + len);
-	void *buf = mls (m, p);
-
-	vsnprintf (buf, len, format, copy); /* len is (stringsize + 1) */
-	va_end (copy);
-	return m;
-}
-
-/* string printf
-   place string at p into array m
-   if p<0 append str to m
-   if m == 0 create new str
-*/
-int s_printf (int m, int p, char *format, ...)
-{
-	va_list ap;
-	va_start (ap, format);
-	m = vas_printf (m, p, format, ap);
-	va_end (ap);
-	return m;
-}
-
-/** das letzte zeichen des strings finden
-    falls der string leer ist oder nur NULL enthält
-    wird 0 zurückgegeben
-*/
-int s_lastchar (int m)
-{
-	int len = m_len (m);
-	if (len == 0)
-		return 0;
-
-	do {
-		len--;
-	} while (len > 0 && CHAR (m, len) == 0);
-
-	return CHAR (m, len);
-}
-
-/* erzeuge eine kopie eines teil-strings */
-int s_copy (int m, int first_char, int last_char)
-{
-	if (last_char < 0)
-		last_char = m_len (m) - 1;
-	if (first_char < 0 || first_char > last_char || first_char >= m_len (m))
-		return m_create (1, 1);
-	int size = last_char - first_char + 1;
-	if (first_char + size > m_len (m))
-		size = m_len (m) - first_char;
-	int ret = m_create (size, 1);
-	m_setlen (ret, size);
-	m_write (ret, 0, mls (m, first_char), size);
-	if (CHAR (ret, m_len (ret) - 1) != 0)
-		m_putc (ret, 0);
-	return ret;
-}
-
-void m_qsort (int list, int (*compar) (const void *, const void *))
-{
-	qsort (m_buf (list), m_len (list), m_width (list), compar);
-}
-
-int m_bsearch (const void *key, int list,
-	       int (*compar) (const void *, const void *))
-{
-	if (list < 1 || m_len (list) == 0)
-		return -1;
-	void *res = bsearch (key, m_buf (list), m_len (list), m_width (list),
-			     compar);
-	if (res)
-		return (res - m_buf (list)) / m_width (list);
-	return -1;
-}
-
-int m_lfind (const void *key, int list,
-	     int (*compar) (const void *, const void *))
-{
-	size_t max;
-	if (list < 1 || m_len (list) == 0)
-		return -1;
-	max = m_len (list);
-	void *res = lfind (key, m_buf (list), &max, m_width (list), compar);
-	if (res)
-		return (res - m_buf (list)) / m_width (list);
-	return -1;
-}
-
-/** @brief insert *data into sorted list buf
- * @returns: position of new element, or ret=-pos-1 (ret<0) if elem. exists
- */
-int m_binsert (int buf, const void *data,
-	       int (*cmpf) (const void *data, const void *buf_elem),
-	       int with_duplicates)
-{
-	int left = 0;
-	int right = m_len (buf) + 1;
-	int cur = 1;
-	void *obj;
-	int cmp;
-
-	if (m_len (buf) == 0) {
-		m_put (buf, data);
-		return 0;
-	}
-
-	while (1) {
-		cur = (left + right) / 2;
-		obj = mls (buf, cur - 1);
-		cmp = cmpf (data, obj);
-		if (cmp == 0) {
-			if (!with_duplicates)
-				return -cur;
-			break;
-		}
-		if (cmp < 0) {
-			right = cur;
-			if (left + 1 == right)
-				break;
-		} else {
-			left = cur;
-			if (left + 1 == right) {
-				cur++;
-				break;
-			}
-		}
-	}
-
-	cur--;
-	m_ins (buf, cur, 1);
-	m_write (buf, cur, data, 1);
-	return cur;
-}
-
-int s_index (int buf, int p, int ch)
-{
-	unsigned char *d;
-	while (p < m_len (buf)) {
-		d = mls (buf, p);
-		if (*d == ch)
-			return p;
-		p++;
-	}
-	return -1;
-}
-
-lst_t *exported_get_list (int r) { return _get_list (r); }
-
-/* ringbuf */
-/*
-  Array:
-  l         : Wr
-  d[0]      : Rd
-  d[1..max] : data
-
-  Rd < 0    : Empty
-  Wr == Rd  : Full
-  Wr zeigt immer auf einen freien Platz, solange Wr != Rd
-  Rd zeigt immer auf das zu lesende Element, soland Rd > 0
-*/
-/* RD = -1:  empty */
-/* RD == WR: full  */
 int ring_create (int size)
 {
-	int r = m_create (size + 1, sizeof (int));
-	lst_t *lp = _get_list (r);
+	int r = m_create_internal (size + 1, sizeof (int));
+	lst_t *lp = exported_get_list (r);
 	int *rd = lst_peek (*lp, 0);
 	int *wr = &(*lp)->l;
 	*rd = -1;
@@ -2371,50 +1479,72 @@ int ring_create (int size)
 	return r;
 }
 
+/**
+ * Checks if a ring buffer is empty.
+ *
+ * @param r The ring buffer handle.
+ * @return 1 if empty, 0 otherwise.
+ */
 int ring_empty (int r)
 {
-	lst_t *lp = _get_list (r);
+	lst_t *lp = exported_get_list (r);
 	int *rd = lst_peek (*lp, 0);
 	return (*rd < 0);
 }
 
+/**
+ * Checks if a ring buffer is full.
+ *
+ * @param r The ring buffer handle.
+ * @return 1 if full, 0 otherwise.
+ */
 int ring_full (int r)
 {
-	lst_t *lp = _get_list (r);
+	lst_t *lp = exported_get_list (r);
 	int *rd = lst_peek (*lp, 0);
 	int *wr = &(*lp)->l;
 	return (*rd == *wr);
 }
 
-/* if RD == WR return -1 */
+/**
+ * Appends an integer to a ring buffer.
+ *
+ * @param r The ring buffer handle.
+ * @param data The integer to append.
+ * @return 0 on success, -1 if the buffer is full.
+ */
 int ring_put (int r, int data)
 {
-	lst_t *lp = _get_list (r);
+	lst_t *lp = exported_get_list (r);
 	int *rd = lst_peek (*lp, 0);
 	int *wr = &(*lp)->l;
 	int max = (*lp)->max;
 	int *d = lst_peek (*lp, *wr);
-
 	if (*rd == *wr)
-		return -1; /* full */
+		return -1;
 	*d = data;
 	if (*rd < 0)
-		*rd = *wr; /* was empty */
+		*rd = *wr;
 	(*wr)++;
 	if (*wr >= max)
 		*wr = 1;
 	return 0;
 }
 
+/**
+ * Retrieves and removes the oldest integer from a ring buffer.
+ *
+ * @param r The ring buffer handle.
+ * @return The integer retrieved, or -1 if the buffer is empty.
+ */
 int ring_get (int r)
 {
-	lst_t *lp = _get_list (r);
+	lst_t *lp = exported_get_list (r);
 	int *rd = lst_peek (*lp, 0);
 	int *wr = &(*lp)->l;
 	int max = (*lp)->max;
-
 	if (*rd < 0)
-		return -1; /* empty */
+		return -1;
 	int *d = lst_peek (*lp, *rd);
 	(*rd)++;
 	if (*rd >= max)
@@ -2424,87 +1554,217 @@ int ring_get (int r)
 	return *d;
 }
 
+/**
+ * Frees a ring buffer.
+ *
+ * @param r The ring buffer handle.
+ */
 void ring_free (int r) { m_free (r); }
 
-/* return 0 if string m[p..] == s
-   else return <0 or >0
+/* Debug implementations */
+
+/**
+ * Internal debug version of m_init.
+ * Initializes the master list and the debug ownership list.
+ *
+ * @return 0 on success, 1 if already initialized.
  */
-int mstrcmp (int m, int p, const char *s)
+int _m_init ()
 {
-	int res = 1;
-	if (!s)
+	if (DEB)
 		return 1;
-	while (p < m_len (m)) {
-		res = CHAR (m, p) - *s;
-		if (res)
-			break;
-		if (*s == 0)
-			return 0;
-		p++;
-		s++;
-	}
-	return res;
-}
-
-int mstr_to_long (int buf, int *p, long int *ret_val)
-{
-
-	int pp = 0;
-	if (!p)
-		p = &pp;
-	if (buf <= 0 || *p < 0 || *p >= m_len (buf))
-		return -1;
-
-	/* append zero but keep array length */
-	if (CHAR (buf, m_len (buf) - 1) != 0) {
-		m_putc (buf, 0);
-		m_setlen (buf, m_len (buf) - 1);
-	}
-
-	errno = 0;
-	char *endptr;
-	char *start = mls (buf, *p);
-	*ret_val = strtol (start, &endptr, 0);
-	if (*endptr || errno)
-		return -1;
+	m_init ();
+	DEB = m_create (100, sizeof (lst_owner));
+	atexit (exit_error);
 	return 0;
 }
 
 /**
- * @brief Reads all available data from a file descriptor into an mls buffer.
- *
- * This function clears the provided buffer and then performs repeated reads
- * from the file descriptor until EOF (0) or an error occurs. The buffer is
- * automatically resized in 4096-byte increments to accommodate the incoming
- * data.
- *
- * Retry logic:
- * - Retries automatically if the read is interrupted by a signal (EINTR).
- *
- * @param fd The file descriptor to read from (e.g., a file or socket).
- * @param buffer The handle of the mls buffer where data will be stored.
- * @return The number of bytes read on success (>= 0), or -1 if a read error
- * (other than EINTR) occurred. Note: Even on error, the buffer may contain
- * partially read data.
+ * Internal debug version of m_destruct.
+ * Checks for leaked lists and destroys all resources.
  */
-int ioread_all (int fd, int buffer)
+void _m_destruct ()
 {
-	ssize_t total = 0;
-	ssize_t n = 0;
-	m_clear (buffer);
-	do {
-		total += n;
-		m_setlen (buffer, total + 4096);
-		n = read (fd, mls (buffer, total), 4096);
-		if (n < 0) {
-			if (errno == EINTR) {
-				n = 0;
-				continue; // retry on interrupt
-			}
-			break;
+	lst_owner *o;
+	int i;
+	if (!DEB)
+		return;
+
+	for (i = -1; m_next (DEB, &i, &o);) {
+		if (o->allocated == 42 && o->ln > 0) {
+			WARN ("List %d still allocated. Source: %s() in %s:%d",
+			      i + 1, o->fun, o->fn, o->ln);
 		}
-	} while (n > 0);
-	m_setlen (buffer, total);
-	m_putc (buffer, 0);
-	return n;
+	}
+	m_free (DEB);
+	DEB = 0;
+	m_destruct ();
+	debi.me = NULL;
+}
+
+/**
+ * Internal debug version of m_create.
+ * Records caller information and allocation source.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param n Initial maximum elements.
+ * @param w Element width.
+ * @return The new handle.
+ */
+int _m_create (int ln, const char *fn, const char *fun, int n, int w)
+{
+	lst_owner *lo;
+	int len, m, m_uaf;
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 0, 0, 0, 0);
+	m_uaf = m_create (n, w);
+
+	m = m_uaf & 0xffffff;
+	len = m_len (DEB);
+	if (m > len) {
+		m_new (DEB, m - len);
+	}
+	
+	lo = (lst_owner *)mls (DEB, m - 1);
+
+	lo->ln = ln;
+	lo->fn = fn;
+	lo->fun = fun;
+	lo->allocated = 42;
+	TRACE (1, "NEW LIST %d allocated by %s:%d in %s", m, fun, ln, fn);
+	return m_uaf;
+}
+
+/**
+ * Internal debug version of m_free.
+ * Records caller information and marks the list as freed in the debug tracker.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param m The handle to free.
+ * @return 0.
+ */
+int _m_free (int ln, const char *fn, const char *fun, int m)
+{
+	if (!m)
+		return 0;
+
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, m, 0, 0);
+	m_free (m);
+
+	int h = m & 0xffffff;
+	lst_owner *o = (lst_owner *)mls (DEB, h - 1);
+	o->ln = -ln;
+	o->fun = fun;
+	o->fn = fn;
+	TRACE (1, "Free List %d", h);
+	return 0;
+}
+
+/**
+ * Internal debug version of mls.
+ * Records caller information and bounds checks the access.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param h The handle.
+ * @param i The index.
+ * @return A pointer to the element.
+ */
+void *_mls (int ln, const char *fn, const char *fun, int h, int i)
+{
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, i, 0);
+	return mls (h, i);
+}
+
+/**
+ * Internal debug version of m_put.
+ * Records caller information.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param h The handle.
+ * @param d Pointer to the element data.
+ * @return The index of the appended element.
+ */
+int _m_put (int ln, const char *fn, const char *fun, int h, const void *d)
+{
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 5, h, 0, d);
+	return m_put (h, d);
+}
+
+/**
+ * Internal debug version of m_next.
+ * Records caller information.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param h The handle.
+ * @param i Pointer to the current index.
+ * @param d Pointer to store the address of the next element.
+ * @return 1 if an element was found, 0 otherwise.
+ */
+int _m_next (int ln, const char *fn, const char *fun, int h, int *i, void *d)
+{
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 7, h, i ? *i : -1, d);
+	return m_next (h, i, d);
+}
+
+/**
+ * Internal debug version of m_clear.
+ * Records caller information.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param h The handle.
+ */
+void _m_clear (int ln, const char *fn, const char *fun, int h)
+{
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, h, 0, 0);
+	m_clear (h);
+}
+
+/**
+ * Internal debug version of m_buf.
+ * Records caller information.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param m The handle.
+ * @return A pointer to the data buffer.
+ */
+void *_m_buf (int ln, const char *fn, const char *fun, int m)
+{
+	if (!m)
+		return 0;
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, m, 0, 0);
+	return m_buf (m);
+}
+
+/**
+ * Internal debug version of m_alloc.
+ * Records caller information and allocation source.
+ *
+ * @param ln Caller line number.
+ * @param fn Caller filename.
+ * @param fun Caller function name.
+ * @param n Initial maximum elements.
+ * @param w Element width.
+ * @param hfree The free handler ID.
+ * @return The new handle.
+ */
+int _m_alloc (int ln, const char *fn, const char *fun, int n, int w,
+	      uint8_t hfree)
+{
+	int h = _m_create (ln, fn, fun, n, w);
+	lst_t *lp = get_list (h);
+	(**lp).free_hdl = hfree;
+	return h;
 }

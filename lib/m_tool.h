@@ -65,7 +65,6 @@ int m_split_list (const char *s, const char *delm);
 
 int leftstr (int buf, int p, const char *s, int ch);
 int cmp_mstr (const void *a, const void *b);
-int cmp_int (const void *a0, const void *b0);
 int lookup_int (int m, int key);
 int s_slice (int dest, int offs, int m, int a, int b);
 int s_replace (int dest, int src, int pattern, int replace, int count);
@@ -83,7 +82,7 @@ int s_msplit (int dest, int src, int pattern);
 int s_implode (int dest, int srcs, int seperator);
 
 void m_map (int m, int (*fn) (int m, int p, void *ctx), void *ctx);
-int m_memset (int ln, char c, int w);
+void m_memset (int ln, char c, int w);
 int s_strncmp2 (int s0, int p0, int s1, int p1, int len);
 int s_strncmpr (int str, int suffix);
 
@@ -108,5 +107,63 @@ int conststr_lookup (int s);
 int cs_printf (const char *format, ...);
 inline static int s_cstr (const char *s) { return conststr_lookup_c (s); }
 inline static int s_mstr (int m) { return conststr_lookup (m); }
+
+/* Relocated from mls.h */
+int m_dub (int m);
+int m_regex (int m, const char *regex, const char *s);
+void m_qsort (int list, int (*compar) (const void *, const void *));
+int m_bsearch (const void *key, int list,
+	       int (*compar) (const void *, const void *));
+int m_lfind (const void *key, int list, int (*compar) (const void *, const void *));
+int ioread_all (int fd, int buffer);
+
+/* String Core Moved from mls.h */
+int s_strlen (int m);
+int s_app (int m, ...) __attribute__ ((__sentinel__ (0)));
+int s_app1 (int m, char *s);
+int vas_printf (int m, int p, const char *format, va_list argptr);
+int s_printf (int m, int p, char *format, ...);
+int s_lastchar (int m);
+int s_copy (int m, int first_char, int last_char);
+int s_index (int buf, int p, int ch);
+int s_split (int m, const char *s, int c, int remove_wspace);
+
+/* Variable System Moved from mls.h */
+#define VAR_NAME(x) STR (x, 0)
+int v_init (void);
+void v_free (int vs);
+int v_set (int vs, const char *name, const char *value, int pos);
+void v_vaset (int vs, ...);
+void v_clr (int vs, const char *name);
+char *v_get (int vs, const char *name, int pos);
+int v_len (int vs, const char *name);
+void v_remove (int vs, const char *name);
+int v_lookup (int vs, const char *name);
+int v_find_key (int vs, const char *name);
+void v_kset (int key, const char *value, int pos);
+void v_kclr (int key);
+char *v_kget (int key, int pos);
+int v_klen (int key);
+
+/* String Expansion System Moved from mls.h */
+typedef struct str_exp_st {
+	int splitbuf;
+	int max_row;
+	int values;
+	int indices;
+	int buf;
+} str_exp_t;
+
+void se_init (str_exp_t *se);
+void se_free (str_exp_t *se);
+void se_realloc_buffers (str_exp_t *se);
+void se_parse (str_exp_t *se, const char *frm);
+char *se_expand (str_exp_t *se, int vl, int row);
+char *se_string (int vl, const char *frm);
+
+int escape_str (int buf, char *src);
+void escape_buf (int buf, char *src);
+
+enum { VAR_APPEND = -1, VAR_RENAME = 0, VAR_SET = 1 };
 
 #endif

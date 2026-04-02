@@ -1,60 +1,229 @@
 #include "m_tool.h"
 #include "mls.h"
+#include "m_table.h"
+#include <errno.h>
+#include <fcntl.h>
 #include <printf.h>
+#include <regex.h>
+#include <search.h>
 #include <stdarg.h>
+
+/* Internal prototypes */
+static int vas_app (int m, va_list ap);
+static int field_escape (int s2, char *s, int quotes);
+static void repl_char (int buf, char ch);
 
 /* alphabetisch sortierte liste von mstr */
 static int CONSTSTR_DATA = 0;
 static int CS_ZERO = -1;
 
-// Custom printf handler function for the 'M' specifier
-static int mls_printf_handler (FILE *stream, const struct printf_info *info,
-			       const void *const *args)
-{
-	// Extract the argument as a "mls" type
-	const int p = *((const int *)args[0]);
-	// Convert mls Handle to String
-	const char *s = p > 0 ? mls (p, 0) : "";
-	char *o, out[50];
-	o = out;
-	*o++ = '%';
-	if (info->left) {
-		*o++ = '-';
-	}
-	if (info->width > 0) {
-		o += sprintf (o, "%u", info->width);
-	}
-	if (info->prec > 0) {
-		o += sprintf (o, ".%u", info->prec);
-	}
-	*o++ = 's';
-	*o++ = 0;
+/* Relocated Core Utilities */
 
-	// Print the mls string to the stream using given modifier
-	return fprintf (stream, out, s);
-}
-// Custom argument size handler for the 'M' specifier
-static int mls_printf_arginfo (const struct printf_info *info, size_t n,
-			       int *argtypes, int *size)
+int m_dub (int m)
 {
-	if (n > 0) {
-		argtypes[0] = PA_INT; // Expecting 'int'
-	}
-	return 1;
+	int h = m_free_hdl (m);
+	int r = m_alloc (m_len (m), m_width (m), h);
+	m_write (r, 0, mls (m, 0), m_len (m));
+	return r;
 }
 
-void m_register_printf ()
+int m_regex (int m, const char *regex, const char *s)
 {
-	// Register the custom printf specifier 'M'
-	if (register_printf_specifier ('M', mls_printf_handler,
-				       mls_printf_arginfo) != 0) {
-		ERR ("Failed to register printf specifier 'M'\n");
+	char *szTemp;
+	regex_t regc;
+	regmatch_t *pm;
+	int i, error;
+	int subexp = 1;
+	int p = 0;
+	error = regcomp (&regc, regex, REG_EXTENDED);
+	if (error)
+		ERR ("REG_EXPRESSION %s not valid", regex);
+	while (regex[p]) {
+		if (regex[p] == '(')
+			subexp++;
+		p++;
 	}
+	pm = (regmatch_t *)malloc (sizeof (regmatch_t) * subexp);
+	if (m > 1)
+		m_free_strings (m, 1);
+	else
+		m = m_alloc (subexp + 1, sizeof (char *), MFREE_STR);
+	error = regexec (&regc, s, subexp, pm, 0);
+	if (!error) {
+		for (i = 0; i < subexp; i++) {
+			if (pm[i].rm_so == -1)
+				break;
+			szTemp = strndup (s + pm[i].rm_so,
+					  pm[i].rm_eo - pm[i].rm_so);
+			m_put (m, &szTemp);
+		}
+	}
+	free (pm);
+	regfree (&regc);
+	return m;
 }
+
+void m_qsort (int list, int (*compar) (const void *, const void *))
+{
+	qsort (m_buf (list), m_len (list), m_width (list), compar);
+}
+
+int m_bsearch (const void *key, int list,
+	       int (*compar) (const void *, const void *))
+{
+	if (list < 1 || m_len (list) == 0)
+		return -1;
+	void *res = bsearch (key, m_buf (list), m_len (list), m_width (list),
+			     compar);
+	if (res)
+		return (res - m_buf (list)) / m_width (list);
+	return -1;
+}
+
+int m_lfind (const void *key, int list,
+	     int (*compar) (const void *, const void *))
+{
+	size_t max;
+	if (list < 1 || m_len (list) == 0)
+		return -1;
+	max = m_len (list);
+	void *res = lfind (key, m_buf (list), &max, m_width (list), compar);
+	if (res)
+		return (res - m_buf (list)) / m_width (list);
+	return -1;
+}
+
+int m_binsert (int buf, const void *data,
+	       int (*cmpf) (const void *data, const void *buf_elem),
+	       int with_duplicates)
+{
+	int left = 0;
+	int right = m_len (buf) + 1;
+	int cur = 1;
+	void *obj;
+	int cmp;
+	if (m_len (buf) == 0) {
+		m_put (buf, data);
+		return 0;
+	}
+	while (1) {
+		cur = (left + right) / 2;
+		obj = mls (buf, cur - 1);
+		cmp = cmpf (data, obj);
+		if (cmp == 0) {
+			if (!with_duplicates)
+				return -cur;
+			break;
+		}
+		if (cmp < 0) {
+			right = cur;
+			if (left + 1 == right)
+				break;
+		} else {
+			left = cur;
+			if (left + 1 == right) {
+				cur++;
+				break;
+			}
+		}
+	}
+	cur--;
+	m_ins (buf, cur, 1);
+	m_write (buf, cur, data, 1);
+	return cur;
+}
+
+int ioread_all (int fd, int buffer)
+{
+	ssize_t total = 0;
+	ssize_t n = 0;
+	m_clear (buffer);
+	do {
+		total += n;
+		m_setlen (buffer, total + 4096);
+		n = read (fd, mls (buffer, total), 4096);
+		if (n < 0) {
+			if (errno == EINTR) {
+				n = 0;
+				continue;
+			}
+			break;
+		}
+	} while (n > 0);
+	m_setlen (buffer, total);
+	m_putc (buffer, 0);
+	return n;
+}
+
+/* String Utilities */
 
 int s_new (void) { return m_alloc (16, 1, MFREE); }
 
 void s_free (int h) { m_free (h); }
+
+int s_strlen (int m)
+{
+	int p = m_len (m);
+	return p && CHAR (m, p - 1) == 0 ? p - 1 : p;
+}
+
+int s_app1 (int m, char *s)
+{
+	int p = s_strlen (m);
+	m_write (m, p, s, strlen (s) + 1);
+	return m;
+}
+
+static int vas_app (int m, va_list ap)
+{
+	char *name;
+	while ((name = va_arg (ap, char *)) != NULL) {
+		s_app1 (m, name);
+	}
+	return m;
+}
+
+int s_app (int m, ...)
+{
+	va_list ap;
+	if (m <= 0)
+		m = s_new ();
+	va_start (ap, m);
+	vas_app (m, ap);
+	va_end (ap);
+	return m;
+}
+
+int vas_printf (int m, int p, const char *format, va_list ap)
+{
+	int len;
+	va_list copy1, copy2;
+	va_copy (copy1, ap);
+	va_copy (copy2, ap);
+	len = vsnprintf (0, 0, format, copy1);
+	va_end (copy1);
+	len++;
+	if (m <= 0) {
+		m = s_new ();
+		p = 0;
+	}
+	if (p < 0 || p > m_len (m))
+		p = s_strlen (m);
+	m_setlen (m, p + len);
+	void *buf = mls (m, p);
+	vsnprintf (buf, len, format, copy2);
+	va_end (copy2);
+	return m;
+}
+
+int s_printf (int m, int p, char *format, ...)
+{
+	va_list ap;
+	va_start (ap, format);
+	m = vas_printf (m, p, format, ap);
+	va_end (ap);
+	return m;
+}
 
 int s_dup (const char *s)
 {
@@ -248,7 +417,7 @@ int s_sub (int h, int pos, int len)
 	if (pos + len > h_len)
 		len = h_len - pos;
 
-	return m_slice (0, 0, h, pos, pos + len - 1);
+	return s_slice (0, 0, h, pos, pos + len - 1);
 }
 
 int s_left (int h, int n) { return s_sub (h, 0, n); }
@@ -306,314 +475,88 @@ int s_trim_c (int h, const char *chars)
 	return s_sub (h, start, end - start + 1);
 }
 
-int m_str_va_app (int m, va_list ap)
+int s_lastchar (int m)
 {
-	char *name;
-	while ((name = va_arg (ap, char *)) != NULL) {
-		name = strdup (name);
-		m_put (m, &name);
-	}
-	return m;
-}
-
-int m_str_app (int m, ...)
-{
-	va_list ap;
-	if (!m)
-		m = m_create (3, sizeof (char *));
-	va_start (ap, m);
-	m_str_va_app (m, ap);
-	va_end (ap);
-	return m;
-}
-
-static void cskip_ws (char **s)
-{
-	while (isspace (**s))
-		(*s)++;
-}
-
-static void ctrim (char **a, char **b)
-{
-	while (*a < *b && isspace ((*b)[-1])) {
-		(*b)--;
-	}
-}
-static void skip_delim (char **s, char *delim)
-{
-	while (**s && *delim && **s == *delim) {
-		(*s)++;
-		delim++;
-	}
-}
-
-static void skip_unitl_delim (char **s, char *delim)
-{
-	char *p = strstr (*s, delim);
-
-	if (p) { /* delim found, set s to start of delim */
-		*s = p;
-		return;
-	}
-
-	while (**s)
-		(*s)++; /* delim not found, set s to end of string */
-}
-
-static int cut_word (char **s, char *delim, int trimws, char **a, char **b)
-{
-
-	// remove ws from start word
-	if (trimws)
-		cskip_ws (s);
-	*a = *s;		     // start of word
-	skip_unitl_delim (s, delim); // s points to first char of delimiter
-	*b = *s;		     // b points to first char after word
-	if (trimws)
-		ctrim (a, b); // start at b and remove ws until a
-	return (*b) - (*a);
-}
-
-static char *dup_word (char **s, char *delim, int trimws)
-{
-	char *a, *b;
-	int len = cut_word (s, delim, trimws, &a, &b);
-	if (len) {
-		char *word = calloc (1, len + 1);
-		memcpy (word, a, b - a);
-		word[len] = 0;
-		return word;
-	}
-	return NULL;
-}
-
-/** split string into list of c-strings
- **/
-int m_str_split (int m, char *s, char *delim, int trimws)
-{
-	if (!m)
-		m = m_create (3, sizeof (char *));
-	char *w;
-
-	while (*s) {
-		w = dup_word (&s, delim, trimws);
-		if (w)
-			m_put (m, &w);
-		skip_delim (&s, delim);
-	}
-
-	return m;
-}
-
-/** @brief copy string from src to dest
- * the dst buffer is always resized to max and will contain a termination zero
- * an empty or not-allocated (i.e. zero) src is allowed
- * if dst is zero it will be allocated
- * @returns dst
- */
-int m_strncpy (int dst, int src, int max)
-{
-	int c, src_bytes;
-	ASSERT (max > 0);
-
-	/* create string if none given */
-	if (!dst)
-		dst = m_create (max, 1);
-	else if (m_bufsize (dst) < max) {
-		/* realloc if string is too short */
-		m_setlen (dst, max);
-	}
-
-	/* if src not exists or has zero length, return empty string */
-	if (src < 1 || !(src_bytes = m_len (src))) {
-		m_putc (dst, 0);
-		return dst;
-	}
-
-	/* copy src to dst, but not more than max-bytes */
-	c = Min (max, src_bytes);
-	memcpy (m_buf (dst), m_buf (src), c);
-	m_setlen (dst, c);
-
-	/* if the string is not zero terminated, append zero */
-	if (CHAR (dst, c - 1) != 0) {
-		if (c < max)
-			m_putc (dst, 0);
-		else
-			CHAR (dst, c - 1) = 0;
-	}
-
-	return dst;
-}
-
-static void element_copy (int dest, int destp, int src, int srcp, int src_count,
-			  int width)
-{
-	for (int i = 0; i < src_count; i++) {
-		void *from = mls (src, srcp);
-		memcpy (mls (dest, destp), from, width);
-		srcp++;
-		destp++;
-	}
-}
-
-/** @brief copy *src_count* elements from *src* to *dest*
- * if *dest* is <=0 create a new array
- * if *src_count* is -1 or too big it is set to copy all of *src* starting at
- * *srcp* if *destp* is <0 append *src* to *dest*
- * @returns dest
- */
-int m_mcopy (int dest, int destp, int src, int srcp, int src_count)
-{
-	if (src <= 0)
-		return dest;
-
-	if (srcp < 0)
-		srcp = 0;
-	if (src_count < 0 || srcp + src_count > m_len (src))
-		src_count = m_len (src) - srcp;
-
-	if (destp < 0)
-		destp = m_len (dest);
-
-	/* if widths match, we can use m_slice */
-	if (dest <= 0 || m_width (dest) == m_width (src)) {
-		return m_slice (dest, destp, src, srcp, srcp + src_count - 1);
-	}
-
-	/* manual copy for different widths */
-	int dest_len = destp + src_count;
-	if (m_len (dest) < dest_len)
-		m_setlen (dest, dest_len);
-
-	if (src_count == 0)
-		return dest;
-
-	int width = Min (m_width (src), m_width (dest));
-	element_copy (dest, destp, src, srcp, src_count, width);
-	return dest;
-}
-
-int compare_int (const void *a, const void *b)
-{
-	const int *a0 = a, *b0 = b;
-	return (*a0) - (*b0);
-}
-
-void m_free_ptr (void *d) { m_free (*(int *)d); }
-
-void m_free_user (int m, void (*free_h) (void *), int only_clear)
-{
-	void *d;
-	int p;
-	m_foreach (m, p, d) free_h (d);
-	if (only_clear)
-		m_clear (m);
-	else
-		m_free (m);
-}
-
-void m_clear_user (int m, void (*free_h) (void *))
-{
-	m_free_user (m, free_h, 1);
-}
-
-/* free a list of lists */
-void m_free_list (int m)
-{
-	if (!m)
-		return;
-	if (m_width (m) < sizeof (int)) {
-		ERR ("expected array of handles/int but list %d has width %d",
-		     m, m_width (m));
-	}
-
-	m_free_user (m, m_free_ptr, 0);
-}
-
-/* clear a list of lists */
-void m_clear_list (int m) { m_free_user (m, m_free_ptr, 1); }
-
-/* free a list of (malloced char*) */
-void m_free_stringlist (int m) { m_free_user (m, free, 0); }
-
-/* clear a list of (malloced char*) */
-void m_clear_stringlist (int m) { m_free_user (m, free, 1); }
-
-void m_concat (int a, int b)
-{
-	if (!a || !b)
-		return;
-	int p;
-	void *d;
-	m_foreach (b, p, d) m_put (a, d);
-}
-
-/** split a string by one character *delm into multiple m-array strings
- * @returns list of m-arrays
- **/
-int m_split_list (const char *s, const char *delm)
-{
-	int ls = m_create (2, sizeof (int));
-	int w = 0;
-	int p = 0;
-	int ch;
-
+	int len = m_len (m);
+	if (len == 0)
+		return 0;
 	do {
-		ch = s[p];
-		if (!w) {
-			w = m_create (10, 1);
-			m_put (ls, &w);
-		}
+		len--;
+	} while (len > 0 && CHAR (m, len) == 0);
+	return CHAR (m, len);
+}
 
-		if (ch == *delm || ch == 0) {
-			m_putc (w, 0);
-			w = 0;
-		} else {
-			m_putc (w, s[p]);
-		}
+int s_copy (int m, int first_char, int last_char)
+{
+	if (last_char < 0)
+		last_char = m_len (m) - 1;
+	if (first_char < 0 || first_char > last_char || first_char >= m_len (m))
+		return s_new ();
+	int size = last_char - first_char + 1;
+	if (first_char + size > m_len (m))
+		size = m_len (m) - first_char;
+	int ret = s_new ();
+	m_setlen (ret, size);
+	m_write (ret, 0, mls (m, first_char), size);
+	if (CHAR (ret, m_len (ret) - 1) != 0)
+		m_putc (ret, 0);
+	return ret;
+}
+
+int s_index (int buf, int p, int ch)
+{
+	unsigned char *d;
+	while (p < m_len (buf)) {
+		d = mls (buf, p);
+		if (*d == ch)
+			return p;
 		p++;
-	} while (ch);
-
-	return ls;
-}
-
-/* copy from s to buf[p] until *s == ch */
-int leftstr (int buf, int p, const char *s, int ch)
-{
-	int w;
-	if (buf < 2)
-		buf = m_create (10, 1);
-	m_setlen (buf, p);
-
-	if (s)
-		while ((w = *s++)) {
-			if (w == ch || w == 0)
-				break;
-			m_putc (buf, w);
-		}
-	m_putc (buf, 0);
-	return buf;
-}
-
-/* einfuegen von key in das array m falls key noch nicht
-   existiert
-   return: pos von key
-*/
-int lookup_int (int m, int key)
-{
-	void *obj = calloc (1, m_width (m));
-	memcpy (obj, &key, sizeof (key));
-	int p = m_binsert (m, obj, cmp_int, 0);
-	free (obj);
-	if (p < 0) {
-		return (-p) - 1;
 	}
-	TRACE (1, "ADD pos:%d key:%d", p, key);
-	return p;
+	return -1;
 }
 
-/* slice for strings: add a zero byte to the end */
+int s_split (int m, const char *s, int c, int remove_wspace)
+{
+	int p = 0, start = 0, end;
+	char *szTemp;
+
+
+	if (m)
+		m_free_strings (m, 1);
+	else
+		m = m_alloc (10, sizeof (char *), MFREE_STR);
+
+	for (;;) {
+		if (remove_wspace)
+			while (isspace (s[p]) && s[p] != c)
+				p++;
+		start = p;
+		while (s[p] && s[p] != c)
+			p++;
+		if (remove_wspace) {
+			end = p;
+			while (end > start && isspace (s[--end]))
+				;
+			if (end >= start && !isspace (s[end])) {
+				szTemp = strndup (s + start, end - start + 1);
+			} else
+				szTemp = strdup ("");
+		} else {
+			end = p;
+			if (end > start) {
+				szTemp = strndup (s + start, end - start);
+			} else
+				szTemp = strdup ("");
+		}
+		m_put (m, &szTemp);
+		if (s[p])
+			p++;
+		else
+			break;
+	}
+	return m;
+}
+
 int s_slice (int dest, int offs, int m, int a, int b)
 {
 	int ret = m_slice (dest, offs, m, a, b);
@@ -622,140 +565,20 @@ int s_slice (int dest, int offs, int m, int a, int b)
 	return ret;
 }
 
-int s_warn (int m)
-{
-	if (m) {
-		if (m_width (m) != 1)
-			WARN ("mstring %d to width: %d bytes", m, m_width (m));
-		if (m_len (m) && CHAR (m, m_len (m) - 1) != 0)
-			WARN ("mstring %d not zero terminated", m);
-	}
-	return 0;
-}
-
-/* verify that m is a not zero-length zero terminated string */
-int s_isempty (int m)
-{
-	if (m == 0)
-		WARN ("handle is zero");
-	else {
-		if (m_len (m) == 0) {
-			// WARN("strlen  is zero");
-		} else {
-			if (CHAR (m, m_len (m) - 1))
-				WARN ("last byte not zero");
-			if (CHAR (m, 0) == 0) {
-				//	WARN("first byte is zero");
-			}
-		}
-	}
-
-	return (m == 0 || m_len (m) == 0 || CHAR (m, 0) == 0 ||
-		m_width (m) != 1 || CHAR (m, m_len (m) - 1) != 0);
-}
-
-void s_write (int m, int n)
-{
-	if (s_isempty (m))
-		return;
-	char *d;
-	int p;
-	m_foreach (m, p, d)
-	{
-		if (n <= 0 || *d == 0)
-			return;
-		putchar (*d);
-		n--;
-	}
-}
-
-void s_puts (int m)
-{
-	s_write (m, m_len (m));
-	putchar (10);
-}
-
-/**
- * Compares the 'pattern' with the m-array 'm' starting at the offset 'offs'.
- * <p>
- * If 'n' is zero, the comparison could include the trailing zero in 'pattern'
- * if 'pattern' is in C-string style. If 'n' is non-zero, up to 'n' characters
- * will be compared. This function returns 0 if 'pattern' matches 'm' or the
- * difference between the values of the last two compared characters.
- * </p>
- *
- * @param m the m-array to be compared against
- * @param offs the offset in 'm' where comparison begins
- * @param pattern the pattern to compare with
- * @param n the maximum number of characters to compare; if zero, may include
- * trailing null
- * @return 0 if 'pattern' matches 'm', or the difference between the values of
- * the last two compared characters if they don't match
- */
-int s_strncmp (int m, int offs, int pattern, int n)
-{
-	/* empty pattern matches every char */
-	if (s_isempty (pattern) || n <= 0)
-		return 0;
-	/* empty source does not match */
-	if (s_isempty (m))
-		return -1;
-
-	int p;
-	char *d;
-	int diff;
-	m_foreach (pattern, p, d)
-	{
-		if (offs + p >= m_len (m))
-			return -1;
-		diff = CHAR (m, offs + p) - *d;
-		if (diff)
-			return diff;
-		n--; /* when <0 after first match, ignore n */
-		if (n == 0)
-			return 0;
-	}
-	return 0;
-}
-
 int s_strstr (int m, int offs, int pattern)
 {
-	if (s_isempty (m) || s_isempty (pattern) || offs < 0)
+	if (offs >= m_len (m))
 		return -1;
-	int plen = m_len (pattern);
-	int max = m_len (m) - plen;
-	for (; offs <= max; offs++) {
-		if (s_strncmp (m, offs, pattern, plen - 1) == 0)
-			return offs;
-	}
+	char *res = strstr (m_str (m) + offs, m_str (pattern));
+	if (res)
+		return res - m_str (m);
 	return -1;
 }
 
-/**
- * Replaces occurrences of a specified pattern in the source string with a given
- * replacement string. This function processes the source string and performs
- * the replacement up to a given number of times.
- *
- * @param dest The destination string that will store the result after
- * replacements. It is expected to be initialized to a valid string or set to
- * zero
- * @param src The source string in which the replacements will be performed.
- * This string is the one being searched for the specified pattern.
- * @param pattern The string value representing the pattern to be searched for
- * in the source integer.
- * @param replace The string value that will replace the found pattern
- * occurrences.
- * @param count The maximum number of replacements to perform. If 0, all
- * occurrences are replaced.
- *
- * @return The modified destination string with the replacements applied.
- *         The function will return the destination string after replacing up to
- * the specified count of pattern occurrences with the replacement value.
- */
 int s_replace (int dest, int src, int pattern, int replace, int count)
 {
 	if (dest == 0)
-		dest = m_create (20, 1);
+		dest = s_new ();
 	else
 		m_clear (dest);
 	ASSERT (m_width (dest) == 1);
@@ -778,54 +601,36 @@ int s_replace (int dest, int src, int pattern, int replace, int count)
 	return dest;
 }
 
-int s_msplit (int dest, int src, int pattern)
+int s_strncmp (int m, int offs, int pattern, int n)
 {
-	if (dest == 0)
-		dest = m_create (10, sizeof (int));
-	else
-		m_clear (dest);
-	if (s_isempty (src) || s_isempty (pattern))
-		return dest;
-	int offs = 0;
-	int pattern_len = s_strlen (pattern);
-	int substr;
-	for (;;) {
-		int pos = s_strstr (src, offs, pattern);
-		if (pos < 0)
-			break;
-		substr = s_slice (0, 0, src, offs, pos - 1);
-		m_puti (dest, substr);
-		offs = pos + pattern_len;
-	}
-	if (offs < m_len (src) - 1) {
-		m_puti (dest, m_slice (0, 0, src, offs, -1));
-	}
+	if (offs >= m_len (m))
+		return 1;
+	return strncmp (m_str (m) + offs, m_str (pattern), n);
+}
 
-	return dest;
+int s_isempty (int m)
+{
+	if (m <= 0 || m_len (m) == 0)
+		return 1;
+	return (CHAR (m, 0) == 0);
 }
 
 int s_trim (int m)
 {
-	if (m == 0)
-		return 0;
-	int a = 0;
-	int b = m_len (m) - 1;
-	if (b < 0) { /* make c-str */
-		m_putc (m, 0);
+	int p = 0;
+	if (s_isempty (m))
 		return m;
-	}
-	if (CHAR (m, b) == 0)
-		b--;
-	while (a < b && isspace (CHAR (m, a)))
-		a++;
-	while (b >= a && isspace (CHAR (m, b)))
-		b--;
-	if (a == 0) {
-		m_setlen (m, b + 1);
-		m_putc (m, 0);
-		return m;
-	}
-	return s_slice (m, 0, m, a, b);
+	while (p < m_len (m) && isspace (CHAR (m, p)))
+		p++;
+	if (p > 0)
+		m_remove (m, 0, p);
+	p = m_len (m) - 1;
+	while (p >= 0 && (CHAR (m, p) == 0 || isspace (CHAR (m, p))))
+		p--;
+	m_setlen (m, p + 1);
+	m_putc (m, 0);
+	m_setlen (m, p + 1);
+	return m;
 }
 
 int s_lower (int m)
@@ -848,34 +653,29 @@ int s_upper (int m)
 	return m;
 }
 
-void m_map (int m, int (*fn) (int m, int p, void *ctx), void *ctx)
+int s_msplit (int dest, int src, int pattern)
 {
-	if (m == 0 || fn == 0)
-		return;
-	int n = m_len (m);
-	for (int i = 0; i < n; i++)
-		fn (m, i, ctx);
-}
-
-int s_strcpy_c (int out, const char *s)
-{
-
-	if (out <= 0)
-		out = m_create (1, 1);
-	if (!s || !*s) {
-		m_putc (out, 0);
-		return out;
+	if (dest == 0)
+		dest = m_create (10, sizeof (int));
+	else
+		m_clear (dest);
+	int offs = 0;
+	int plen = s_strlen (pattern);
+	for (;;) {
+		int pos = s_strstr (src, offs, pattern);
+		if (pos < 0)
+			break;
+		m_puti (dest, m_slice (0, 0, src, offs, pos - 1));
+		offs = pos + plen;
 	}
-	m_write (out, 0, s, strlen (s) + 1);
-	return out;
+	m_puti (dest, m_slice (0, 0, src, offs, -1));
+	return dest;
 }
-
-int s_strdup_c (const char *s) { return s_strcpy_c (0, s); }
 
 int s_implode (int dest, int srcs, int seperator)
 {
 	if (dest == 0)
-		dest = m_create (10, 1);
+		dest = s_new ();
 	else
 		m_clear (dest);
 	if (srcs <= 0 || m_len (srcs) == 0 || s_isempty (seperator))
@@ -894,331 +694,637 @@ leave:
 	return dest;
 }
 
-int m_memset (int ln, char c, int w)
+int s_strdup_c (const char *s) { return s_dup (s); }
+
+int s_strcpy_c (int out, const char *s)
 {
-	if (ln == 0)
-		ln = m_create (w, 1);
-	m_setlen (ln, w);
-	if (m_width (ln) == 1)
-		memset (m_buf (ln), c, w);
-	else {
-		for (int i = 0; i < w; i++) {
-			*(char *)mls (ln, i) = c;
-		}
+	if (out <= 0)
+		out = s_new ();
+	m_clear (out);
+	s_app1 (out, (char *)s);
+	return out;
+}
+
+void s_puts (int m) { printf ("%s\n", m_str (m)); }
+
+void s_write (int m, int n)
+{
+	if (m_len (m) > n) {
+		m_setlen (m, n);
+		m_putc (m, 0);
+		m_setlen (m, n);
 	}
-	return ln;
+}
+
+/* Custom printf support */
+
+static int mls_printf_handler (FILE *stream, const struct printf_info *info,
+			       const void *const *args)
+{
+	const int p = *((const int *)args[0]);
+	return fprintf (stream, "%s", m_str (p));
+}
+
+static int mls_printf_arginfo (const struct printf_info *info, size_t n,
+			       int *argtypes, int *size)
+{
+	if (n > 0) {
+		argtypes[0] = PA_INT;
+	}
+	return 1;
+}
+
+void m_register_printf ()
+{
+	if (register_printf_specifier ('M', mls_printf_handler,
+				       mls_printf_arginfo) != 0) {
+		ERR ("Failed to register printf specifier 'M'\n");
+	}
+}
+
+/* Conststr System */
+
+static int CS_MAP = 0;
+
+void conststr_init (void)
+{
+	if (CS_MAP)
+		return;
+	CS_MAP = m_create (100, sizeof (int));
+	CS_ZERO = s_dup ("");
 }
 
 void conststr_free (void)
 {
-	m_free_list (CONSTSTR_DATA);
-	CONSTSTR_DATA = 0;
-}
-
-void conststr_init (void)
-{
-	if (!CONSTSTR_DATA) {
-		CONSTSTR_DATA = m_create (10, sizeof (int));
-		CS_ZERO = m_create (1, 1);
-		m_putc (CS_ZERO, 0);
-		m_puti (CONSTSTR_DATA, CS_ZERO);
-	}
-}
-
-int cmp_mstr (const void *a, const void *b)
-{
-	int k1 = *(const int *)a;
-	int k2 = *(const int *)b;
-	TRACE (1, "cmp %s %s", CHARP (k1), CHARP (k2));
-	return m_cmp (k1, k2);
-}
-
-/* treat shorter strings as beeing lower than longer strings */
-int cmp_mstr_fast (const void *a, const void *b)
-{
-	int k1 = *(const int *)a;
-	int k2 = *(const int *)b;
-	TRACE (1, "cmp %s %s", CHARP (k1), CHARP (k2));
-	if (m_len (k1) < m_len (k2))
-		return -1;
-	if (m_len (k1) > m_len (k2))
-		return 1;
-	return m_cmp (k1, k2);
-}
-
-int cmp_mstr_cstr_fast (const void *key, const void *b)
-{
-	const char *const *s = key;
-	int mstr = *(int *)b;
-	return -mstrcmp (mstr, 0, *s);
-}
-
-int s_strcmp_c (int mstr, const char *s) { return mstrcmp (mstr, 0, s); }
-
-static int mscmpc (const void *a, const void *b)
-{
-	const char *const *s = a;
-	const int *d = b;
-	return -mstrcmp (*d, 0, *s);
-}
-
-int m_str_from_file (char *filename)
-{
-	FILE *fp = fopen (filename, "r");
-	int db = m_create (100, sizeof (int));
-	if (!fp)
-		return db;
-	int ln;
-	while (1) {
-		ln = m_create (100, 1);
-		if (m_fscan (ln, 10, fp) < 0)
-			break;
-		m_puti (db, ln);
-	}
-	m_free (ln);
-	fclose (fp);
-	return db;
-}
-
-/* schau nach ob s schon vorhanden ist, wenn ja liefere die vorhandene kopie,
-   sonst fuege ein kopie von s hinzu IDEE: x=m_create(); m_put(x,data); z=
-   conststr_lookup(x); free(x);
- */
-int conststr_lookup (int s)
-{
-	if (s_empty (s))
-		return CS_ZERO;
-	int p = m_binsert (CONSTSTR_DATA, &s, cmp_mstr_fast, 0);
-	if (p < 0) { // schon vorhanden
-		return INT (CONSTSTR_DATA, (-p) - 1);
-	}
-	TRACE (1, "ADD %d %s", p, CHARP (s));
-	return INT (CONSTSTR_DATA, p) = m_dub (s);
+	if (!CS_MAP)
+		return;
+	int p;
+	int *d;
+	m_foreach (CS_MAP, p, d) { s_free (*d); }
+	m_free (CS_MAP);
+	CS_MAP = 0;
+	s_free (CS_ZERO);
+	CS_ZERO = -1;
 }
 
 int conststr_lookup_c (const char *s)
 {
-	if (is_empty (s))
+	if (!s || !*s)
 		return CS_ZERO;
-	union {
-		const char *s;
-		int key;
-	} key;
-	key.s = s;
-	int p = m_binsert (CONSTSTR_DATA, &key, mscmpc, 0);
-	if (p < 0) {
-		return INT (CONSTSTR_DATA, (-p) - 1);
+	int p, *d;
+	m_foreach (CS_MAP, p, d)
+	{
+		if (strcmp (m_str (*d), s) == 0)
+			return *d;
 	}
-	int k = s_printf (0, 0, "%s", s);
-	INT (CONSTSTR_DATA, p) = k;
-	return k;
+	int h = s_dup (s);
+	m_put (CS_MAP, &h);
+	return h;
 }
 
-/**
- * @brief Creates a constant string using vas_printf that does not need
- * deallocation. Uses vas_printf to generate a temporary string. Searches for
- * this string in the global storage:
- *        - If found, returns a handle to the existing string and frees the
- * temporary string.
- *        - Otherwise, inserts the temporary string into the global storage and
- * returns it.
- */
+int conststr_lookup (int s) { return conststr_lookup_c (m_str (s)); }
+
 int cs_printf (const char *format, ...)
 {
 	va_list ap;
 	va_start (ap, format);
-	int m = vas_printf (0, 0, format, ap);
+	int h = s_new ();
+	vas_printf (h, 0, format, ap);
 	va_end (ap);
-	int p = m_binsert (CONSTSTR_DATA, &m, cmp_mstr, 0);
-	if (p < 0) { // schon vorhanden
-		m_free (m);
-		return INT (CONSTSTR_DATA, (-p) - 1);
+	int res = conststr_lookup (h);
+	s_free (h);
+	return res;
+}
+
+/* Variable System */
+
+int v_init (void) { return m_create (100, sizeof (int)); }
+
+void v_free (int vl)
+{
+	int p, *d;
+	m_foreach (vl, p, d) m_free_strings (*d, 0);
+	m_free (vl);
+}
+
+int v_find_key (int vs, const char *name)
+{
+	char *s;
+	int p, *d;
+	m_foreach (vs, p, d)
+	{
+		s = STR (*d, 0);
+		if (strcmp (s, name) == 0)
+			return p;
 	}
-	TRACE (1, "ADD const[%d]=%d:%s", p, m, CHARP (m));
+	return -1;
+}
+
+int v_lookup (int vl, const char *name)
+{
+	if (is_empty (name))
+		return -1;
+	int p = v_find_key (vl, name);
+	if (p >= 0) {
+		return INT (vl, p);
+	}
+	TRACE (1, "Create on Stack (%d) Var: %s", vl, name);
+	int var = m_create (2, sizeof (char *));
+	char *s = strdup (name);
+	m_put (var, &s);
+	m_put (vl, &var);
+	return var;
+}
+
+void v_kset (int var, const char *v, int row)
+{
+	char *val = NULL;
+	if (v)
+		val = strdup (v);
+	if (row < 0 || row >= m_len (var)) {
+		m_put (var, &val);
+	} else {
+		char **d = (char **)mls (var, row);
+		if (*d)
+			free (*d);
+		*d = val;
+	}
+}
+
+int v_set (int vs, const char *name, const char *value, int pos)
+{
+	int key = v_lookup (vs, name);
+	v_kset (key, value, pos);
+	return key;
+}
+
+void v_vaset (int vs, ...)
+{
+	va_list argptr;
+	char *name, *value;
+	va_start (argptr, vs);
+	while ((name = va_arg (argptr, char *)) != NULL) {
+		value = va_arg (argptr, char *);
+		v_set (vs, name, value, VAR_APPEND);
+	}
+	va_end (argptr);
+}
+
+void v_kclr (int var)
+{
+	int i = 0;
+	char **d;
+	while (m_next (var, &i, &d))
+		if (*d) {
+			free (*d);
+			*d = NULL;
+		}
+	m_setlen (var, 1);
+}
+
+void v_clr (int vs, const char *name) { v_kclr (v_lookup (vs, name)); }
+
+char *v_kget (int var, int row)
+{
+	if (var <= 0)
+		return "";
+	int len = m_len (var);
+	if (row >= len)
+		return "";
+	char *s = STR (var, row);
+	if (s == NULL)
+		return "";
+	return s;
+}
+
+char *v_get (int vs, const char *name, int pos)
+{
+	return v_kget (v_lookup (vs, name), pos);
+}
+
+int v_klen (int key) { return m_len (key) - 1; }
+
+int v_len (int vs, const char *name) { return v_klen (v_lookup (vs, name)); }
+
+void v_remove (int vs, const char *name)
+{
+	int pos = v_find_key (vs, name);
+	if (pos >= 0) {
+		m_free_strings (INT (vs, pos), 0);
+		m_del (vs, pos);
+	}
+}
+
+/* String Expansion System */
+
+void se_init (str_exp_t *se) { memset (se, 0, sizeof *se); }
+
+void se_free (str_exp_t *se)
+{
+	m_free_strings (se->splitbuf, 0);
+	m_free (se->values);
+	m_free (se->indices);
+	m_free (se->buf);
+	memset (se, 0, sizeof *se);
+}
+
+void se_realloc_buffers (str_exp_t *se)
+{
+	if (!se->buf) {
+		se->splitbuf = m_create (10, sizeof (char *));
+		se->values = m_create (10, sizeof (char *));
+		se->indices = m_create (10, sizeof (int));
+		se->buf = m_create (100, 1);
+		return;
+	}
+	m_free_strings (se->splitbuf, 1);
+	m_clear (se->values);
+	m_clear (se->indices);
+	m_clear (se->buf);
+	se->max_row = 0;
+}
+
+static int parse_index (const char **s)
+{
+	int val;
+	const char *p = *s;
+	if (*p != '[')
+		return 0;
+	p++;
+	if (*p == '*' && p[1] == ']') {
+		*s = p + 2;
+		return 1;
+	}
+	val = 0;
+	while (isdigit (*p)) {
+		val *= 10;
+		val += *p - '0';
+		p++;
+	}
+	if (*p == ']') {
+		*s = p + 1;
+		return val + 2;
+	}
+	return 0;
+}
+
+void se_parse (str_exp_t *se, const char *frm)
+{
+	ASSERT (frm && se);
+	se_realloc_buffers (se);
+	int b = se->splitbuf;
+	int v = se->values;
+	int idx = se->indices;
+	char *cp;
+	const char *s, *s0;
+	s = frm;
+	s0 = s;
+	while (*s) {
+		if (*s == '\\' && s[1] == '$') {
+			/* Found escaped dollar. We need to collect what we have and then add the $ */
+			if (s > s0) {
+				cp = strndup (s0, s - s0);
+				m_put (b, &cp);
+			}
+			cp = strdup ("$");
+			m_put (b, &cp);
+			s += 2;
+			s0 = s;
+			continue;
+		}
+		if (*s == '$') {
+			if (s > s0) {
+				cp = strndup (s0, s - s0);
+				m_put (b, &cp);
+			}
+			s0 = s; /* Point to $ */
+			s++;
+			int quoted = 0;
+			if (*s == '\'') {
+				quoted = 1;
+				s++;
+			}
+			while (isalnum (*s) || *s == '_')
+				s++;
+			
+			cp = strndup (s0, s - s0);
+			m_put (b, &cp);
+			m_put (v, &cp);
+			
+			int index = parse_index (&s);
+			m_put (idx, &index);
+
+			if (quoted && *s == '\'') {
+				s++;
+			}
+			s0 = s;
+			continue;
+		}
+		s++;
+	}
+	if (s > s0) {
+		cp = strndup (s0, s - s0);
+		m_put (b, &cp);
+	}
+}
+
+static void repl_char (int buf, char ch)
+{
+	char tab[] = {'\\', '\0', '\n', '\r', '\'', '"', '\x1a'};
+	char rep[] = {'\\', '0', 'n', 'r', '\'', '"', 'Z'};
+	int i;
+	for (i = 0; (size_t)i < sizeof tab; i++)
+		if (tab[i] == ch) {
+			m_putc (buf, '\\');
+			m_putc (buf, rep[i]);
+			return;
+		}
+	m_putc (buf, ch);
+}
+
+void escape_buf (int buf, char *src)
+{
+	while (*src)
+		repl_char (buf, *src++);
+}
+
+int escape_str (int buf, char *src)
+{
+	if (!buf)
+		buf = m_create (100, 1);
+	else
+		m_clear (buf);
+	escape_buf (buf, src);
+	m_putc (buf, 0);
+	return buf;
+}
+
+static int field_escape (int s2, char *s, int quotes)
+{
+	if (quotes)
+		m_putc (s2, '\'');
+	escape_buf (s2, s);
+	if (quotes)
+		m_putc (s2, '\'');
+	return s2;
+}
+
+static int get_variable_handle (int vl, const char *name)
+{
+	if (m_is_table (vl)) {
+		return m_table_get_cstr (vl, name);
+	}
+	return v_lookup (vl, name);
+}
+
+char *se_expand (str_exp_t *se, int vl, int row)
+{
+	int var, index;
+	int p, vn;
+	char **d, *s, **val_ptr;
+	int quotes = 0;
+	m_clear (se->buf);
+	int buf = se->buf;
+	vn = 0;
+	m_foreach (se->splitbuf, p, d)
+	{
+		s = *d;
+		/* Check if this part in splitbuf matches the next expected variable in se->values */
+		if (vn < m_len (se->values) && (val_ptr = (char **)mls (se->values, vn)) && *val_ptr == s) {
+			int name_offset = 1;
+			if (s[1] == '\'') {
+				quotes = 1;
+				name_offset = 2;
+			} else {
+				quotes = 0;
+			}
+			var = get_variable_handle (vl, s + name_offset);
+			index = INT (se->indices, vn);
+			vn++;
+			if (index == 1) {
+				/* [*] expansion - join all if it's a list */
+				if (var > 0 && m_width (var) == sizeof (char *)) {
+					field_escape (buf, STR (var, 1), quotes);
+					for (index = 2; index < m_len (var); index++) {
+						m_putc (buf, ',');
+						field_escape (buf, STR (var, index),
+							      quotes);
+					}
+				} else if (var > 0) {
+					/* Just a single string handle? */
+					field_escape (buf, m_str (var), quotes);
+				}
+			} else {
+				if (index == 0)
+					index = row;
+				else
+					index -= 2;
+
+				if (var > 0) {
+					if (m_width (var) == sizeof (char *)) {
+						/* Variable System style: list of char* */
+						if (index < v_klen (var))
+							field_escape (buf,
+								      STR (var,
+									   index +
+										   1),
+								      quotes);
+					} else {
+						/* Single string handle (m_table style) */
+						field_escape (buf, m_str (var),
+							      quotes);
+					}
+				}
+			}
+		} else {
+			/* Constant part */
+			m_write (buf, m_len (buf), s, strlen (s));
+		}
+	}
+	m_putc (buf, 0);
+	return mls (buf, 0);
+}
+
+char *se_string (int vl, const char *frm)
+{
+	str_exp_t se;
+	se_init (&se);
+	se_parse (&se, frm);
+	se_expand (&se, vl, 0);
+
+	char *res;
+	if (m_is_table (vl)) {
+		m_table_set_string_by_cstr (vl, "se_string", mls (se.buf, 0));
+		int h = m_table_get_cstr (vl, "se_string");
+		res = m_str (h);
+	} else {
+		int data = v_set (vl, "se_string", mls (se.buf, 0), 1);
+		res = STR (data, 1);
+	}
+
+	se_free (&se);
+	return res;
+}
+
+/* Other Utilities */
+
+int m_str_from_file (char *filename)
+{
+	int m = m_alloc (100, 1, MFREE);
+	int fd = open (filename, O_RDONLY);
+	if (fd < 0) {
+		m_free (m);
+		return -1;
+	}
+	ioread_all (fd, m);
+	close (fd);
 	return m;
 }
 
-void conststr_stats (void)
+static void skip_delim (char **s, char *delim)
 {
-	int len, *d, p;
-	int cnt = m_len (CONSTSTR_DATA);
-	TRACE (4, "Count: %d", cnt);
-	len = cnt * (sizeof (int) + sizeof (struct ls_st));
-	m_foreach (CONSTSTR_DATA, p, d) { len += m_len (*d); }
-	TRACE (4, "Memory: %d", len);
+	while (**s && *delim && **s == *delim) {
+		(*s)++;
+		delim++;
+	}
+}
+
+static void skip_unitl_delim (char **s, char *delim)
+{
+	char *p = strstr (*s, delim);
+	if (p) {
+		*s = p;
+		return;
+	}
+	while (**s)
+		(*s)++;
+}
+
+static int cut_word (char **s, char *delim, int trimws, char **a, char **b)
+{
+	static char *empty = "";
+	*a = *s;
+	skip_unitl_delim (s, delim);
+	*b = *s;
+	skip_delim (s, delim);
+	if (*a == *b) {
+		*a = empty;
+		return 0;
+	}
+	return 1;
+}
+
+static char *dup_word (char *a, char *b, int trimws)
+{
+	if (a == b)
+		return strdup ("");
+	if (trimws) {
+		while (a < b && isspace (*a))
+			a++;
+		while (b > a && isspace (b[-1]))
+			b--;
+	}
+	return strndup (a, b - a);
+}
+
+int m_str_split (int ms, char *s, char *delim, int trimws)
+{
+	char *a, *b;
+	while (cut_word (&s, delim, trimws, &a, &b)) {
+		char *w = dup_word (a, b, trimws);
+		m_put (ms, &w);
+	}
+	return ms;
+}
+
+int s_strcmp_c (int mstr, const char *s)
+{
+	if (!s)
+		return 1;
+	return strcmp (m_str (mstr), s);
+}
+
+int m_strncpy (int dst, int src, int max)
+{
+	if (dst <= 0)
+		dst = m_create (max + 1, 1);
+	int len = m_len (src);
+	if (len > max)
+		len = max;
+	m_write (dst, 0, mls (src, 0), len);
+	m_putc (dst, 0);
+	m_setlen (dst, len);
+	return dst;
+}
+
+static void element_copy (int dest, int destp, int src, int srcp, int src_count,
+			  int width)
+{
+	for (int i = 0; i < src_count; i++) {
+		void *from = mls (src, srcp);
+		memcpy (mls (dest, destp), from, width);
+		srcp++;
+		destp++;
+	}
+}
+
+int m_mcopy (int dest, int destp, int src, int srcp, int src_count)
+{
+	if (src <= 0)
+		return dest;
+	if (srcp < 0)
+		srcp = 0;
+	if (src_count < 0 || srcp + src_count > m_len (src))
+		src_count = m_len (src) - srcp;
+	if (destp < 0)
+		destp = m_len (dest);
+	if (dest <= 0 || m_width (dest) == m_width (src)) {
+		return m_slice (dest, destp, src, srcp, srcp + src_count - 1);
+	}
+	int dest_len = destp + src_count;
+	if (m_len (dest) < dest_len)
+		m_setlen (dest, dest_len);
+	if (src_count == 0)
+		return dest;
+	int width = Min (m_width (src), m_width (dest));
+	element_copy (dest, destp, src, srcp, src_count, width);
+	return dest;
+}
+
+void m_memset (int ln, char c, int w)
+{
+	if (ln <= 0)
+		return;
+	m_setlen (ln, w);
+	memset (m_buf (ln), c, w);
 }
 
 int s_strncmp2 (int s0, int p0, int s1, int p1, int len)
 {
-	int l0 = m_len (s0);
-	int l1 = m_len (s1);
-
-	while (len--) {
-		if (p0 >= l0)
-			return -1;
-		if (p1 >= l1)
-			return 1;
-		int diff = CHAR (s0, p0) - CHAR (s1, p1);
-		if (diff || CHAR (s0, p0) == 0)
-			return diff;
-		p0++;
-		p1++;
-	}
-	return 0;
+	return strncmp (m_str (s0) + p0, m_str (s1) + p1, len);
 }
 
 int s_strncmpr (int str, int suffix)
 {
-	if (!str || !suffix)
-		return 0;
-	size_t lenstr = m_len (str);
-	size_t lensuffix = m_len (suffix);
-	if (lensuffix > lenstr)
-		return 0;
-	return s_strncmp2 (str, lenstr - lensuffix, suffix, 0, lensuffix) == 0;
+	int l0 = s_strlen (str);
+	int l1 = s_strlen (suffix);
+	if (l1 > l0)
+		return 1;
+	return strcmp (m_str (str) + l0 - l1, m_str (suffix));
 }
 
-/* read a line of text
-   this function must be called once, after all data is read, to find the eof.
-   if the last line is terminated by eof this function returns success!
-   returns: 0 - success, -1 no more data
-*/
 int s_readln (int buf, FILE *fp)
 {
+	int c;
 	m_clear (buf);
-	int ret = m_fscan (buf, 10, fp);
-	if (ret < 0 && m_len (buf) <= 1)
-		return -1;
-	return 0;
-}
-
-int s_regex (int res, char *regex, int buf)
-{
-	m_regex (res, regex, m_str (buf));
-	return m_len (res);
-}
-
-/* LICENSE Dual MIT/GPL
-   ripped from linux kernel 6.8 source /lib/glob.c
-*/
-
-/**
- * glob_match - Shell-style pattern matching, like !fnmatch(pat, str, 0)
- * @pat: Shell-style pattern to match, e.g. "*.[ch]".
- * @str: String to match.  The pattern must match the entire string.
- *
- * Perform shell-style glob matching, returning true (1) if the match
- * succeeds, or false (0) if it fails.  Equivalent to !fnmatch(@pat, @str, 0).
- *
- * Pattern metacharacters are ?, *, [ and \.
- * (And, inside character classes, !, - and ].)
- *
- * This is small and simple implementation intended for device blacklists
- * where a string is matched against a number of patterns.  Thus, it
- * does not preprocess the patterns.  It is non-recursive, and run-time
- * is at most quadratic: strlen(@str)*strlen(@pat).
- *
- * An example of the worst case is glob_match("*aaaaa", "aaaaaaaaaa");
- * it takes 6 passes over the pattern before matching the string.
- *
- * Like !fnmatch(@pat, @str, 0) and unlike the shell, this does NOT
- * treat / or leading . specially; it isn't actually used for pathnames.
- *
- * Note that according to glob(7) (and unlike bash), character classes
- * are complemented by a leading !; this does not support the regex-style
- * [^a-z] syntax.
- *
- * An opening bracket without a matching close is matched literally.
- */
-bool glob_match (char const *pat, char const *str, const char **a,
-		 const char **b)
-{
-	/*
-	 * Backtrack to previous * on mismatch and retry starting one
-	 * character later in the string.  Because * matches all characters
-	 * (no exception for /), it can be easily proved that there's
-	 * never a need to backtrack multiple levels.
-	 */
-	char const *back_pat = NULL, *back_str;
-	if (a)
-		*a = NULL;
-	/*
-	 * Loop over each token (character or class) in pat, matching
-	 * it against the remaining unmatched tail of str.  Return false
-	 * on mismatch, or true after matching the trailing nul bytes.
-	 */
-	for (;;) {
-		unsigned char c = *str++;
-		unsigned char d = *pat++;
-
-		switch (d) {
-		case '(': /* start expression */
-			if (a)
-				*a = --str;
+	while ((c = fgetc (fp)) != EOF) {
+		if (c == '\n')
 			break;
-		case ')': /* stop expr */
-			if (b)
-				*b = --str;
-			break;
-		case '?': /* Wildcard: anything but nul */
-			if (c == '\0')
-				return false;
-			break;
-		case '*':		  /* Any-length wildcard */
-			if (*pat == '\0') /* Optimize trailing * case */
-				return true;
-			back_pat = pat;
-			back_str = --str; /* Allow zero-length match */
-			break;
-		case '[': { /* Character class */
-			bool match = false, inverted = (*pat == '!');
-			char const *class = pat + inverted;
-			unsigned char a = *class ++;
-
-			/*
-			 * Iterate over each span in the character class.
-			 * A span is either a single character a, or a
-			 * range a-b.  The first span may begin with ']'.
-			 */
-			do {
-				unsigned char b = a;
-
-				if (a == '\0') /* Malformed */
-					goto literal;
-
-				if (class[0] == '-' && class[1] != ']') {
-					b = class[1];
-
-					if (b == '\0')
-						goto literal;
-
-					class += 2;
-					/* Any special action if a > b? */
-				}
-				match |= (a <= c && c <= b);
-			} while ((a = *class ++) != ']');
-
-			if (match == inverted)
-				goto backtrack;
-			pat = class;
-		} break;
-		case '\\':
-			d = *pat++;
-			/* fallthrough */
-		default: /* Literal character */
-		literal:
-			if (c == d) {
-				if (d == '\0')
-					return true;
-				break;
-			}
-		backtrack:
-			if (c == '\0' || !back_pat)
-				return false; /* No point continuing */
-			/* Try again from last *, one character later in str. */
-			pat = back_pat;
-			str = ++back_str;
-			break;
-		}
+		m_putc (buf, c);
 	}
+	if (c == EOF && m_len (buf) == 0)
+		return EOF;
+	m_putc (buf, 0);
+	m_setlen (buf, m_len (buf) - 1);
+	return m_len (buf);
 }

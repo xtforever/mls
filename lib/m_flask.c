@@ -3,6 +3,7 @@
 #include "m_http_server.h"
 #include "m_table.h"
 #include "m_tool.h"
+#include "m_extra.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdarg.h>
@@ -219,6 +220,13 @@ void flask_printf (int res_h, const char *fmt, ...)
 	va_start (ap, fmt);
 	vas_printf (((flask_res_t *)m_buf (res_h))->body, -1, fmt, ap);
 	va_end (ap);
+}
+void flask_render (int req_h, int res_h, const char *fmt)
+{
+	flask_req_t *req = m_buf (req_h);
+	flask_res_t *res = m_buf (res_h);
+	char *expanded = se_string (req->args, fmt);
+	s_app (res->body, expanded, NULL);
 }
 void flask_json_h (int res_h, int status, int json_h)
 {

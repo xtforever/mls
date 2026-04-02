@@ -1,5 +1,6 @@
 #include "m_http.h"
 #include "m_tool.h"
+#include "m_extra.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -221,7 +222,7 @@ static int parse_response (int data_h, int start, int end, int *version,
 	if (m_len (parts) >= 2) {
 		*version = s_strdup_c (STR (parts, 0));
 		int code_h = s_strdup_c (STR (parts, 1));
-		*status_code = atoi (m_str (code_h));
+		*status_code = (int)s_to_long (code_h);
 		m_free (code_h);
 
 		if (m_len (parts) >= 3) {
@@ -256,7 +257,7 @@ static void prepare_body_state (http_parser_t *p)
 	if (cl) {
 		p->has_content_length = 1;
 		if (!p->is_chunked) {
-			p->content_length = atoi (m_str (cl));
+			p->content_length = (size_t)s_to_long (cl);
 		}
 	}
 

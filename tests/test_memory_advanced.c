@@ -3,61 +3,51 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void test_m_is_freed_basic ()
+void my_recursive_free_deep (lst_t l)
 {
-	printf ("Testing m_is_freed basic behavior...\n");
-	int m = m_alloc (10, sizeof (int), MFREE);
-	int h = m;
-	assert (!m_is_freed (h));
-	m_free (m);
-	assert (m_is_freed (h));
-	printf ("m_is_freed basic behavior test passed.\n");
-}
-
-static int recursive_call_count = 0;
-void my_recursive_free_deep (int m)
-{
-	int p, *d;
-	recursive_call_count++;
-	// We expect this to be called for each list in the cycle
-	for (p = -1; m_next (m, &p, &d);) {
+	int p = -1, *d;
+	while (lst_next (l, &p, &d)) {
 		if (*d > 0 && !m_is_freed (*d)) {
 			m_free (*d);
 		}
 	}
 }
 
-void test_complex_circular_reference ()
+void test_deep_recursion ()
 {
-	printf ("Testing complex circular reference (A -> B -> C -> A)...\n");
-	int hdl = m_reg_freefn (0, my_recursive_free_deep);
-	int a = m_alloc (10, sizeof (int), hdl);
-	int b = m_alloc (10, sizeof (int), hdl);
-	int c = m_alloc (10, sizeof (int), hdl);
+	printf ("Testing deep recursion with MFREE_EACH...\n");
+	int h = m_alloc (10, sizeof (int), MFREE_EACH);
+	int current = h;
+	for (int i = 0; i < 1000; i++) {
+		int next = m_alloc (10, sizeof (int), MFREE_EACH);
+		m_put (current, &next);
+		current = next;
+	}
+	m_free (h);
+	assert (m_is_freed (h));
+	printf ("Deep recursion test passed.\n");
+}
 
-	m_put (a, &b);
-	m_put (b, &c);
-	m_put (c, &a);
+void test_complex_custom_free ()
+{
+	printf ("Testing complex custom free handler...\n");
+	int hdl = m_reg_freefn (MFREE_MAX + 1, my_recursive_free_deep);
+	int h = m_alloc (10, sizeof (int), hdl);
+	int inner = m_alloc (10, sizeof (int), MFREE);
+	m_put (h, &inner);
 
-	recursive_call_count = 0;
-	m_free (a);
-
-	assert (m_is_freed (a));
-	assert (m_is_freed (b));
-	assert (m_is_freed (c));
-	assert (recursive_call_count == 3);
-	printf ("Complex circular reference test passed.\n");
+	m_free (h);
+	assert (m_is_freed (h));
+	assert (m_is_freed (inner));
+	printf ("Complex custom free handler test passed.\n");
 }
 
 int main ()
 {
-	trace_level = 1;
 	m_init ();
-
-	test_m_is_freed_basic ();
-	test_complex_circular_reference ();
-
+	test_deep_recursion ();
+	test_complex_custom_free ();
 	m_destruct ();
-	printf ("All advanced memory tests completed successfully.\n");
+	printf ("Memory advanced tests passed.\n");
 	return 0;
 }

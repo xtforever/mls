@@ -1,4 +1,5 @@
 #include "../lib/mls.h"
+#include "m_tool.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>

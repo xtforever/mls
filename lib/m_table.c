@@ -49,17 +49,16 @@ static int m_table_entry_cmp_cstr (const void *key, const void *element)
 }
 
 // Custom free handler for the table itself
-static void m_table_free_handler (int table_h)
+static void m_table_free_handler (lst_t l)
 {
 	m_table_entry_t *entry;
-	int p;
-	TRACE (1, "m_table_free_handler called for table %d", table_h);
-	m_foreach (table_h, p, entry)
-	{
-		if (m_table_is_free (entry->type) && entry->value > 0) {
+	int p = -1;
+	TRACE (1, "m_table_free_handler called");
+	while (lst_next (l, &p, &entry)) {
+		if (m_table_is_free (entry->type) && entry->value > 0 && !m_is_freed(entry->value)) {
 			m_free (entry->value);
 		}
-		if (m_table_is_free (entry->key_type) && entry->key > 0) {
+		if (m_table_is_free (entry->key_type) && entry->key > 0 && !m_is_freed(entry->key)) {
 			m_free (entry->key);
 		}
 	}
@@ -72,11 +71,19 @@ static int MFREE_TABLE_ENTRIES_HDLR = 0;
 
 int m_table_create ()
 {
-	if (MFREE_TABLE_ENTRIES_HDLR == 0) {
-		MFREE_TABLE_ENTRIES_HDLR =
-			m_reg_freefn (0, m_table_free_handler);
+	if (!MFREE_TABLE_ENTRIES_HDLR) {
+		void (*f) (lst_t) = m_table_free_handler;
+		MFREE_TABLE_ENTRIES_HDLR = m_reg_freefn (MFREE_MAX + 1, f);
 	}
+
 	return m_alloc (0, sizeof (m_table_entry_t), MFREE_TABLE_ENTRIES_HDLR);
+}
+
+int m_is_table (int table_h)
+{
+	if (table_h <= 0 || m_is_freed (table_h))
+		return 0;
+	return m_free_hdl (table_h) == MFREE_TABLE_ENTRIES_HDLR;
 }
 
 void m_table_free (int table_h) { m_free (table_h); }

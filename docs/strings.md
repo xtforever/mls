@@ -50,13 +50,40 @@ int sub = s_slice(0, 0, s, 0, 1); // Result: "Ba"
 
 ## 5. Cleaning Up
 
-Got some ugly whitespace? `s_trim` will fix it in one go.
+Got some ugly whitespace? `s_trim` will fix it in one go. You can also use `s_trim_left_c` or `s_trim_right_c` for more control.
 
 ```c
-int s = m_alloc(0, 1, MFREE);
-s_printf(s, 0, "   too much space   ");
+int s = s_dup("   too much space   ");
 s_trim(s); // Result: "too much space"
 ```
+
+## 6. Advanced Utilities (`m_extra`)
+
+For more complex tasks, `mls` includes additional string functions:
+
+-   **Case-Insensitive Comparison:** `s_casecmp(a, b)` and `s_ncasecmp(a, b, n)` for comparing strings regardless of case.
+-   **Padding:** `s_pad_left(s, 10, '*')` and `s_pad_right(s, 10, '-')` to reach a specific width.
+-   **Reversal:** `s_reverse(s)` flips the string in-place.
+-   **Numeric Conversion:** `s_to_long(s)` safely converts a string to a long integer.
+-   **Classification:** `s_is_numeric(s)` and `s_is_alpha(s)` to check string content.
+
+```c
+int s = s_dup("123");
+if (s_is_numeric(s)) {
+    long val = s_to_long(s); // 123L
+}
+```
+
+## 7. String Expansion
+
+For a truly modern experience, `mls` provides a powerful string interpolation system via `se_string`.
+
+```c
+int vs = v_init();
+v_set(vs, "name", "John", 1);
+char *res = se_string(vs, "Hello $name!"); // Result: "Hello John!"
+```
+[Learn more about String Expansion](string_expansion.md)
 
 ## Why this is Awesome:
 1. **No Buffer Overflows:** Every function checks the size of the destination list.

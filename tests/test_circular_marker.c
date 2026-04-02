@@ -3,37 +3,31 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void my_recursive_free (int m)
+void my_recursive_free (lst_t l)
 {
-	int p, *d;
-	printf ("my_recursive_free calling for %d\n", m);
-	for (p = -1; m_next (m, &p, &d);) {
-		if (*d > 0) {
+	int p = -1, *d;
+	printf ("my_recursive_free calling\n");
+	while (lst_next (l, &p, &d)) {
+		if (*d > 0 && !m_is_freed (*d)) {
 			m_free (*d);
 		}
 	}
 }
 
-void test_custom_circular ()
+int main ()
 {
-	printf ("Testing custom circular reference with 255 marker...\n");
-	int hdl = m_reg_freefn (0, my_recursive_free);
+	m_init ();
+	// Use a custom free handler index to avoid collision with predefined ones
+	int hdl = m_reg_freefn (MFREE_MAX + 1, my_recursive_free);
+
 	int l1 = m_alloc (10, sizeof (int), hdl);
 	m_put (l1, &l1);
 
+	printf ("Freeing list with circular reference...\n");
 	m_free (l1);
-
 	assert (m_is_freed (l1));
-	printf ("Custom circular reference test passed.\n");
-}
-
-int main ()
-{
-	trace_level = 1;
-	m_init ();
-
-	test_custom_circular ();
 
 	m_destruct ();
+	printf ("Circular reference test passed.\n");
 	return 0;
 }

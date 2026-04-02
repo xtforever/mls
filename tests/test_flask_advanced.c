@@ -71,6 +71,11 @@ void echo_handler (int req, int res)
 		      flask_header (req, "User-Agent"));
 }
 
+void render_handler (int req, int res)
+{
+	flask_render (req, res, "Hello $name, welcome to $app!");
+}
+
 void setup_test_config (const char *path)
 {
 	FILE *fp = fopen (path, "w");
@@ -88,6 +93,7 @@ void setup_test_config (const char *path)
 		 "  (bind (path \"/status\") (call \"status_handler\"))\n"
 		 "  (bind (path \"/user\")   (call \"user_handler\"))\n"
 		 "  (bind (path \"/echo\")   (call \"echo_handler\"))\n"
+		 "  (bind (path \"/render\") (call \"render_handler\"))\n"
 		 ")\n");
 	fclose (fp);
 }
@@ -101,6 +107,7 @@ int main ()
 	flask_register ("status_handler", status_handler);
 	flask_register ("user_handler", user_handler);
 	flask_register ("echo_handler", echo_handler);
+	flask_register ("render_handler", render_handler);
 
 	const char *config_path = "flask_adv.hdf";
 	setup_test_config (config_path);
@@ -123,7 +130,12 @@ int main ()
 		system ("curl -v \"http://127.0.0.1:20002/user?user=alice\"");
 		printf ("\n");
 
-		printf ("[Test] Verifying /user?user=charlie (404)...\n");
+		printf ("[Test] Verifying /render?name=Gemini&app=MLS...\n");
+		system ("curl -s \"http://127.0.0.1:20002/render?name=Gemini&app=MLS\"");
+		printf ("\n");
+
+		printf ("[Test] Killing server process %d...\n", pid);
+
 		system ("curl -s \"http://127.0.0.1:20002/user?user=charlie\"");
 		printf ("\n");
 
