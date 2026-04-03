@@ -757,6 +757,8 @@ int m_is_freed (int h)
  */
 int m_free_hdl (int h)
 {
+	if (h <= 0)
+		return 0;
 	lst_t *lp = get_list (h);
 	return (**lp).free_hdl;
 }
@@ -769,8 +771,10 @@ int m_free_hdl (int h)
  */
 int m_len (int m)
 {
-  lst_t *lp = get_list(m);
-  return (**lp).l;
+	if (m <= 0)
+		return 0;
+	lst_t *lp = get_list (m);
+	return (**lp).l;
 }
 
 /**
@@ -781,7 +785,9 @@ int m_len (int m)
  */
 void *m_buf (int m)
 {
-	return m_peek(m, 0);
+	if (m <= 0)
+		return NULL;
+	return m_peek (m, 0);
 }
 
 /**
@@ -793,6 +799,8 @@ void *m_buf (int m)
  */
 void *mls (int m, int i)
 {
+	if (m <= 0)
+		return NULL;
 	lst_t *lp = get_list (m);
 	void *res = lst_peek (*lp, i);
 	if (!res)
@@ -810,6 +818,8 @@ void *mls (int m, int i)
  */
 int m_new (int m, int n)
 {
+	if (m <= 0)
+		return -1;
 	lst_t *lp = get_list (m);
 	return lst_new (lp, n);
 }
@@ -822,6 +832,8 @@ int m_new (int m, int n)
  */
 void *m_add (int m)
 {
+	if (m <= 0)
+		return NULL;
 	int p = m_new (m, 1);
 	return mls (m, p);
 }
@@ -836,6 +848,8 @@ void *m_add (int m)
  */
 int m_next (int m, int *p, void *d)
 {
+	if (m <= 0)
+		return 0;
 	lst_t *lp = get_list (m);
 	return lst_next (*lp, p, d);
 }
@@ -849,6 +863,8 @@ int m_next (int m, int *p, void *d)
  */
 int m_put (int m, const void *data)
 {
+	if (m <= 0)
+		return -1;
 	lst_t *lp = get_list (m);
 	return lst_put (lp, data);
 }
@@ -862,6 +878,8 @@ int m_put (int m, const void *data)
  */
 int m_setlen (int m, int len)
 {
+	if (m <= 0)
+		return -1;
 	if (len < 0)
 		ERR ("Wrong Arg len=%d", len);
 	lst_t *lp = get_list (m);
@@ -879,6 +897,8 @@ int m_setlen (int m, int len)
  */
 int m_bufsize (int m)
 {
+	if (m <= 0)
+		return 0;
 	lst_t *lp = get_list (m);
 	return (**lp).max;
 }
@@ -892,6 +912,8 @@ int m_bufsize (int m)
  */
 void *m_peek (int m, int i)
 {
+	if (m <= 0)
+		return NULL;
 	lst_t *lp = get_list (m);
 	return lst_peek (*lp, i);
 }
@@ -908,6 +930,8 @@ void *m_peek (int m, int i)
  */
 int m_write (int m, int p, const void *data, int n)
 {
+	if (m <= 0)
+		return -1;
 	lst_t *lp = get_list (m);
 	return lst_write (lp, p, data, n);
 }
@@ -923,6 +947,8 @@ int m_write (int m, int p, const void *data, int n)
  */
 int m_read (int h, int p, void **data, int n)
 {
+	if (h <= 0)
+		return -1;
 	lst_t *lp = get_list (h);
 	return lst_read (*lp, p, data, n);
 }
@@ -934,6 +960,8 @@ int m_read (int h, int p, void **data, int n)
  */
 void m_clear (int m)
 {
+	if (m <= 0)
+		return;
 	lst_t *lp = get_list (m);
 	(**lp).l = 0;
 }
@@ -947,6 +975,8 @@ void m_clear (int m)
  */
 void m_del (int m, int p)
 {
+	if (m <= 0)
+		return;
 	lst_t *lp = get_list (m);
 	lst_del (*lp, p);
 }
@@ -959,6 +989,8 @@ void m_del (int m, int p)
  */
 void *m_pop (int m)
 {
+	if (m <= 0)
+		return NULL;
 	lst_t *lp = get_list (m);
 	if ((**lp).l == 0)
 		return NULL;
@@ -976,6 +1008,8 @@ void *m_pop (int m)
  */
 int m_ins (int m, int p, int n)
 {
+	if (m <= 0)
+		return 0;
 	lst_t *lp = get_list (m);
 	return (lst_ins (lp, p, n) != NULL);
 }
@@ -988,6 +1022,8 @@ int m_ins (int m, int p, int n)
  */
 int m_width (int m)
 {
+	if (m <= 0)
+		return 0;
 	lst_t *lp = get_list (m);
 	return (**lp).w;
 }
@@ -1000,6 +1036,8 @@ int m_width (int m)
  */
 void m_resize (int m, int new_size)
 {
+	if (m <= 0)
+		return;
 	lst_t *lp = get_list (m);
 	lst_resize (lp, new_size);
 }

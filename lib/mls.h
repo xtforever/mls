@@ -135,7 +135,17 @@ int m_width (int m);
 void m_resize (int m, int new_size);
 int m_slice (int dest, int offs, int m, int a, int b);
 void m_remove (int m, int p, int n);
-static inline char *m_str (int m) { return !m_is_freed(m) && m_len (m) ? (char *)m_buf (m) : ""; };
+static inline char *m_str (int m)
+{
+	if (m_is_freed (m) || m_len (m) == 0)
+		return "";
+	char *s = (char *)m_buf (m);
+#ifdef MLS_DEBUG
+	if (s[m_len (m) - 1] != 0)
+		ERR ("handle %d not zero terminated", m);
+#endif
+	return s;
+}
 
 int _m_init ();
 void _m_destruct ();
@@ -172,7 +182,6 @@ int m_puti (int m, int c);
 int m_lookup_str (int m, const char *key, int NOT_INSERT);
 int utf8char (char **s);
 int m_utf8char (int buf, int *p);
-int mstrcmp (int m, int p, const char *s);
 int cmp_int (const void *a0, const void *b0);
 int m_blookup_int (int buf, int key, void (*new) (void *, void *), void *ctx);
 void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),

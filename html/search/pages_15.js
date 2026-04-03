@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['technical_20findings_20continuity_0',['Learning: Technical Findings &amp; Continuity',['../md_learn.html',1,'']]],
+  ['terminator_1',['Memory Safety &amp; Security: Beyond the &lt;tt&gt;\\0&lt;/tt&gt; Terminator',['../md_docs_2security.html',1,'']]],
+  ['test_20suite_2',['Redis Test Suite',['../md_redis-mls_2tests_2README.html',1,'']]],
+  ['the_20end_20of_20pointer_20to_20pointer_20madness_3',['MLS Philosophy: Safety, Simplicity, and the End of Pointer-to-Pointer Madness',['../md_docs_2philosophy.html',1,'']]],
+  ['the_20headaches_4',['String Handling without the Headaches',['../md_docs_2strings.html',1,'']]],
+  ['the_20power_20of_20tt_20m_5ftable_20tt_20_3a_20real_20world_20greatness_5',['Unleashing the Power of &lt;tt&gt;m_table&lt;/tt&gt;: Real-World Greatness',['../md_docs_2m__table__greatness.html',1,'']]],
+  ['the_20pythonic_20way_6',['Beginners Guide: Thinking in Handles (The Pythonic Way)',['../md_docs_2beginners__guide.html',1,'']]],
+  ['the_20tt_200_20tt_20terminator_7',['Memory Safety &amp; Security: Beyond the &lt;tt&gt;\\0&lt;/tt&gt; Terminator',['../md_docs_2security.html',1,'']]],
+  ['thinking_20in_20handles_20the_20pythonic_20way_8',['Beginners Guide: Thinking in Handles (The Pythonic Way)',['../md_docs_2beginners__guide.html',1,'']]],
+  ['tls_20support_9',['TLS Support',['../md_redis-mls_2TLS.html',1,'']]],
+  ['to_20pointer_20madness_10',['MLS Philosophy: Safety, Simplicity, and the End of Pointer-to-Pointer Madness',['../md_docs_2philosophy.html',1,'']]],
+  ['traditional_20c_20projects_11',['Real-World Impact: MLS vs. Traditional C Projects',['../md_docs_2real-world-examples.html',1,'']]],
+  ['tree_20v1_202_200_201_202_200_20a_202023_2006_2004_12',['&lt;a href=&quot;https://github.com/redis/hiredis/tree/v1.2.0&quot; &gt;1.2.0&lt;/a&gt; - (2023-06-04)',['../md_redis-mls_2deps_2hiredis_2CHANGELOG.html',1,'']]],
+  ['tt_200_20tt_20terminator_13',['Memory Safety &amp; Security: Beyond the &lt;tt&gt;\\0&lt;/tt&gt; Terminator',['../md_docs_2security.html',1,'']]],
+  ['tt_20curl_20tt_14',['Case Study: Preventing high-severity CVEs in &lt;tt&gt;curl&lt;/tt&gt;',['../md_docs_2case__study__curl.html',1,'']]],
+  ['tt_20curl_20tt_20_3a_20a_20strategic_20feasibility_20study_15',['Implementing MLS in &lt;tt&gt;curl&lt;/tt&gt;: A Strategic Feasibility Study',['../md_docs_2curl__integration.html',1,'']]],
+  ['tt_20m_5fslice_20tt_20vs_20standard_20c_20slicing_16',['&lt;tt&gt;m_slice&lt;/tt&gt; vs Standard C Slicing',['../md_docs_2m__slice.html',1,'']]],
+  ['tt_20m_5ftable_20tt_20_3a_20real_20world_20greatness_17',['Unleashing the Power of &lt;tt&gt;m_table&lt;/tt&gt;: Real-World Greatness',['../md_docs_2m__table__greatness.html',1,'']]],
+  ['tt_20mls_20tt_18',['Bulletproofing HTTP Parsing with &lt;tt&gt;mls&lt;/tt&gt;',['../md_docs_2httpparser.html',1,'']]],
+  ['tt_20s_5fcstr_20tt_19',['Advanced: Global Constant Strings with &lt;tt&gt;s_cstr&lt;/tt&gt;',['../md_docs_2advanced__strings.html',1,'']]],
+  ['tt_20se_5fstring_20tt_20',['Powerful String Expansion with &lt;tt&gt;se_string&lt;/tt&gt;',['../md_docs_2string__expansion.html',1,'']]],
+  ['tuning_21',['TUNING',['../md_redis-mls_2deps_2jemalloc_2TUNING.html',1,'']]]
+];

@@ -71,6 +71,7 @@ int s_replace (int dest, int src, int pattern, int replace, int count);
 void s_puts (int m);
 int s_strstr (int m, int offs, int pattern);
 int s_strncmp (int m, int offs, int pattern, int n);
+int s_subcmp (int s0, int s0a, int s0b, int s1, int s1a, int s1b);
 void s_write (int m, int n);
 int s_isempty (int m);
 int s_strdup_c (const char *s);

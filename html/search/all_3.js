@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['3_20·_20declare_20targets_0',['3 · Declare targets',['../md_redis-mls_2deps_2xxhash_2build_2make_2README.html#autotoc_md807',1,'']]],
+  ['3_202015_2009_2016_1',['0.13.3 (2015-09-16)',['../md_redis-mls_2deps_2hiredis_2CHANGELOG.html#autotoc_md718',1,'']]],
+  ['3_20built_20in_20safety_2',['3. Built-in Safety',['../md_docs_2m__slice.html#autotoc_md519',1,'']]],
+  ['3_20comparative_20example_3a_20parsing_20a_20chunked_20header_3',['3. Comparative Example: Parsing a Chunked Header',['../md_docs_2httpparser.html#autotoc_md490',1,'']]],
+  ['3_20deep_20introspection_20debugging_4',['3. Deep Introspection &amp; Debugging',['../md_docs_2philosophy.html#autotoc_md552',1,'']]],
+  ['3_20formatted_20strings_20the_20powerhouse_5',['3. Formatted Strings (The Powerhouse)',['../md_docs_2strings.html#autotoc_md586',1,'']]],
+  ['3_20handle_20validation_6',['3. Handle Validation',['../md_docs_2debugging.html#autotoc_md473',1,'']]],
+  ['3_20high_20performance_20system_20tools_20e_20g_20tt_20fastfetch_20tt_7',['3. High-Performance System Tools (e.g., &lt;tt&gt;fastfetch&lt;/tt&gt;)',['../md_showroom.html#autotoc_md900',1,'']]],
+  ['3_20how_20it_20works_8',['3. How it works',['../md_flaskREADME.html#autotoc_md625',1,'']]],
+  ['3_20how_20mls_20compares_20to_20existing_20c_20libraries_9',['3. How MLS Compares to Existing C Libraries',['../md_docs_2why__mls.html#autotoc_md604',1,'']]],
+  ['3_20line_20comments_20optional_20sugar_10',['2.3 Line Comments (Optional Sugar)',['../md_spec-hdf.html#autotoc_md928',1,'']]],
+  ['3_20named_20fields_20dictionary_20support_11',['3. Named Fields (Dictionary Support)',['../md_docs_2beginners__guide.html#autotoc_md434',1,'']]],
+  ['3_20quoting_20and_20escaping_12',['3. Quoting and Escaping',['../md_docs_2string__expansion.html#autotoc_md579',1,'']]],
+  ['3_20robustness_20over_20strict_20typing_13',['3. Robustness over Strict Typing',['../md_README.html#autotoc_md666',1,'']]],
+  ['3_20safe_20network_20i_20o_14',['3. Safe Network I/O',['../md_docs_2security.html#autotoc_md572',1,'']]],
+  ['3_20semantics_20normative_15',['9.3 Semantics (Normative)',['../md_spec-hdf.html#autotoc_md955',1,'']]],
+  ['3_20strings_20as_20handles_16',['3. Strings as Handles',['../md_docs_2real-world-examples.html#autotoc_md565',1,'']]],
+  ['3_20the_20challenges_20solutions_17',['3. The Challenges &amp; Solutions',['../md_docs_2curl__integration.html#autotoc_md459',1,'']]],
+  ['3_20the_20mls_20way_20automated_20intelligence_18',['3. The MLS Way (Automated Intelligence)',['../md_docs_2memory__management.html#autotoc_md535',1,'']]],
+  ['3_20top_20level_20grammar_19',['3. Top-Level Grammar',['../md_spec-hdf.html#autotoc_md930',1,'']]],
+  ['3_20use_20after_20free_3a_20cve_202024_206197_20',['3. Use-After-Free: CVE-2024-6197',['../md_docs_2case__study__curl.html#autotoc_md448',1,'']]],
+  ['31_202026_20qa_20session_20findings_21',['Session: March 31, 2026 - QA Session Findings',['../md_learn.html#autotoc_md648',1,'']]],
+  ['32_20bit_20binaries_22',['Fixing problems building 32 bit binaries',['../md_redis-mls_2README.html#autotoc_md865',1,'']]],
+  ['38545_23',['1. The Vulnerability: CVE-2023-38545',['../md_docs_2case__study__curl.html#autotoc_md441',1,'']]],
+  ['3_3a_20header_20management_20with_20tt_20m_5ftable_20tt_24',['Phase 3: Header Management with &lt;tt&gt;m_table&lt;/tt&gt;',['../md_docs_2httpparser.html#autotoc_md506',1,'']]]
+];

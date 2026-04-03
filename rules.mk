@@ -18,7 +18,10 @@ CFLAGS+=$(DEBUGFLAGS)
 OBJ=d
 endif
 
-CFLAGS+=-D_GNU_SOURCE -I../lib -DCOMP_TAG=$(TAG)
+JEMALLOC_DIR=../redis-mls/deps/jemalloc
+CFLAGS+=-D_GNU_SOURCE -I../lib -I$(JEMALLOC_DIR)/include -DCOMP_TAG=$(TAG)
+LDFLAGS+=-L$(JEMALLOC_DIR)/lib
+LDLIBS+=-ljemalloc -lpthread -ldl -lm
 
 %.tab.c %.tab.h: %.y
 	$(YACC) $(YFLAGS) $<
@@ -32,5 +35,5 @@ CFLAGS+=-D_GNU_SOURCE -I../lib -DCOMP_TAG=$(TAG)
 %.exe: %.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-%.exed: %.od 
+%.exed: %.od $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)

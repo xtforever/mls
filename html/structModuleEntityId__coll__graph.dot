@@ -1,0 +1,25 @@
+digraph "ModuleEntityId"
+{
+ // LATEX_PDF_SIZE
+  bgcolor="transparent";
+  edge [fontname=Helvetica,fontsize=10,labelfontname=Helvetica,labelfontsize=10];
+  node [fontname=Helvetica,fontsize=10,shape=box,height=0.2,width=0.4];
+  Node1 [id="Node000001",label="ModuleEntityId",height=0.2,width=0.4,color="gray40", fillcolor="grey60", style="filled", fontcolor="black",tooltip=" "];
+  Node2 -> Node1 [id="edge1_Node000001_Node000002",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" name",fontcolor="grey" ];
+  Node2 [id="Node000002",label="RedisModule",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structRedisModule.html",tooltip=" "];
+  Node3 -> Node2 [id="edge2_Node000002_Node000003",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" filters\nmodule_configs\ntypes\nusedby\nusing",fontcolor="grey" ];
+  Node3 [id="Node000003",label="list",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structlist.html",tooltip=" "];
+  Node4 -> Node3 [id="edge3_Node000003_Node000004",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" head\ntail",fontcolor="grey" ];
+  Node4 [id="Node000004",label="listNode",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structlistNode.html",tooltip=" "];
+  Node4 -> Node4 [id="edge4_Node000004_Node000004",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" next\nprev",fontcolor="grey" ];
+  Node5 -> Node2 [id="edge5_Node000002_Node000005",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" info_cb",fontcolor="grey" ];
+  Node5 [id="Node000005",label="RedisModuleInfoCtx",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structRedisModuleInfoCtx.html",tooltip=" "];
+  Node2 -> Node5 [id="edge6_Node000005_Node000002",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" requested_sections",fontcolor="grey" ];
+  Node6 -> Node2 [id="edge7_Node000002_Node000006",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" defrag_cb\ndefrag_cb_2\ndefrag_end_cb\ndefrag_start_cb",fontcolor="grey" ];
+  Node6 [id="Node000006",label="RedisModuleDefragCtx",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structRedisModuleDefragCtx.html",tooltip=" "];
+  Node7 -> Node6 [id="edge8_Node000006_Node000007",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" key",fontcolor="grey" ];
+  Node7 [id="Node000007",label="redisObject",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structredisObject.html",tooltip=" "];
+  Node8 -> Node2 [id="edge9_Node000002_Node000008",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" loadmod",fontcolor="grey" ];
+  Node8 [id="Node000008",label="moduleLoadQueueEntry",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structmoduleLoadQueueEntry.html",tooltip=" "];
+  Node7 -> Node8 [id="edge10_Node000008_Node000007",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" argv",fontcolor="grey" ];
+}

@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 2rem; background: #fdfdfd; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 0.5rem; color: #222; }
+        h2 { margin-top: 3rem; border-bottom: 1px solid #eee; padding-bottom: 0.3rem; color: #444; background: #f8f9fa; padding: 0.5rem; border-radius: 4px; }
+        h3 { margin-top: 2rem; color: #0366d6; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+        code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; background: #f6f8fa; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 85%; }
+        pre { background: #f6f8fa; padding: 1rem; border-radius: 6px; overflow-x: auto; border: 1px solid #e1e4e8; }
+        pre code { background: none; padding: 0; font-size: 100%; color: #24292e; }
+        .params { margin: 1rem 0; }
+        .params ul { padding-left: 1.5rem; }
+        .returns { font-weight: bold; margin-top: 1rem; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 2rem 0; }
+        nav { position: fixed; right: 2rem; top: 2rem; width: 200px; max-height: 80vh; overflow-y: auto; background: white; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.8rem; display: none; }
+        @media (min-width: 1300px) { nav { display: block; } }
+    </style>
+</head>
+<body>
+    <h1>Project API Documentation</h1>
+<nav><strong>Contents</strong><ul><li><a href="#mls.c">mls.c</a></li><li><a href="#m_tool.c">m_tool.c</a></li><li><a href="#m_table.c">m_table.c</a></li><li><a href="#m_extra.c">m_extra.c</a></li></ul></nav><h2 id="mls.c">File: <code>mls.c</code></h2>
+<section id="deb_err">
+<h3>deb_err</h3>
+<pre><code>void deb_err(int line, const char *file, const char *function,
+	      const char *format, ...)</code></pre>
+<p>Prints an error message with file and line information and terminates the program.
+Sets the error_occurred flag for post-mortem analysis.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>line The line number where the error occurred.</code></li><li><code>file The source file where the error occurred.</code></li><li><code>function The function where the error occurred.</code></li><li><code>format The format string for the error message.</code></li></ul></div>
+</section><hr>
+<section id="deb_warn">
+<h3>deb_warn</h3>
+<pre><code>void deb_warn(int line, const char *file, const char *function,
+	       const char *format, ...)</code></pre>
+<p>Prints a warning message with file and line information.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>line The line number where the warning occurred.</code></li><li><code>file The source file where the warning occurred.</code></li><li><code>function The function where the warning occurred.</code></li><li><code>format The format string for the warning message.</code></li></ul></div>
+</section><hr>
+<section id="deb_trace">
+<h3>deb_trace</h3>
+<pre><code>void deb_trace(int l, int line, const char *file, const char *function,
+		const char *format, ...)</code></pre>
+<p>Prints a trace message if the provided level is greater than or equal to trace_level.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The trace level of this message.</code></li><li><code>line The line number where the trace occurred.</code></li><li><code>file The source file where the trace occurred.</code></li><li><code>function The function where the trace occurred.</code></li><li><code>format The format string for the trace message.</code></li></ul></div>
+</section><hr>
+<section id="print_stacksize">
+<h3>print_stacksize</h3>
+<pre><code>int print_stacksize()</code></pre>
+<p>Returns the current size of the master list (stack of allocated handles).</p>
+<p class="returns">Returns: <code>The number of handles in the master list.</code></p>
+</section><hr>
+<section id="_mlsdb_caller">
+<h3>_mlsdb_caller</h3>
+<pre><code>static void _mlsdb_caller(const char *me, int ln, const char *fn,
+			   const char *fun, int args, int handle, int index,
+			   const void *data)</code></pre>
+<p>Returns a pointer to the element at the specified index in a list structure.
+
+/
+void *lst (lst_t l, int i) { return &l->d[l->w * i]; }
+
+struct lst_owner_st {
+int allocated;
+const char *fn, *fun;
+int ln;
+};
+typedef struct lst_owner_st lst_owner;
+
+static int DEB = 0; // debug list
+
+struct debug_info_st {
+char msg[500];
+const char *me, *fn, *fun;
+int ln, args, handle, index;
+const void *data;
+};
+
+static struct debug_info_st debi;
+
+/**
+Records caller information for the current MLS operation.
+Used by debug wrappers to provide context for error messages.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>i The index of the element.</code></li><li><code>me The name of the function being wrapped.</code></li><li><code>ln The line number of the call.</code></li><li><code>fn The filename of the call.</code></li><li><code>fun The function name of the caller.</code></li><li><code>args Bitmask indicating which arguments are valid (1:handle, 2:index, 4:data).</code></li><li><code>handle The MLS handle involved in the operation.</code></li><li><code>index The index involved in the operation.</code></li><li><code>data Pointer to data involved in the operation.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element data.</code></p>
+</section><hr>
+<section id="perr">
+<h3>perr</h3>
+<pre><code>static void perr(const char *format, ...)</code></pre>
+<p>Prints a formatted error message to stderr, followed by a newline.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>format The format string.</code></li></ul></div>
+</section><hr>
+<section id="_mlsdb_check_handle">
+<h3>_mlsdb_check_handle</h3>
+<pre><code>static int _mlsdb_check_handle()</code></pre>
+<p>Validates the handle stored in the current debug info.
+Prints detailed information about the handle's state and allocation source.</p>
+<p class="returns">Returns: <code>0 if the handle is valid, -1 otherwise.</code></p>
+</section><hr>
+<section id="_mlsdb_check_index">
+<h3>_mlsdb_check_index</h3>
+<pre><code>static int _mlsdb_check_index()</code></pre>
+<p>Validates the index stored in the current debug info against its handle.
+Prints an error message if the index is out of bounds.</p>
+<p class="returns">Returns: <code>0 if the index is valid, -1 otherwise.</code></p>
+</section><hr>
+<section id="exit_error">
+<h3>exit_error</h3>
+<pre><code>void exit_error()</code></pre>
+<p>Performs a post-mortem analysis of the last recorded MLS operation.
+Registered as an atexit handler. Only runs if an error was detected.</p>
+</section><hr>
+<section id="lst_resize">
+<h3>lst_resize</h3>
+<pre><code>void lst_resize(lst_t *lp, int new_size)</code></pre>
+<p>Resizes a list structure to a new maximum size.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>new_size The new maximum number of elements.</code></li></ul></div>
+</section><hr>
+<section id="lst_create">
+<h3>lst_create</h3>
+<pre><code>lst_t lst_create(int max, int w)</code></pre>
+<p>Creates a new list structure.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>max The initial maximum number of elements.</code></li><li><code>w The width of each element in bytes.</code></li></ul></div>
+<p class="returns">Returns: <code>The newly created list structure.</code></p>
+</section><hr>
+<section id="lst_new">
+<h3>lst_new</h3>
+<pre><code>int lst_new(lst_t *lp, int n)</code></pre>
+<p>Reserves space for n new elements in a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>n The number of elements to reserve.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the first newly reserved element.</code></p>
+</section><hr>
+<section id="lst_put">
+<h3>lst_put</h3>
+<pre><code>int lst_put(lst_t *lp, const void *d)</code></pre>
+<p>Appends an element to a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>d Pointer to the element data to append.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the appended element.</code></p>
+</section><hr>
+<section id="lst_del">
+<h3>lst_del</h3>
+<pre><code>void lst_del(lst_t l, int p)</code></pre>
+<p>Returns a pointer to the element at the specified index without bounds checking.
+
+/
+void *lst_peek (lst_t l, int i)
+{
+if (i >= l->l || i < 0)
+return NULL;
+return lst (l, i);
+}
+
+/**
+Deletes an element at the specified index from a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>i The index of the element.</code></li><li><code>l The list structure.</code></li><li><code>p The index of the element to delete.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element data, or NULL if index is out of bounds.</code></p>
+</section><hr>
+<section id="lst_remove">
+<h3>lst_remove</h3>
+<pre><code>void lst_remove(lst_t *lp, int p, int n)</code></pre>
+<p>Removes n elements starting from the specified index from a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>p The starting index.</code></li><li><code>n The number of elements to remove.</code></li></ul></div>
+</section><hr>
+<section id="lst_next">
+<h3>lst_next</h3>
+<pre><code>int lst_next(lst_t l, int *p, void *data)</code></pre>
+<p>Inserts n empty elements at the specified index in a list.
+
+/
+void *lst_ins (lst_t *lp, int p, int n)
+{
+int cnt;
+if (p < 0 || p > (**lp).l)
+return 0;
+cnt = (**lp).l - p;
+lst_new (lp, n);
+if (cnt > 0)
+memmove (lst (*lp, p + n), lst (*lp, p), cnt * (**lp).w);
+memset (lst (*lp, p), 0, n * (**lp).w);
+return lst (*lp, p);
+}
+
+/**
+Iterates to the next element in a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>p The insertion index.</code></li><li><code>n The number of elements to insert.</code></li><li><code>l The list structure.</code></li><li><code>p Pointer to the current index. Should be initialized to -1.</code></li><li><code>data Pointer to store the address of the next element.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if an element was found, 0 otherwise.</code></p>
+</section><hr>
+<section id="lst_read">
+<h3>lst_read</h3>
+<pre><code>int lst_read(lst_t l, int p, void **data, int n)</code></pre>
+<p>Reads n elements from a list into a buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>p The starting index.</code></li><li><code>data Pointer to the destination buffer pointer. If *data is 0, a buffer is allocated.</code></li><li><code>n The number of elements to read.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success.</code></p>
+</section><hr>
+<section id="lst_write">
+<h3>lst_write</h3>
+<pre><code>int lst_write(lst_t *lp, int p, const void *data, int n)</code></pre>
+<p>Writes n elements from a buffer into a list at the specified index.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>p The starting index.</code></li><li><code>data Pointer to the source data buffer.</code></li><li><code>n The number of elements to write.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success.</code></p>
+</section><hr>
+<section id="get_list">
+<h3>get_list</h3>
+<pre><code>static inline lst_t * get_list(int m)</code></pre>
+<p>Internal function to retrieve a pointer to the list structure associated with a handle.
+Performs validation checks for handle range, existence, and UAF protection.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle to look up.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the list structure pointer in the master list.</code></p>
+</section><hr>
+<section id="free_strings_wrap">
+<h3>free_strings_wrap</h3>
+<pre><code>static void free_strings_wrap(int h)</code></pre>
+<p>Public accessor for getting a list pointer from a handle.
+
+/
+lst_t *exported_get_list (int r) { return get_list (r); }
+
+extern void m_free_strings (int list, int CLEAR_ONLY);
+
+/**
+same as m_free_strings to be used as a custom free handler.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>r The handle.</code></li><li><code>l The list structure being freed.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the list structure pointer.</code></p>
+</section><hr>
+<section id="free_list_wrap">
+<h3>free_list_wrap</h3>
+<pre><code>static void free_list_wrap(int h)</code></pre>
+<p>Custom free handler that recursively frees MLS handles stored in a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure being freed.</code></li></ul></div>
+</section><hr>
+<section id="m_init">
+<h3>m_init</h3>
+<pre><code>int m_init()</code></pre>
+<p>Initializes the MLS library system.
+Allocates the master handle list and registers default free handlers.</p>
+<p class="returns">Returns: <code>0 on success, 1 if already initialized.</code></p>
+</section><hr>
+<section id="m_destruct">
+<h3>m_destruct</h3>
+<pre><code>void m_destruct()</code></pre>
+<p>Destroys the MLS library system.
+Explicitly frees all remaining allocated handles and their contents.</p>
+</section><hr>
+<section id="m_alloc">
+<h3>m_alloc</h3>
+<pre><code>int m_alloc(int max, int w, uint8_t hfree)</code></pre>
+<p>Allocates a new MLS handle with a specific free handler.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>max Initial maximum elements.</code></li><li><code>w Width of each element in bytes.</code></li><li><code>hfree The ID of the registered free handler to use.</code></li></ul></div>
+<p class="returns">Returns: <code>A new 1-based MLS handle with UAF protection pattern.</code></p>
+</section><hr>
+<section id="m_create">
+<h3>m_create</h3>
+<pre><code>int m_create(int max, int w)</code></pre>
+<p>Creates a new MLS handle with the default free handler (MFREE).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>max Initial maximum elements.</code></li><li><code>w Width of each element.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle.</code></p>
+</section><hr>
+<section id="m_free">
+<h3>m_free</h3>
+<pre><code>int m_free(int m)</code></pre>
+<p>Frees an MLS handle and its associated list data.
+The handle is marked as freed and returned to the free list for reuse.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle to free.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success.</code></p>
+</section><hr>
+<section id="m_reg_freefn">
+<h3>m_reg_freefn</h3>
+<pre><code>int m_reg_freefn(free_fn_t  free_fn)</code></pre>
+<p>@brief Registers a  a cleanup callback for managed arrays
+The @p free_fn is triggered automatically when m_free() is called.
+This allows for custom iteration and deallocation of array elements
+before the array container itself is removed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>free_fn The function to be called when freeing handles with this handler ID.</code></li></ul></div>
+<p class="returns">Returns: <code>The handler ID on success, -1 if handler is invalid or too many handlers registered.</code></p>
+</section><hr>
+<section id="m_is_freed">
+<h3>m_is_freed</h3>
+<pre><code>int m_is_freed(int h)</code></pre>
+<p>Checks if an MLS handle is valid and hasn't been freed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle to check.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if the handle is freed or invalid, 0 if it is active.</code></p>
+</section><hr>
+<section id="m_free_hdl">
+<h3>m_free_hdl</h3>
+<pre><code>int m_free_hdl(int h)</code></pre>
+<p>Returns the free handler ID associated with an MLS handle.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The free handler ID.</code></p>
+</section><hr>
+<section id="m_len">
+<h3>m_len</h3>
+<pre><code>int m_len(int m)</code></pre>
+<p>Returns the number of elements in the list associated with a handle.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of elements.</code></p>
+</section><hr>
+<section id="m_new">
+<h3>m_new</h3>
+<pre><code>int m_new(int m, int n)</code></pre>
+<p>Returns a pointer to the raw data buffer of the list associated with a handle.
+
+/
+void *m_buf (int m)
+{
+return m_peek(m, 0);
+}
+
+/**
+Returns a pointer to the element at the specified index with bounds checking.
+
+/
+void *mls (int m, int i)
+{
+lst_t *lp = get_list (m);
+void *res = lst_peek (*lp, i);
+if (!res)
+ERR ("Index %d out of bounds for handle %d (len %d)", i, m,
+(**lp).l);
+return res;
+}
+
+/**
+Reserves space for n new elements in a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>m The handle.</code></li><li><code>i The index.</code></li><li><code>m The handle.</code></li><li><code>n The number of elements to reserve.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the first newly reserved element.</code></p>
+</section><hr>
+<section id="m_next">
+<h3>m_next</h3>
+<pre><code>int m_next(int m, int *p, void *d)</code></pre>
+<p>Appends one new element to a handle's list and returns a pointer to it.
+
+/
+void *m_add (int m)
+{
+int p = m_new (m, 1);
+return mls (m, p);
+}
+
+/**
+Iterates through the elements of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>m The handle.</code></li><li><code>p Pointer to the current index.</code></li><li><code>d Pointer to store the address of the next element.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if an element was found, 0 otherwise.</code></p>
+</section><hr>
+<section id="m_put">
+<h3>m_put</h3>
+<pre><code>int m_put(int m, const void *data)</code></pre>
+<p>Appends an element to a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>data Pointer to the element data to append.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the appended element.</code></p>
+</section><hr>
+<section id="m_setlen">
+<h3>m_setlen</h3>
+<pre><code>int m_setlen(int m, int len)</code></pre>
+<p>Sets the logical length of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>len The new length.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success.</code></p>
+</section><hr>
+<section id="m_bufsize">
+<h3>m_bufsize</h3>
+<pre><code>int m_bufsize(int m)</code></pre>
+<p>Returns the currently allocated capacity (buffer size) of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The maximum number of elements before a realloc is needed.</code></p>
+</section><hr>
+<section id="m_write">
+<h3>m_write</h3>
+<pre><code>int m_write(int m, int p, const void *data, int n)</code></pre>
+<p>Returns a pointer to the element at the specified index without bounds checking.
+
+/
+void *m_peek (int m, int i)
+{
+lst_t *lp = get_list (m);
+return lst_peek (*lp, i);
+}
+
+/**
+Writes data to a handle's list starting at a specific index.
+Resizes the list if necessary.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>i The index.</code></li><li><code>m The handle.</code></li><li><code>p The starting index.</code></li><li><code>data Pointer to the source data.</code></li><li><code>n The number of elements to write.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success.</code></p>
+</section><hr>
+<section id="m_read">
+<h3>m_read</h3>
+<pre><code>int m_read(int h, int p, void **data, int n)</code></pre>
+<p>Reads data from a handle's list into a buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle.</code></li><li><code>p The starting index.</code></li><li><code>data Pointer to the destination buffer pointer.</code></li><li><code>n The number of elements to read.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success.</code></p>
+</section><hr>
+<section id="m_clear">
+<h3>m_clear</h3>
+<pre><code>void m_clear(int m)</code></pre>
+<p>Sets the logical length of a handle's list to zero.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+</section><hr>
+<section id="m_del">
+<h3>m_del</h3>
+<pre><code>void m_del(int m, int p)</code></pre>
+<p>Deletes an element at the specified index from a handle's list.
+Remaining elements are shifted to close the gap.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>p The index of the element to delete.</code></li></ul></div>
+</section><hr>
+<section id="m_ins">
+<h3>m_ins</h3>
+<pre><code>int m_ins(int m, int p, int n)</code></pre>
+<p>Removes and returns a pointer to the last element of a handle's list.
+
+/
+void *m_pop (int m)
+{
+lst_t *lp = get_list (m);
+if ((**lp).l == 0)
+return NULL;
+(**lp).l--;
+return lst (*lp, (**lp).l);
+}
+
+/**
+Inserts n empty (zero-initialized) elements at a specific index in a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>m The handle.</code></li><li><code>p The insertion index.</code></li><li><code>n The number of elements to insert.</code></li></ul></div>
+<p class="returns">Returns: <code>1 on success, 0 on failure.</code></p>
+</section><hr>
+<section id="m_width">
+<h3>m_width</h3>
+<pre><code>int m_width(int m)</code></pre>
+<p>Returns the width of each element in a handle's list in bytes.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The element width.</code></p>
+</section><hr>
+<section id="m_resize">
+<h3>m_resize</h3>
+<pre><code>void m_resize(int m, int new_size)</code></pre>
+<p>Resizes the allocated capacity of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>new_size The new maximum number of elements.</code></li></ul></div>
+</section><hr>
+<section id="m_slice">
+<h3>m_slice</h3>
+<pre><code>int m_slice(int dest, int offs, int m, int a, int b)</code></pre>
+<p>Extracts a sub-range of elements from one list and appends or writes them into another.
+Supports negative indices (relative to end of list).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest The destination handle. If <= 0, a new handle is created.</code></li><li><code>offs The offset in the destination list to start writing.</code></li><li><code>m The source handle.</code></li><li><code>a The starting index in the source list.</code></li><li><code>b The ending index in the source list (inclusive).</code></li></ul></div>
+<p class="returns">Returns: <code>The destination handle.</code></p>
+</section><hr>
+<section id="m_remove">
+<h3>m_remove</h3>
+<pre><code>void m_remove(int m, int p, int n)</code></pre>
+<p>Removes n elements starting from the specified index from a handle's list.
+Remaining elements are shifted to close the gap.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>p The starting index.</code></li><li><code>n The number of elements to remove.</code></li></ul></div>
+</section><hr>
+<section id="m_bzero">
+<h3>m_bzero</h3>
+<pre><code>void m_bzero(int m)</code></pre>
+<p>Zeroes out the entire data buffer of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+</section><hr>
+<section id="m_fscan2">
+<h3>m_fscan2</h3>
+<pre><code>int m_fscan2(int m, char delim, FILE *fp)</code></pre>
+<p>Scans a file until a delimiter character is encountered or EOF is reached.
+Appends the scanned characters to a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>delim The delimiter character.</code></li><li><code>fp The file pointer to read from.</code></li></ul></div>
+<p class="returns">Returns: <code>The delimiter character read, or EOF.</code></p>
+</section><hr>
+<section id="m_fscan">
+<h3>m_fscan</h3>
+<pre><code>int m_fscan(int m, char delim, FILE *fp)</code></pre>
+<p>Similar to m_fscan2, but returns the length of the data scanned.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>delim The delimiter character.</code></li><li><code>fp The file pointer.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of characters scanned, or EOF if no characters were read before EOF.</code></p>
+</section><hr>
+<section id="m_cmp">
+<h3>m_cmp</h3>
+<pre><code>int m_cmp(int a, int b)</code></pre>
+<p>Compares two handle's lists element-by-element using memcmp.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a The first handle.</code></li><li><code>b The second handle.</code></li></ul></div>
+<p class="returns">Returns: <code><0 if a < b, 0 if a == b, >0 if a > b.</code></p>
+</section><hr>
+<section id="m_lookup">
+<h3>m_lookup</h3>
+<pre><code>int m_lookup(int m, int key)</code></pre>
+<p>Looks up a key (represented by a handle) in a list of handles.
+If not found, the key is appended to the list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the list to search.</code></li><li><code>key The handle to look for.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle found or inserted.</code></p>
+</section><hr>
+<section id="m_lookup_obj">
+<h3>m_lookup_obj</h3>
+<pre><code>int m_lookup_obj(int m, void *obj, int size)</code></pre>
+<p>Looks up an object of fixed size in a list.
+If not found, the object is appended.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the list to search.</code></li><li><code>obj Pointer to the object to look for.</code></li><li><code>size The size of the object in bytes.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the object.</code></p>
+</section><hr>
+<section id="m_lookup_str">
+<h3>m_lookup_str</h3>
+<pre><code>int m_lookup_str(int m, const char *key, int NOT_INSERT)</code></pre>
+<p>Looks up a string in a list of strings (char *).
+If not found and NOT_INSERT is 0, the string is duplicated and appended.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string list.</code></li><li><code>key The string to look for.</code></li><li><code>NOT_INSERT If non-zero, do not insert the string if not found.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the string, or -1 if not found and NOT_INSERT is set.</code></p>
+</section><hr>
+<section id="m_putc">
+<h3>m_putc</h3>
+<pre><code>int m_putc(int m, char c)</code></pre>
+<p>Appends a single character to a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>c The character to append.</code></li></ul></div>
+<p class="returns">Returns: <code>The character appended.</code></p>
+</section><hr>
+<section id="m_puti">
+<h3>m_puti</h3>
+<pre><code>int m_puti(int m, int c)</code></pre>
+<p>Appends a single integer to a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>c The integer to append.</code></li></ul></div>
+<p class="returns">Returns: <code>The integer appended.</code></p>
+</section><hr>
+<section id="m_utf8char">
+<h3>m_utf8char</h3>
+<pre><code>int m_utf8char(int buf, int *p)</code></pre>
+<p>Decodes a UTF-8 character from a handle's list starting at index p.
+Increments p by the number of bytes consumed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the buffer.</code></li><li><code>p Pointer to the current index.</code></li></ul></div>
+<p class="returns">Returns: <code>The decoded Unicode character point, or -1 on error/EOF.</code></p>
+</section><hr>
+<section id="utf8char">
+<h3>utf8char</h3>
+<pre><code>int utf8char(char **s)</code></pre>
+<p>Decodes a UTF-8 character from a string pointer.
+Increments the pointer by the number of bytes consumed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>s Pointer to a string pointer.</code></li></ul></div>
+<p class="returns">Returns: <code>The decoded Unicode character point, or -1 on error/EOF.</code></p>
+</section><hr>
+<section id="utf8_getchar">
+<h3>utf8_getchar</h3>
+<pre><code>int utf8_getchar(FILE *fp, utf8_char_t buf)</code></pre>
+<p>Reads a single UTF-8 character from a file pointer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>fp The file pointer.</code></li><li><code>buf Buffer to store the UTF-8 byte sequence (null-terminated if len < 6).</code></li></ul></div>
+<p class="returns">Returns: <code>The number of bytes in the UTF-8 character, or EOF.</code></p>
+</section><hr>
+<section id="cmp_int">
+<h3>cmp_int</h3>
+<pre><code>int cmp_int(const void *a0, const void *b0)</code></pre>
+<p>Comparison function for integers, suitable for qsort or binary search.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a0 Pointer to first integer.</code></li><li><code>b0 Pointer to second integer.</code></li></ul></div>
+<p class="returns">Returns: <code>a0 - b0.</code></p>
+</section><hr>
+<section id="m_blookup_int">
+<h3>m_blookup_int</h3>
+<pre><code>int m_blookup_int(int buf, int key, void (*new) (void *, void *), void *ctx)</code></pre>
+<p>Looks up an integer in a sorted list using binary search and inserts it if not found.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to look for.</code></li><li><code>new Optional callback function called when a new element is inserted.</code></li><li><code>ctx Context pointer for the callback.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the integer in the list.</code></p>
+</section><hr>
+<section id="m_binsert_int">
+<h3>m_binsert_int</h3>
+<pre><code>int m_binsert_int(int buf, int key)</code></pre>
+<p>Similar to m_blookup_int, but returns a pointer to the element.
+
+/
+void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),
+void *ctx)
+{
+return mls (buf, m_blookup_int (buf, key, new, ctx));
+}
+
+/**
+Inserts an integer into a sorted list using binary search.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to look for.</code></li><li><code>new Optional callback function.</code></li><li><code>ctx Context pointer.</code></li><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to insert.</code></li></ul></div>
+<p class="returns">Returns: <code>The index where the integer was inserted or found.</code></p>
+</section><hr>
+<section id="m_bsearch_int">
+<h3>m_bsearch_int</h3>
+<pre><code>int m_bsearch_int(int buf, int key)</code></pre>
+<p>Searches for an integer in a sorted list using binary search.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to search for.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the integer, or -1 if not found.</code></p>
+</section><hr>
+<section id="_m_init">
+<h3>_m_init</h3>
+<pre><code>int _m_init()</code></pre>
+<p>Internal debug version of m_init.
+Initializes the master list and the debug ownership list.</p>
+<p class="returns">Returns: <code>0 on success, 1 if already initialized.</code></p>
+</section><hr>
+<section id="_m_destruct">
+<h3>_m_destruct</h3>
+<pre><code>void _m_destruct()</code></pre>
+<p>Internal debug version of m_destruct.
+Checks for leaked lists and destroys all resources.</p>
+</section><hr>
+<section id="_m_create">
+<h3>_m_create</h3>
+<pre><code>int _m_create(int ln, const char *fn, const char *fun, int n, int w)</code></pre>
+<p>Internal debug version of m_create.
+Records caller information and allocation source.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>n Initial maximum elements.</code></li><li><code>w Element width.</code></li></ul></div>
+<p class="returns">Returns: <code>The new handle.</code></p>
+</section><hr>
+<section id="_m_free">
+<h3>_m_free</h3>
+<pre><code>int _m_free(int ln, const char *fn, const char *fun, int m)</code></pre>
+<p>Internal debug version of m_free.
+Records caller information and marks the list as freed in the debug tracker.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>m The handle to free.</code></li></ul></div>
+<p class="returns">Returns: <code>0.</code></p>
+</section><hr>
+<section id="_m_put">
+<h3>_m_put</h3>
+<pre><code>int _m_put(int ln, const char *fn, const char *fun, int h, const void *d)</code></pre>
+<p>Internal debug version of mls.
+Records caller information and bounds checks the access.
+
+/
+void *_mls (int ln, const char *fn, const char *fun, int h, int i)
+{
+_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, i, 0);
+return mls (h, i);
+}
+
+/**
+Internal debug version of m_put.
+Records caller information.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>i The index.</code></li><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>d Pointer to the element data.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the appended element.</code></p>
+</section><hr>
+<section id="_m_next">
+<h3>_m_next</h3>
+<pre><code>int _m_next(int ln, const char *fn, const char *fun, int h, int *i, void *d)</code></pre>
+<p>Internal debug version of m_next.
+Records caller information.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>i Pointer to the current index.</code></li><li><code>d Pointer to store the address of the next element.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if an element was found, 0 otherwise.</code></p>
+</section><hr>
+<section id="_m_clear">
+<h3>_m_clear</h3>
+<pre><code>void _m_clear(int ln, const char *fn, const char *fun, int h)</code></pre>
+<p>Internal debug version of m_clear.
+Records caller information.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li></ul></div>
+</section><hr>
+<section id="_m_alloc">
+<h3>_m_alloc</h3>
+<pre><code>int _m_alloc(int ln, const char *fn, const char *fun, int n, int w,
+	      uint8_t hfree)</code></pre>
+<p>Internal debug version of m_buf.
+Records caller information.
+
+/
+void *_m_buf (int ln, const char *fn, const char *fun, int m)
+{
+if (!m)
+return 0;
+_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, m, 0, 0);
+return m_buf (m);
+}
+
+/**
+Internal debug version of m_alloc.
+Records caller information and allocation source.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>m The handle.</code></li><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>n Initial maximum elements.</code></li><li><code>w Element width.</code></li><li><code>hfree The free handler ID.</code></li></ul></div>
+<p class="returns">Returns: <code>The new handle.</code></p>
+</section><hr>
+<h2 id="m_tool.c">File: <code>m_tool.c</code></h2>
+<section id="m_dub">
+<h3>m_dub</h3>
+<pre><code>int m_dub(int m)</code></pre>
+<p>Creates a duplicate of an existing m-array.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the m-array to duplicate.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle to the duplicated m-array.</code></p>
+</section><hr>
+<section id="m_regex">
+<h3>m_regex</h3>
+<pre><code>int m_regex(int m, const char *regex, const char *s)</code></pre>
+<p>Executes a regular expression on a string and stores sub-matches in an m-array.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the m-array to store matches. If <= 1, a new one is allocated.</code></li><li><code>regex The regular expression pattern.</code></li><li><code>s The string to search.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the m-array containing the matches.</code></p>
+</section><hr>
+<section id="m_qsort">
+<h3>m_qsort</h3>
+<pre><code>void m_qsort(int list, int (*compar) (const void *, const void *))</code></pre>
+<p>Sorts an m-array using qsort.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>list The handle of the m-array to sort.</code></li><li><code>compar Comparison function pointer.</code></li></ul></div>
+</section><hr>
+<section id="m_bsearch">
+<h3>m_bsearch</h3>
+<pre><code>int m_bsearch(const void *key, int list,
+	       int (*compar) (const void *, const void *))</code></pre>
+<p>Performs a binary search on a sorted m-array.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>key Pointer to the element to search for.</code></li><li><code>list The handle of the sorted m-array.</code></li><li><code>compar Comparison function pointer.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the element if found, or -1.</code></p>
+</section><hr>
+<section id="m_lfind">
+<h3>m_lfind</h3>
+<pre><code>int m_lfind(const void *key, int list,
+	     int (*compar) (const void *, const void *))</code></pre>
+<p>Performs a linear search on an m-array.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>key Pointer to the element to search for.</code></li><li><code>list The handle of the m-array.</code></li><li><code>compar Comparison function pointer.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the element if found, or -1.</code></p>
+</section><hr>
+<section id="m_binsert">
+<h3>m_binsert</h3>
+<pre><code>int m_binsert(int buf, const void *data,
+	       int (*cmpf) (const void *data, const void *buf_elem),
+	       int with_duplicates)</code></pre>
+<p>Inserts an element into a sorted m-array, maintaining order.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the m-array.</code></li><li><code>data Pointer to the element to insert.</code></li><li><code>cmpf Comparison function pointer.</code></li><li><code>with_duplicates If non-zero, allows duplicate elements.</code></li></ul></div>
+<p class="returns">Returns: <code>The index where the element was inserted, or -index if it exists and duplicates are not allowed.</code></p>
+</section><hr>
+<section id="ioread_all">
+<h3>ioread_all</h3>
+<pre><code>int ioread_all(int fd, int buffer)</code></pre>
+<p>Reads all available data from a file descriptor into an m-array.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>fd The file descriptor to read from.</code></li><li><code>buffer The handle of the m-array to store the data.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of bytes read, or a negative value on error.</code></p>
+</section><hr>
+<section id="s_new">
+<h3>s_new</h3>
+<pre><code>int s_new(void)</code></pre>
+<p>Allocates a new string buffer.</p>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_free">
+<h3>s_free</h3>
+<pre><code>void s_free(int h)</code></pre>
+<p>Frees a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer to free.</code></li></ul></div>
+</section><hr>
+<section id="s_strlen">
+<h3>s_strlen</h3>
+<pre><code>int s_strlen(int m)</code></pre>
+<p>Calculates the length of a string stored in an m-array.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The length of the string, excluding the null terminator.</code></p>
+</section><hr>
+<section id="s_app1">
+<h3>s_app1</h3>
+<pre><code>int s_app1(int m, char *s)</code></pre>
+<p>Appends a C-style string to an existing string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li><li><code>s The C-style string to append.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="vas_app">
+<h3>vas_app</h3>
+<pre><code>static int vas_app(int m, va_list ap)</code></pre>
+<p>Internal helper to append multiple strings from a va_list.</p>
+</section><hr>
+<section id="s_app">
+<h3>s_app</h3>
+<pre><code>int s_app(int m, ...)</code></pre>
+<p>Appends one or more C-style strings to a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer. If <= 0, a new one is allocated.</code></li><li><code>... Variable list of C-style strings, terminated by NULL.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="vas_printf">
+<h3>vas_printf</h3>
+<pre><code>int vas_printf(int m, int p, const char *format, va_list ap)</code></pre>
+<p>Formatted append to a string buffer using a va_list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer. If <= 0, a new one is allocated.</code></li><li><code>p The position to start writing. If < 0 or > length, it appends.</code></li><li><code>format The format string.</code></li><li><code>ap The va_list of arguments.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_printf">
+<h3>s_printf</h3>
+<pre><code>int s_printf(int m, int p, char *format, ...)</code></pre>
+<p>Formatted append to a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li><li><code>p The position to start writing.</code></li><li><code>format The format string.</code></li><li><code>... Variable list of arguments.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_dup">
+<h3>s_dup</h3>
+<pre><code>int s_dup(const char *s)</code></pre>
+<p>Creates a new string buffer from a C-style string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>s The C-style string to copy.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_clone">
+<h3>s_clone</h3>
+<pre><code>int s_clone(int h)</code></pre>
+<p>Clones a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer to clone.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle to the cloned string buffer.</code></p>
+</section><hr>
+<section id="s_resize">
+<h3>s_resize</h3>
+<pre><code>int s_resize(int h, int len)</code></pre>
+<p>Resizes a string buffer and ensures it is null-terminated.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>len The new length.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_clear">
+<h3>s_clear</h3>
+<pre><code>void s_clear(int h)</code></pre>
+<p>Clears the content of a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li></ul></div>
+</section><hr>
+<section id="s_has_prefix">
+<h3>s_has_prefix</h3>
+<pre><code>int s_has_prefix(int h, const char *prefix)</code></pre>
+<p>Checks if a string buffer starts with a given prefix.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>prefix The prefix to check.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if it has the prefix, 0 otherwise.</code></p>
+</section><hr>
+<section id="s_has_suffix">
+<h3>s_has_suffix</h3>
+<pre><code>int s_has_suffix(int h, const char *suffix)</code></pre>
+<p>Checks if a string buffer ends with a given suffix.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>suffix The suffix to check.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if it has the suffix, 0 otherwise.</code></p>
+</section><hr>
+<section id="s_from_long">
+<h3>s_from_long</h3>
+<pre><code>int s_from_long(long val)</code></pre>
+<p>Creates a string buffer from a long value.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>val The long value.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_hash">
+<h3>s_hash</h3>
+<pre><code>uint32_t s_hash(int h)</code></pre>
+<p>Calculates a hash value for a string buffer (djb2 algorithm).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The 32-bit hash value.</code></p>
+</section><hr>
+<section id="s_join">
+<h3>s_join</h3>
+<pre><code>int s_join(const char *sep, ...)</code></pre>
+<p>Joins multiple C-style strings with a separator into a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>sep The separator string.</code></li><li><code>... Variable list of C-style strings, terminated by NULL.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_cmp">
+<h3>s_cmp</h3>
+<pre><code>int s_cmp(int a, int b)</code></pre>
+<p>Compares two string buffers lexicographically.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a Handle of the first string buffer.</code></li><li><code>b Handle of the second string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>0 if equal, <0 if a < b, >0 if a > b.</code></p>
+</section><hr>
+<section id="s_ncmp">
+<h3>s_ncmp</h3>
+<pre><code>int s_ncmp(int a, int b, int n)</code></pre>
+<p>Compares up to n characters of two string buffers.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a Handle of the first string buffer.</code></li><li><code>b Handle of the second string buffer.</code></li><li><code>n Maximum number of characters to compare.</code></li></ul></div>
+<p class="returns">Returns: <code>0 if equal, <0 if a < b, >0 if a > b.</code></p>
+</section><hr>
+<section id="s_chr">
+<h3>s_chr</h3>
+<pre><code>int s_chr(int h, int c, int off)</code></pre>
+<p>Finds the first occurrence of a character in a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>c The character to find.</code></li><li><code>off The offset to start searching from.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the character, or -1.</code></p>
+</section><hr>
+<section id="s_rchr">
+<h3>s_rchr</h3>
+<pre><code>int s_rchr(int h, int c)</code></pre>
+<p>Finds the last occurrence of a character in a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>c The character to find.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the character, or -1.</code></p>
+</section><hr>
+<section id="s_find">
+<h3>s_find</h3>
+<pre><code>int s_find(int h, const char *sub)</code></pre>
+<p>Finds the first occurrence of a substring in a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>sub The substring to find.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the substring, or -1.</code></p>
+</section><hr>
+<section id="s_spn">
+<h3>s_spn</h3>
+<pre><code>int s_spn(int h, const char *accept)</code></pre>
+<p>Calculates the length of the initial segment of a string buffer which consists entirely of characters in accept.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>accept C-style string containing characters to accept.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of characters in the initial segment.</code></p>
+</section><hr>
+<section id="s_cspn">
+<h3>s_cspn</h3>
+<pre><code>int s_cspn(int h, const char *reject)</code></pre>
+<p>Calculates the length of the initial segment of a string buffer which consists entirely of characters not in reject.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>reject C-style string containing characters to reject.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of characters in the initial segment.</code></p>
+</section><hr>
+<section id="s_cat">
+<h3>s_cat</h3>
+<pre><code>int s_cat(int h, const char *src)</code></pre>
+<p>Concatenates a C-style string to a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer. If <= 0, a new one is allocated.</code></li><li><code>src The C-style string to concatenate.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_ncat">
+<h3>s_ncat</h3>
+<pre><code>int s_ncat(int h, const char *src, int n)</code></pre>
+<p>Concatenates up to n characters of a C-style string to a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer. If <= 0, a new one is allocated.</code></li><li><code>src The C-style string to concatenate.</code></li><li><code>n Maximum number of characters to concatenate.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_sub">
+<h3>s_sub</h3>
+<pre><code>int s_sub(int h, int pos, int len)</code></pre>
+<p>Extracts a substring into a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the source string buffer.</code></li><li><code>pos Starting position.</code></li><li><code>len Length of the substring.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_left">
+<h3>s_left</h3>
+<pre><code>int s_left(int h, int n)</code></pre>
+<p>Returns the leftmost n characters of a string buffer as a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>n Number of characters to return.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_right">
+<h3>s_right</h3>
+<pre><code>int s_right(int h, int n)</code></pre>
+<p>Returns the rightmost n characters of a string buffer as a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>n Number of characters to return.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_replace_c">
+<h3>s_replace_c</h3>
+<pre><code>int s_replace_c(int h, const char *old, const char *replacement)</code></pre>
+<p>Replaces all occurrences of a substring with another string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>old Substring to find.</code></li><li><code>replacement String to replace with.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle to the string buffer with replacements.</code></p>
+</section><hr>
+<section id="s_trim_c">
+<h3>s_trim_c</h3>
+<pre><code>int s_trim_c(int h, const char *chars)</code></pre>
+<p>Trims specified characters from both ends of a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The handle of the string buffer.</code></li><li><code>chars C-style string containing characters to trim. If NULL, whitespace is trimmed.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle to the trimmed string buffer.</code></p>
+</section><hr>
+<section id="s_lastchar">
+<h3>s_lastchar</h3>
+<pre><code>int s_lastchar(int m)</code></pre>
+<p>Returns the last non-null character of a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The last character, or 0 if empty.</code></p>
+</section><hr>
+<section id="s_copy">
+<h3>s_copy</h3>
+<pre><code>int s_copy(int m, int first_char, int last_char)</code></pre>
+<p>Copies a range of characters from one string buffer to a new one.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The source handle.</code></li><li><code>first_char Index of the first character.</code></li><li><code>last_char Index of the last character. If negative, goes to the end.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_index">
+<h3>s_index</h3>
+<pre><code>int s_index(int buf, int p, int ch)</code></pre>
+<p>Finds the index of a character in an m-array buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the buffer.</code></li><li><code>p Starting index.</code></li><li><code>ch Character to find.</code></li></ul></div>
+<p class="returns">Returns: <code>The index, or -1.</code></p>
+</section><hr>
+<section id="s_split">
+<h3>s_split</h3>
+<pre><code>int s_split(int m, const char *s, int c, int remove_wspace)</code></pre>
+<p>Splits a string into an m-array of strings based on a delimiter character.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle to store the resulting strings. If 0, a new one is allocated.</code></li><li><code>s The string to split.</code></li><li><code>c The delimiter character.</code></li><li><code>remove_wspace If non-zero, trims whitespace from the parts.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the m-array of strings.</code></p>
+</section><hr>
+<section id="s_slice">
+<h3>s_slice</h3>
+<pre><code>int s_slice(int dest, int offs, int m, int a, int b)</code></pre>
+<p>Creates a slice of a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Destination handle. If 0, a new one is allocated.</code></li><li><code>offs Destination offset.</code></li><li><code>m Source handle.</code></li><li><code>a Start index.</code></li><li><code>b End index.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the resulting string buffer.</code></p>
+</section><hr>
+<section id="s_strstr">
+<h3>s_strstr</h3>
+<pre><code>int s_strstr(int m, int offs, int pattern)</code></pre>
+<p>Finds a pattern in a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li><li><code>offs Starting offset.</code></li><li><code>pattern The handle of the pattern string.</code></li></ul></div>
+<p class="returns">Returns: <code>The index, or -1.</code></p>
+</section><hr>
+<section id="s_replace">
+<h3>s_replace</h3>
+<pre><code>int s_replace(int dest, int src, int pattern, int replace, int count)</code></pre>
+<p>Replaces occurrences of a pattern in a string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Destination handle. If 0, a new one is allocated.</code></li><li><code>src Source handle.</code></li><li><code>pattern Handle of the pattern to find.</code></li><li><code>replace Handle of the replacement string.</code></li><li><code>count Maximum number of replacements.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the destination string buffer.</code></p>
+</section><hr>
+<section id="s_strncmp">
+<h3>s_strncmp</h3>
+<pre><code>int s_strncmp(int m, int offs, int pattern, int n)</code></pre>
+<p>Compares a substring of a string buffer with a pattern.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m Source handle.</code></li><li><code>offs Source offset.</code></li><li><code>pattern Pattern handle.</code></li><li><code>n Number of characters to compare.</code></li></ul></div>
+<p class="returns">Returns: <code>0 if equal, otherwise like strncmp.</code></p>
+</section><hr>
+<section id="s_isempty">
+<h3>s_isempty</h3>
+<pre><code>int s_isempty(int m)</code></pre>
+<p>Checks if a string buffer is empty.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if empty, 0 otherwise.</code></p>
+</section><hr>
+<section id="s_trim">
+<h3>s_trim</h3>
+<pre><code>int s_trim(int m)</code></pre>
+<p>Trims whitespace from both ends of a string buffer (in-place).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_lower">
+<h3>s_lower</h3>
+<pre><code>int s_lower(int m)</code></pre>
+<p>Converts a string buffer to lowercase (in-place).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_upper">
+<h3>s_upper</h3>
+<pre><code>int s_upper(int m)</code></pre>
+<p>Converts a string buffer to uppercase (in-place).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_msplit">
+<h3>s_msplit</h3>
+<pre><code>int s_msplit(int dest, int src, int pattern)</code></pre>
+<p>Splits a string buffer into an m-array of string handles.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Handle of the resulting m-array. If 0, a new one is allocated.</code></li><li><code>src Handle of the source string buffer.</code></li><li><code>pattern Handle of the delimiter string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the resulting m-array.</code></p>
+</section><hr>
+<section id="s_implode">
+<h3>s_implode</h3>
+<pre><code>int s_implode(int dest, int srcs, int seperator)</code></pre>
+<p>Joins an m-array of string handles into a single string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Destination handle. If 0, a new one is allocated.</code></li><li><code>srcs Handle of the m-array of string handles.</code></li><li><code>separator Handle of the separator string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the destination string buffer.</code></p>
+</section><hr>
+<section id="s_strdup_c">
+<h3>s_strdup_c</h3>
+<pre><code>int s_strdup_c(const char *s)</code></pre>
+<p>Duplicates a C-style string into a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>s The C-style string.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer.</code></p>
+</section><hr>
+<section id="s_strcpy_c">
+<h3>s_strcpy_c</h3>
+<pre><code>int s_strcpy_c(int out, const char *s)</code></pre>
+<p>Copies a C-style string into an existing string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>out Handle of the destination string buffer. If <= 0, a new one is allocated.</code></li><li><code>s The C-style string.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_puts">
+<h3>s_puts</h3>
+<pre><code>void s_puts(int m)</code></pre>
+<p>Prints a string buffer followed by a newline.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li></ul></div>
+</section><hr>
+<section id="s_write">
+<h3>s_write</h3>
+<pre><code>void s_write(int m, int n)</code></pre>
+<p>Truncates a string buffer to a given length and ensures null-termination.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string buffer.</code></li><li><code>n The new length.</code></li></ul></div>
+</section><hr>
+<section id="mls_printf_handler">
+<h3>mls_printf_handler</h3>
+<pre><code>static int mls_printf_handler(FILE *stream, const struct printf_info *info,
+			       const void *const *args)</code></pre>
+<p>Internal handler for the %M specifier in printf.
+Expects an m-array string handle.</p>
+</section><hr>
+<section id="mls_printf_arginfo">
+<h3>mls_printf_arginfo</h3>
+<pre><code>static int mls_printf_arginfo(const struct printf_info *info, size_t n,
+			       int *argtypes, int *size)</code></pre>
+<p>Internal arginfo handler for the %M specifier in printf.</p>
+</section><hr>
+<section id="m_register_printf">
+<h3>m_register_printf</h3>
+<pre><code>void m_register_printf()</code></pre>
+<p>Registers the %M specifier for printf to handle m-array string handles.</p>
+</section><hr>
+<section id="conststr_init">
+<h3>conststr_init</h3>
+<pre><code>void conststr_init(void)</code></pre>
+<p>Initializes the constant string system.</p>
+</section><hr>
+<section id="conststr_free">
+<h3>conststr_free</h3>
+<pre><code>void conststr_free(void)</code></pre>
+<p>Frees the constant string system.</p>
+</section><hr>
+<section id="conststr_lookup_c">
+<h3>conststr_lookup_c</h3>
+<pre><code>int conststr_lookup_c(const char *s)</code></pre>
+<p>Looks up or creates a constant string from a C-style string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>s The C-style string.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the constant string.</code></p>
+</section><hr>
+<section id="conststr_lookup">
+<h3>conststr_lookup</h3>
+<pre><code>int conststr_lookup(int s)</code></pre>
+<p>Looks up or creates a constant string from an existing string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>s Handle of the source string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the constant string.</code></p>
+</section><hr>
+<section id="cs_printf">
+<h3>cs_printf</h3>
+<pre><code>int cs_printf(const char *format, ...)</code></pre>
+<p>Formatted creation of a constant string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>format Format string.</code></li><li><code>... Arguments.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the constant string.</code></p>
+</section><hr>
+<section id="v_init">
+<h3>v_init</h3>
+<pre><code>int v_init(void)</code></pre>
+<p>Initializes a variable system.</p>
+<p class="returns">Returns: <code>The handle of the new variable system.</code></p>
+</section><hr>
+<section id="v_free">
+<h3>v_free</h3>
+<pre><code>void v_free(int vl)</code></pre>
+<p>Frees a variable system and all its variables.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vl The handle of the variable system.</code></li></ul></div>
+</section><hr>
+<section id="v_find_key">
+<h3>v_find_key</h3>
+<pre><code>int v_find_key(int vs, const char *name)</code></pre>
+<p>Finds the index of a variable key in a variable system.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The name of the variable.</code></li></ul></div>
+<p class="returns">Returns: <code>The index, or -1.</code></p>
+</section><hr>
+<section id="v_lookup">
+<h3>v_lookup</h3>
+<pre><code>int v_lookup(int vl, const char *name)</code></pre>
+<p>Looks up or creates a variable in a variable system.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vl The variable system handle.</code></li><li><code>name The name of the variable.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the variable.</code></p>
+</section><hr>
+<section id="v_kset">
+<h3>v_kset</h3>
+<pre><code>void v_kset(int var, const char *v, int row)</code></pre>
+<p>Sets a value at a specific position in a variable.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li><li><code>v The string value.</code></li><li><code>row The position (index).</code></li></ul></div>
+</section><hr>
+<section id="v_set">
+<h3>v_set</h3>
+<pre><code>int v_set(int vs, const char *name, const char *value, int pos)</code></pre>
+<p>Sets a variable value in a variable system.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>value The string value.</code></li><li><code>pos The position (VAR_APPEND for append).</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the variable.</code></p>
+</section><hr>
+<section id="v_vaset">
+<h3>v_vaset</h3>
+<pre><code>void v_vaset(int vs, ...)</code></pre>
+<p>Variadic set of multiple variable names and values.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>... Pairs of (char* name, char* value), terminated by NULL.</code></li></ul></div>
+</section><hr>
+<section id="v_kclr">
+<h3>v_kclr</h3>
+<pre><code>void v_kclr(int var)</code></pre>
+<p>Clears all values from a variable, keeping only the name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li></ul></div>
+</section><hr>
+<section id="v_clr">
+<h3>v_clr</h3>
+<pre><code>void v_clr(int vs, const char *name)</code></pre>
+<p>Clears a variable by name in a variable system.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+</section><hr>
+<section id="v_klen">
+<h3>v_klen</h3>
+<pre><code>int v_klen(int key)</code></pre>
+<p>Gets a value from a variable at a specific position.
+
+/
+char *v_kget (int var, int row)
+{
+if (var <= 0)
+return "";
+int len = m_len (var);
+if (row >= len)
+return "";
+char *s = STR (var, row);
+if (s == NULL)
+return "";
+return s;
+}
+
+/**
+Gets a variable value from a variable system.
+
+/
+char *v_get (int vs, const char *name, int pos)
+{
+return v_kget (v_lookup (vs, name), pos);
+}
+
+/**
+Returns the number of values in a variable (excluding the name).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li><li><code>row The position.</code></li><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>pos The position.</code></li><li><code>key The variable handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of values.</code></p>
+</section><hr>
+<section id="v_len">
+<h3>v_len</h3>
+<pre><code>int v_len(int vs, const char *name)</code></pre>
+<p>Returns the number of values in a variable by name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of values.</code></p>
+</section><hr>
+<section id="v_remove">
+<h3>v_remove</h3>
+<pre><code>void v_remove(int vs, const char *name)</code></pre>
+<p>Removes a variable from a variable system.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+</section><hr>
+<section id="se_init">
+<h3>se_init</h3>
+<pre><code>void se_init(str_exp_t *se)</code></pre>
+<p>Initializes a string expansion structure.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li></ul></div>
+</section><hr>
+<section id="se_free">
+<h3>se_free</h3>
+<pre><code>void se_free(str_exp_t *se)</code></pre>
+<p>Frees resources associated with a string expansion structure.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li></ul></div>
+</section><hr>
+<section id="se_realloc_buffers">
+<h3>se_realloc_buffers</h3>
+<pre><code>void se_realloc_buffers(str_exp_t *se)</code></pre>
+<p>Reallocates or initializes buffers for string expansion.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li></ul></div>
+</section><hr>
+<section id="parse_index">
+<h3>parse_index</h3>
+<pre><code>static int parse_index(const char **s)</code></pre>
+<p>Internal helper to parse index in string expansion (e.g., [1], [*]).</p>
+</section><hr>
+<section id="se_parse">
+<h3>se_parse</h3>
+<pre><code>void se_parse(str_exp_t *se, const char *frm)</code></pre>
+<p>Parses a format string for expansion.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li><li><code>frm The format string.</code></li></ul></div>
+</section><hr>
+<section id="repl_char">
+<h3>repl_char</h3>
+<pre><code>static void repl_char(int buf, char ch)</code></pre>
+<p>Internal helper to replace special characters with escaped sequences.</p>
+</section><hr>
+<section id="escape_buf">
+<h3>escape_buf</h3>
+<pre><code>void escape_buf(int buf, char *src)</code></pre>
+<p>Escapes a string into a buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf Handle of the destination buffer.</code></li><li><code>src Source C-style string.</code></li></ul></div>
+</section><hr>
+<section id="escape_str">
+<h3>escape_str</h3>
+<pre><code>int escape_str(int buf, char *src)</code></pre>
+<p>Creates an escaped version of a string in a new or existing buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf Destination handle (if 0, a new one is allocated).</code></li><li><code>src Source C-style string.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the buffer containing the escaped string.</code></p>
+</section><hr>
+<section id="field_escape">
+<h3>field_escape</h3>
+<pre><code>static int field_escape(int s2, char *s, int quotes)</code></pre>
+<p>Internal helper to escape a field, optionally adding quotes.</p>
+</section><hr>
+<section id="get_variable_handle">
+<h3>get_variable_handle</h3>
+<pre><code>static int get_variable_handle(int vl, const char *name)</code></pre>
+<p>Internal helper to get a variable handle from a variable system or table.</p>
+</section><hr>
+<section id="if">
+<h3>if</h3>
+<pre><code> if(vn < m_len (se->values) && (val_ptr = (char **)mls (se->values, vn)) && *val_ptr == s)</code></pre>
+<p>Expands a parsed format string using values from a variable system or table.
+
+/
+char *se_expand (str_exp_t *se, int vl, int row)
+{
+int var, index;
+int p, vn;
+char **d, *s, **val_ptr;
+int quotes = 0;
+m_clear (se->buf);
+int buf = se->buf;
+vn = 0;
+m_foreach (se->splitbuf, p, d)
+{
+s = *d;
+/* Check if this part in splitbuf matches the next expected variable in se->values</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the parsed string expansion structure.</code></li><li><code>vl Handle of the variable system or table.</code></li><li><code>row The row index to use for expansion.</code></li></ul></div>
+<p class="returns">Returns: <code>Pointer to the expanded string (stored in se->buf).</code></p>
+</section><hr>
+<section id="m_str_from_file">
+<h3>m_str_from_file</h3>
+<pre><code>int m_str_from_file(char *filename)</code></pre>
+<p>Expands a format string in one step and returns the result.
+
+/
+char *se_string (int vl, const char *frm)
+{
+str_exp_t se;
+se_init (&se);
+se_parse (&se, frm);
+se_expand (&se, vl, 0);
+
+char *res;
+if (m_is_table (vl)) {
+m_table_set_string_by_cstr (vl, "se_string", mls (se.buf, 0));
+int h = m_table_get_cstr (vl, "se_string");
+res = m_str (h);
+} else {
+int data = v_set (vl, "se_string", mls (se.buf, 0), 1);
+res = STR (data, 1);
+}
+
+se_free (&se);
+return res;
+}
+
+/* Other Utilities */
+
+/**
+Reads the entire content of a file into a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vl Handle of the variable system or table.</code></li><li><code>frm The format string.</code></li><li><code>filename Path to the file.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new string buffer, or -1 on error.</code></p>
+</section><hr>
+<section id="skip_delim">
+<h3>skip_delim</h3>
+<pre><code>static void skip_delim(char **s, char *delim)</code></pre>
+<p>Internal helper to skip a delimiter string.</p>
+</section><hr>
+<section id="skip_unitl_delim">
+<h3>skip_unitl_delim</h3>
+<pre><code>static void skip_unitl_delim(char **s, char *delim)</code></pre>
+<p>Internal helper to skip characters until a delimiter string is found.</p>
+</section><hr>
+<section id="cut_word">
+<h3>cut_word</h3>
+<pre><code>static int cut_word(char **s, char *delim, int trimws, char **a, char **b)</code></pre>
+<p>Internal helper to cut a word from a string based on a delimiter.</p>
+</section><hr>
+<section id="m_str_split">
+<h3>m_str_split</h3>
+<pre><code>int m_str_split(int ms, char *s, char *delim, int trimws)</code></pre>
+<p>Internal helper to duplicate a word between two pointers, optionally trimming whitespace.
+/
+static char *dup_word (char *a, char *b, int trimws)
+{
+if (a == b)
+return strdup ("");
+if (trimws) {
+while (a < b && isspace (*a))
+a++;
+while (b > a && isspace (b[-1]))
+b--;
+}
+return strndup (a, b - a);
+}
+
+/**
+Splits a string into an m-array of strings using a delimiter string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ms Handle of the m-array to store strings.</code></li><li><code>s Source C-style string.</code></li><li><code>delim Delimiter string.</code></li><li><code>trimws If non-zero, trims whitespace from results.</code></li></ul></div>
+<p class="returns">Returns: <code>The m-array handle.</code></p>
+</section><hr>
+<section id="s_strcmp_c">
+<h3>s_strcmp_c</h3>
+<pre><code>int s_strcmp_c(int mstr, const char *s)</code></pre>
+<p>Compares an m-array string handle with a C-style string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>mstr Handle of the m-array string.</code></li><li><code>s C-style string.</code></li></ul></div>
+<p class="returns">Returns: <code>0 if equal, otherwise like strcmp.</code></p>
+</section><hr>
+<section id="m_strncpy">
+<h3>m_strncpy</h3>
+<pre><code>int m_strncpy(int dst, int src, int max)</code></pre>
+<p>Copies a string from one handle to another with a maximum length.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dst Destination handle. If <= 0, a new one is allocated.</code></li><li><code>src Source handle.</code></li><li><code>max Maximum number of characters to copy.</code></li></ul></div>
+<p class="returns">Returns: <code>The destination handle.</code></p>
+</section><hr>
+<section id="element_copy">
+<h3>element_copy</h3>
+<pre><code>static void element_copy(int dest, int destp, int src, int srcp, int src_count,
+			  int width)</code></pre>
+<p>Internal helper to copy elements between m-arrays.</p>
+</section><hr>
+<section id="m_mcopy">
+<h3>m_mcopy</h3>
+<pre><code>int m_mcopy(int dest, int destp, int src, int srcp, int src_count)</code></pre>
+<p>Copies a range of elements from one m-array to another, handling width differences.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Destination handle.</code></li><li><code>destp Destination offset.</code></li><li><code>src Source handle.</code></li><li><code>srcp Source offset.</code></li><li><code>src_count Number of elements to copy.</code></li></ul></div>
+<p class="returns">Returns: <code>The destination handle.</code></p>
+</section><hr>
+<section id="m_memset">
+<h3>m_memset</h3>
+<pre><code>void m_memset(int ln, char c, int w)</code></pre>
+<p>Fills an m-array with a constant byte.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Handle of the m-array.</code></li><li><code>c Byte value.</code></li><li><code>w Number of bytes to fill.</code></li></ul></div>
+</section><hr>
+<section id="s_strncmp2">
+<h3>s_strncmp2</h3>
+<pre><code>int s_strncmp2(int s0, int p0, int s1, int p1, int len)</code></pre>
+<p>Compares substrings of two m-array string handles.</p>
+</section><hr>
+<section id="s_strncmpr">
+<h3>s_strncmpr</h3>
+<pre><code>int s_strncmpr(int str, int suffix)</code></pre>
+<p>Compares the end of a string buffer with a suffix string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>str Handle of the string buffer.</code></li><li><code>suffix Handle of the suffix string buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>0 if it matches, otherwise non-zero.</code></p>
+</section><hr>
+<section id="s_readln">
+<h3>s_readln</h3>
+<pre><code>int s_readln(int buf, FILE *fp)</code></pre>
+<p>Reads a line from a file into an m-array string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf Handle of the string buffer.</code></li><li><code>fp File pointer.</code></li></ul></div>
+<p class="returns">Returns: <code>The length of the line read, or EOF.</code></p>
+</section><hr>
+<section id="ring_create">
+<h3>ring_create</h3>
+<pre><code>int ring_create(int size)</code></pre>
+<p>Creates a ring buffer (circular buffer) of integers.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>size The capacity of the ring buffer.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the new ring buffer.</code></p>
+</section><hr>
+<section id="ring_empty">
+<h3>ring_empty</h3>
+<pre><code>int ring_empty(int r)</code></pre>
+<p>Checks if a ring buffer is empty.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>r The ring buffer handle.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if empty, 0 otherwise.</code></p>
+</section><hr>
+<section id="ring_full">
+<h3>ring_full</h3>
+<pre><code>int ring_full(int r)</code></pre>
+<p>Checks if a ring buffer is full.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>r The ring buffer handle.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if full, 0 otherwise.</code></p>
+</section><hr>
+<section id="ring_put">
+<h3>ring_put</h3>
+<pre><code>int ring_put(int r, int data)</code></pre>
+<p>Appends an integer to a ring buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>r The ring buffer handle.</code></li><li><code>data The integer to append.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success, -1 if the buffer is full.</code></p>
+</section><hr>
+<section id="ring_get">
+<h3>ring_get</h3>
+<pre><code>int ring_get(int r)</code></pre>
+<p>Retrieves and removes the oldest integer from a ring buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>r The ring buffer handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The integer retrieved, or -1 if the buffer is empty.</code></p>
+</section><hr>
+<section id="ring_free">
+<h3>ring_free</h3>
+<pre><code>void ring_free(int r)</code></pre>
+<p>Frees a ring buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>r The ring buffer handle.</code></li></ul></div>
+</section><hr>
+<section id="m_free_strings">
+<h3>m_free_strings</h3>
+<pre><code>void m_free_strings(int list, int CLEAR_ONLY)</code></pre>
+<p>Specialized free function for lists containing dynamically allocated strings (char *).
+Frees each string in the list and optionally the list handle itself.
+
+If zero, the handle itself is also freed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>list The handle of the string list.</code></li><li><code>CLEAR_ONLY If non-zero, the strings are freed and the list is cleared, but the handle remains.</code></li></ul></div>
+</section><hr>
+<h2 id="m_table.c">File: <code>m_table.c</code></h2>
+<section id="m_table_create">
+<h3>m_table_create</h3>
+<pre><code>int m_table_create()</code></pre>
+<p>Creates a new empty table handle.
+A table stores key-value pairs where keys can be integers or strings,
+and values can be various types (ints, strings, lists, other tables).</p>
+<p class="returns">Returns: <code>The handle of the new table.</code></p>
+</section><hr>
+<section id="m_is_table">
+<h3>m_is_table</h3>
+<pre><code>int m_is_table(int table_h)</code></pre>
+<p>Checks if a handle refers to a table.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h The handle to check.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if it is a table, 0 otherwise.</code></p>
+</section><hr>
+<section id="m_table_free">
+<h3>m_table_free</h3>
+<pre><code>void m_table_free(int table_h)</code></pre>
+<p>Frees a table and all its contents recursively.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h The handle of the table to free.</code></li></ul></div>
+</section><hr>
+<section id="m_table_set_int_key">
+<h3>m_table_set_int_key</h3>
+<pre><code>void m_table_set_int_key(int table_h, int key_idx, int value,
+			  mls_table_type_t type)</code></pre>
+<p>Sets a value for an integer key in the table.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_idx Integer key.</code></li><li><code>value Value (raw int or handle).</code></li><li><code>type Type of the value.</code></li></ul></div>
+</section><hr>
+<section id="m_table_set_str_key_ext">
+<h3>m_table_set_str_key_ext</h3>
+<pre><code>void m_table_set_str_key_ext(int table_h, int key_str_h,
+			      mls_table_type_t key_type, int value,
+			      mls_table_type_t type)</code></pre>
+<p>Sets a value for a string handle key with a specific key type.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_str_h Handle of the key string.</code></li><li><code>key_type Type of the key (e.g. MLS_TABLE_TYPE_STRING or MLS_TABLE_TYPE_CONST_STRING).</code></li><li><code>value Value (raw int or handle).</code></li><li><code>type Type of the value.</code></li></ul></div>
+</section><hr>
+<section id="m_table_set_str_key">
+<h3>m_table_set_str_key</h3>
+<pre><code>void m_table_set_str_key(int table_h, int key_str_h, int value,
+			  mls_table_type_t type)</code></pre>
+<p>Sets a value for a string handle key (defaults key type to MLS_TABLE_TYPE_STRING).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_str_h Handle of the key string.</code></li><li><code>value Value (raw int or handle).</code></li><li><code>type Type of the value.</code></li></ul></div>
+</section><hr>
+<section id="m_table_set_cstr_key">
+<h3>m_table_set_cstr_key</h3>
+<pre><code>void m_table_set_cstr_key(int table_h, const char *key_cstr, int value,
+			   mls_table_type_t type)</code></pre>
+<p>Sets a value for a C-style string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_cstr The C-style string key.</code></li><li><code>value Value (raw int or handle).</code></li><li><code>type Type of the value.</code></li></ul></div>
+</section><hr>
+<section id="mt_seti">
+<h3>mt_seti</h3>
+<pre><code>void mt_seti(int table_h, const char *key, int val)</code></pre>
+<p>Sets an integer value for a C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key Key name.</code></li><li><code>val Integer value.</code></li></ul></div>
+</section><hr>
+<section id="mt_sets">
+<h3>mt_sets</h3>
+<pre><code>void mt_sets(int table_h, const char *key, const char *val)</code></pre>
+<p>Sets a string value for a C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key Key name.</code></li><li><code>val String value.</code></li></ul></div>
+</section><hr>
+<section id="mt_setc">
+<h3>mt_setc</h3>
+<pre><code>void mt_setc(int table_h, const char *key, const char *val)</code></pre>
+<p>Sets a constant string value for a C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key Key name.</code></li><li><code>val String value.</code></li></ul></div>
+</section><hr>
+<section id="mt_seth">
+<h3>mt_seth</h3>
+<pre><code>void mt_seth(int table_h, const char *key, int handle, mls_table_type_t type)</code></pre>
+<p>Sets a handle value for a C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key Key name.</code></li><li><code>handle The handle to store.</code></li><li><code>type The type of the handle.</code></li></ul></div>
+</section><hr>
+<section id="mt_get">
+<h3>mt_get</h3>
+<pre><code>int mt_get(int table_h, const char *key)</code></pre>
+<p>Gets a value from the table by C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key Key name.</code></li></ul></div>
+<p class="returns">Returns: <code>The value (int or handle).</code></p>
+</section><hr>
+<section id="m_table_get_int">
+<h3>m_table_get_int</h3>
+<pre><code>int m_table_get_int(int table_h, int key_idx)</code></pre>
+<p>Gets a value from the table by integer key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_idx Integer key.</code></li></ul></div>
+<p class="returns">Returns: <code>The value (int or handle), or 0 if not found.</code></p>
+</section><hr>
+<section id="m_table_get_str">
+<h3>m_table_get_str</h3>
+<pre><code>int m_table_get_str(int table_h, int key_str_h)</code></pre>
+<p>Gets a value from the table by string handle key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_str_h String handle key.</code></li></ul></div>
+<p class="returns">Returns: <code>The value (int or handle), or 0 if not found.</code></p>
+</section><hr>
+<section id="m_table_get_cstr">
+<h3>m_table_get_cstr</h3>
+<pre><code>int m_table_get_cstr(int table_h, const char *key_cstr)</code></pre>
+<p>Gets a value from the table by C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_cstr C-string key.</code></li></ul></div>
+<p class="returns">Returns: <code>The value (int or handle), or 0 if not found.</code></p>
+</section><hr>
+<section id="m_table_keys">
+<h3>m_table_keys</h3>
+<pre><code>int m_table_keys(int table_h)</code></pre>
+<p>Returns a list of all keys in the table.
+
+User is responsible for freeing the list (but not the keys themselves).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li></ul></div>
+<p class="returns">Returns: <code>Handle of the m-array containing the keys.</code></p>
+</section><hr>
+<section id="m_table_get_type_int">
+<h3>m_table_get_type_int</h3>
+<pre><code>mls_table_type_t m_table_get_type_int(int table_h, int key_idx)</code></pre>
+<p>Gets the type of a value by integer key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_idx Integer key.</code></li></ul></div>
+<p class="returns">Returns: <code>The type of the value.</code></p>
+</section><hr>
+<section id="m_table_get_type_str">
+<h3>m_table_get_type_str</h3>
+<pre><code>mls_table_type_t m_table_get_type_str(int table_h, int key_str_h)</code></pre>
+<p>Gets the type of a value by string handle key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_str_h String handle key.</code></li></ul></div>
+<p class="returns">Returns: <code>The type of the value.</code></p>
+</section><hr>
+<section id="m_table_get_type_cstr">
+<h3>m_table_get_type_cstr</h3>
+<pre><code>mls_table_type_t m_table_get_type_cstr(int table_h, const char *key_cstr)</code></pre>
+<p>Gets the type of a value by C-string key.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table_h Handle of the table.</code></li><li><code>key_cstr C-string key.</code></li></ul></div>
+<p class="returns">Returns: <code>The type of the value.</code></p>
+</section><hr>
+<h2 id="m_extra.c">File: <code>m_extra.c</code></h2>
+<section id="s_casecmp">
+<h3>s_casecmp</h3>
+<pre><code>int s_casecmp(int a, int b)</code></pre>
+<p>Case-insensitive comparison of two strings.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a The first string handle.</code></li><li><code>b The second string handle.</code></li></ul></div>
+<p class="returns">Returns: <code><0 if a < b, 0 if a == b, >0 if a > b.</code></p>
+</section><hr>
+<section id="s_ncasecmp">
+<h3>s_ncasecmp</h3>
+<pre><code>int s_ncasecmp(int a, int b, int n)</code></pre>
+<p>Case-insensitive comparison of up to n characters of two strings.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a The first string handle.</code></li><li><code>b The second string handle.</code></li><li><code>n Maximum number of characters to compare.</code></li></ul></div>
+<p class="returns">Returns: <code><0 if a < b, 0 if a == b, >0 if a > b.</code></p>
+</section><hr>
+<section id="s_to_long">
+<h3>s_to_long</h3>
+<pre><code>long s_to_long(int h)</code></pre>
+<p>Converts a string to a long integer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The long value of the string, or 0 if string is empty or invalid.</code></p>
+</section><hr>
+<section id="s_trim_left_c">
+<h3>s_trim_left_c</h3>
+<pre><code>int s_trim_left_c(int h, const char *chars)</code></pre>
+<p>Trims specific characters from the left side of a string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>chars A string containing characters to trim. If NULL, trims whitespace.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle containing the trimmed string.</code></p>
+</section><hr>
+<section id="s_trim_right_c">
+<h3>s_trim_right_c</h3>
+<pre><code>int s_trim_right_c(int h, const char *chars)</code></pre>
+<p>Trims specific characters from the right side of a string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>chars A string containing characters to trim. If NULL, trims whitespace.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle containing the trimmed string.</code></p>
+</section><hr>
+<section id="s_reverse">
+<h3>s_reverse</h3>
+<pre><code>int s_reverse(int h)</code></pre>
+<p>Reverses the string in-place.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The original handle (h).</code></p>
+</section><hr>
+<section id="s_pad_left">
+<h3>s_pad_left</h3>
+<pre><code>int s_pad_left(int h, int width, char pad)</code></pre>
+<p>Pads the string on the left to reach a specified width.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>width The target width.</code></li><li><code>pad The character to pad with.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle containing the padded string.</code></p>
+</section><hr>
+<section id="s_pad_right">
+<h3>s_pad_right</h3>
+<pre><code>int s_pad_right(int h, int width, char pad)</code></pre>
+<p>Pads the string on the right to reach a specified width.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>width The target width.</code></li><li><code>pad The character to pad with.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle containing the padded string.</code></p>
+</section><hr>
+<section id="s_is_numeric">
+<h3>s_is_numeric</h3>
+<pre><code>int s_is_numeric(int h)</code></pre>
+<p>Checks if the string consists only of digits.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if numeric, 0 otherwise.</code></p>
+</section><hr>
+<section id="s_is_alpha">
+<h3>s_is_alpha</h3>
+<pre><code>int s_is_alpha(int h)</code></pre>
+<p>Checks if the string consists only of alphabetic characters.
+
+/
+/**
+Checks if the string consists only of alphabetic characters.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>h The string handle.</code></li></ul></div>
+<p class="returns">Returns: <code>1 if alphabetic, 0 otherwise.</code></p>
+</section><hr>
+<section id="s_base64_decode">
+<h3>s_base64_decode</h3>
+<pre><code>int s_base64_decode(int h)</code></pre>
+<p>Decodes a base64 encoded string.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle containing base64 data.</code></li></ul></div>
+<p class="returns">Returns: <code>A new handle containing the decoded binary data.</code></p>
+</section><hr>
+<section id="s_secure_cmp">
+<h3>s_secure_cmp</h3>
+<pre><code>int s_secure_cmp(int a, int b)</code></pre>
+<p>Constant-time comparison of two strings.
+Prevents timing attacks when comparing secrets like passwords or keys.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>a The first string handle.</code></li><li><code>b The second string handle.</code></li></ul></div>
+<p class="returns">Returns: <code>0 if strings are equal, 1 otherwise.</code></p>
+</section><hr>
+</body></html>

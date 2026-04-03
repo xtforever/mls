@@ -13,9 +13,37 @@ TEST test_s_casecmp (void)
 	int c = s_dup ("World");
 	ASSERT_EQ (0, s_casecmp (a, b));
 	ASSERT (s_casecmp (a, c) < 0);
+	
+	/* Robustness: Handle 0 */
+	ASSERT_EQ (0, s_casecmp (0, 0));
+	ASSERT (s_casecmp (0, a) < 0);
+	ASSERT (s_casecmp (a, 0) > 0);
+
+	/* Robustness: Non-terminated strings */
+	int nt = m_alloc(5, 1, MFREE);
+	m_setlen(nt, 5);
+	memcpy(m_buf(nt), "HELLO", 5);
+	ASSERT_EQ(0, s_casecmp(a, nt));
+	
 	s_free (a);
 	s_free (b);
 	s_free (c);
+	s_free (nt);
+	PASS ();
+}
+
+TEST test_s_ncasecmp (void)
+{
+	int a = s_dup ("Hello World");
+	int b = s_dup ("hello gems");
+	
+	ASSERT_EQ (0, s_ncasecmp (a, b, 5));
+	ASSERT (s_ncasecmp (a, b, 10) != 0);
+	
+	ASSERT_EQ (0, s_ncasecmp (0, 0, 5));
+	
+	s_free (a);
+	s_free (b);
 	PASS ();
 }
 
@@ -78,10 +106,23 @@ TEST test_s_classification (void)
 	ASSERT (!s_is_alpha (n));
 	ASSERT (!s_is_alpha (m));
 	ASSERT (!s_is_numeric (m));
+
+	/* Robustness: Non-terminated strings */
+	int nt_n = m_alloc(3, 1, MFREE);
+	m_setlen(nt_n, 3);
+	memcpy(m_buf(nt_n), "456", 3);
+	ASSERT (s_is_numeric (nt_n));
+
+	int nt_a = m_alloc(3, 1, MFREE);
+	m_setlen(nt_a, 3);
+	memcpy(m_buf(nt_a), "XYZ", 3);
+	ASSERT (s_is_alpha (nt_a));
 	
 	s_free (n);
 	s_free (a);
 	s_free (m);
+	s_free (nt_n);
+	s_free (nt_a);
 	PASS ();
 }
 
@@ -101,6 +142,7 @@ TEST test_s_secure_cmp (void)
 SUITE (mls_extra_suite)
 {
 	RUN_TEST (test_s_casecmp);
+	RUN_TEST (test_s_ncasecmp);
 	RUN_TEST (test_s_to_long);
 	RUN_TEST (test_s_trim_advanced);
 	RUN_TEST (test_s_reverse);

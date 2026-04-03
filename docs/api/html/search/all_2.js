@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['2_20array_20indexing_0',['2. Array Indexing',['../md_docs_2string__expansion.html#autotoc_md197',1,'']]],
+  ['2_20automatic_20allocation_20resizing_1',['2. Automatic Allocation &amp; Resizing',['../md_docs_2m__slice.html#autotoc_md137',1,'']]],
+  ['2_20concatenation_20the_20glue_20function_2',['2. Concatenation (The &quot;Glue&quot; Function)',['../md_docs_2strings.html#autotoc_md204',1,'']]],
+  ['2_20double_20free_20protection_3',['2. Double-Free Protection',['../md_docs_2debugging.html#autotoc_md91',1,'']]],
+  ['2_20eliminating_20array_20resizing_20boilerplate_4',['2. Eliminating Array Resizing Boilerplate',['../md_docs_2real-world-examples.html#autotoc_md183',1,'']]],
+  ['2_20eliminating_20pointer_20indirection_5',['2. Eliminating Pointer Indirection',['../md_docs_2philosophy.html#autotoc_md169',1,'']]],
+  ['2_20examining_20mls_20assumptions_6',['2. Examining MLS Assumptions',['../md_docs_2why__mls.html#autotoc_md219',1,'']]],
+  ['2_20how_20tt_20mls_20tt_20mitigates_20these_20risks_7',['2. How &lt;tt&gt;mls&lt;/tt&gt; Mitigates These Risks',['../md_docs_2httpparser.html#autotoc_md103',1,'']]],
+  ['2_20lack_20of_20type_20tags_8',['2. Lack of Type Tags',['../md_docs_2beginners__guide.html#autotoc_md52',1,'']]],
+  ['2_20simpler_20function_20signatures_9',['2. Simpler Function Signatures',['../md_README.html#autotoc_md12',1,'']]],
+  ['2_20the_20mls_20solution_3a_20architectural_20immunity_10',['2. The MLS Solution: Architectural Immunity',['../md_docs_2case__study__curl.html#autotoc_md64',1,'']]],
+  ['2_20the_20mls_20way_20python_20like_11',['2. The MLS Way (Python-like)',['../md_docs_2beginners__guide.html#autotoc_md46',1,'']]],
+  ['2_20the_20strategy_3a_20surgical_20modernization_12',['2. The Strategy: Surgical Modernization',['../md_docs_2curl__integration.html#autotoc_md74',1,'']]],
+  ['2_20the_20traditional_20c_20way_20manual_20labor_13',['2. The Traditional C Way (Manual Labor)',['../md_docs_2memory__management.html#autotoc_md151',1,'']]],
+  ['2_20trusting_20the_20metadata_20not_20the_20data_14',['2. Trusting the Metadata, Not the Data',['../md_docs_2security.html#autotoc_md190',1,'']]],
+  ['2023_2038545_15',['1. The Vulnerability: CVE-2023-38545',['../md_docs_2case__study__curl.html#autotoc_md60',1,'']]],
+  ['2024_206197_16',['3. Use-After-Free: CVE-2024-6197',['../md_docs_2case__study__curl.html#autotoc_md67',1,'']]],
+  ['24_20bit_20index_20is_20enough_17',['Assumption 1: A 24-bit Index is Enough',['../md_docs_2why__mls.html#autotoc_md220',1,'']]],
+  ['2_3a_20a_207_20bit_20128_20generation_20counter_20is_20enough_20for_20uaf_18',['Assumption 2: A 7-bit (128) Generation Counter is Enough for UAF',['../md_docs_2why__mls.html#autotoc_md221',1,'']]],
+  ['2_3a_20inspecting_20data_20introspection_20greatness_19',['Example 2: Inspecting Data (Introspection Greatness)',['../md_docs_2m__table__greatness.html#autotoc_md144',1,'']]],
+  ['2_3a_20request_20line_20parsing_20',['Phase 2: Request Line Parsing',['../md_docs_2httpparser.html#autotoc_md124',1,'']]],
+  ['2_3a_20vendoring_20mls_21',['Step 2: Vendoring MLS',['../md_docs_2curl__integration.html#autotoc_md76',1,'']]]
+];

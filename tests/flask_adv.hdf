@@ -1,0 +1,15 @@
+(app_name "MLS Flask Demo")
+(version "1.2.3")
+
+(users
+  (alice (role "admin") (email "alice@example.com"))
+  (bob   (role "user")  (email "bob@example.com"))
+)
+
+(server
+  (port 20002)
+  (bind (path "/status") (call "status_handler"))
+  (bind (path "/user")   (call "user_handler"))
+  (bind (path "/echo")   (call "echo_handler"))
+  (bind (path "/render") (call "render_handler"))
+)

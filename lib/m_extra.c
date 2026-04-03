@@ -11,13 +11,26 @@
  */
 int s_casecmp (int a, int b)
 {
-	if (a == 0 && b == 0)
+	if (a <= 0 && b <= 0)
 		return 0;
-	if (a == 0)
+	if (a <= 0)
 		return -1;
-	if (b == 0)
+	if (b <= 0)
 		return 1;
-	return strcasecmp (m_str (a), m_str (b));
+
+	int len1 = s_strlen (a);
+	int len2 = s_strlen (b);
+	int min_len = len1 < len2 ? len1 : len2;
+	const unsigned char *s1 = (const unsigned char *)m_buf (a);
+	const unsigned char *s2 = (const unsigned char *)m_buf (b);
+
+	for (int i = 0; i < min_len; i++) {
+		int diff = tolower (s1[i]) - tolower (s2[i]);
+		if (diff != 0)
+			return diff;
+	}
+
+	return len1 - len2;
 }
 
 /**
@@ -32,13 +45,31 @@ int s_ncasecmp (int a, int b, int n)
 {
 	if (n <= 0)
 		return 0;
-	if (a == 0 && b == 0)
+	if (a <= 0 && b <= 0)
 		return 0;
-	if (a == 0)
+	if (a <= 0)
 		return -1;
-	if (b == 0)
+	if (b <= 0)
 		return 1;
-	return strncasecmp (m_str (a), m_str (b), n);
+
+	int len1 = s_strlen (a);
+	int len2 = s_strlen (b);
+	int min_len = len1 < len2 ? len1 : len2;
+	if (min_len > n)
+		min_len = n;
+
+	const unsigned char *s1 = (const unsigned char *)m_buf (a);
+	const unsigned char *s2 = (const unsigned char *)m_buf (b);
+
+	for (int i = 0; i < min_len; i++) {
+		int diff = tolower (s1[i]) - tolower (s2[i]);
+		if (diff != 0)
+			return diff;
+	}
+
+	if (min_len == n)
+		return 0;
+	return len1 - len2;
 }
 
 /**
@@ -182,9 +213,10 @@ int s_is_numeric (int h)
 {
 	if (s_isempty (h))
 		return 0;
-	const char *s = m_str (h);
-	while (*s) {
-		if (!isdigit (*s++))
+	const unsigned char *s = (const unsigned char *)m_buf (h);
+	int len = s_strlen (h);
+	for (int i = 0; i < len; i++) {
+		if (!isdigit (s[i]))
 			return 0;
 	}
 	return 1;
@@ -196,22 +228,63 @@ int s_is_numeric (int h)
  * @param h The string handle.
  * @return 1 if alphabetic, 0 otherwise.
  */
-/**
- * Checks if the string consists only of alphabetic characters.
- *
- * @param h The string handle.
- * @return 1 if alphabetic, 0 otherwise.
- */
 int s_is_alpha (int h)
 {
 	if (s_isempty (h))
 		return 0;
-	const char *s = m_str (h);
-	while (*s) {
-		if (!isalpha (*s++))
+	const unsigned char *s = (const unsigned char *)m_buf (h);
+	int len = s_strlen (h);
+	for (int i = 0; i < len; i++) {
+		if (!isalpha (s[i]))
 			return 0;
 	}
 	return 1;
+}
+
+/**
+ * Decodes a base64 encoded string.
+ *
+ * @param h The string handle containing base64 data.
+ * @return A new handle containing the decoded binary data.
+ */
+int s_base64_decode (int h)
+{
+	if (s_isempty (h))
+		return s_new ();
+
+	static const signed char b64_inv[256] = {
+		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
+		52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
+		-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+		15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
+		-1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+		41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1};
+
+	const char *s = m_str (h);
+	int len = s_strlen (h);
+	int out = m_alloc (0, 1, MFREE);
+	uint32_t v = 0;
+	int bits = 0;
+
+	for (int i = 0; i < len; i++) {
+		if (s[i] == '=')
+			break;
+		signed char x = b64_inv[(unsigned char)s[i]];
+		if (x == -1)
+			continue;
+		v = (v << 6) | (unsigned char)x;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			unsigned char out_byte = (v >> bits) & 0xFF;
+			m_putc (out, out_byte);
+		}
+	}
+	if (m_len (out) == 0 || CHAR (out, m_len (out) - 1) != 0)
+		m_putc (out, 0);
+	return out;
 }
 
 /**

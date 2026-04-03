@@ -1,0 +1,17 @@
+digraph "benchmarkThread"
+{
+ // LATEX_PDF_SIZE
+  bgcolor="transparent";
+  edge [fontname=Helvetica,fontsize=10,labelfontname=Helvetica,labelfontsize=10];
+  node [fontname=Helvetica,fontsize=10,shape=box,height=0.2,width=0.4];
+  Node1 [id="Node000001",label="benchmarkThread",height=0.2,width=0.4,color="gray40", fillcolor="grey60", style="filled", fontcolor="black",tooltip=" "];
+  Node2 -> Node1 [id="edge1_Node000001_Node000002",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" el",fontcolor="grey" ];
+  Node2 [id="Node000002",label="aeEventLoop",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structaeEventLoop.html",tooltip=" "];
+  Node3 -> Node2 [id="edge2_Node000002_Node000003",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" events",fontcolor="grey" ];
+  Node3 [id="Node000003",label="aeFileEvent",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structaeFileEvent.html",tooltip=" "];
+  Node4 -> Node2 [id="edge3_Node000002_Node000004",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" fired",fontcolor="grey" ];
+  Node4 [id="Node000004",label="aeFiredEvent",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structaeFiredEvent.html",tooltip=" "];
+  Node5 -> Node2 [id="edge4_Node000002_Node000005",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" timeEventHead",fontcolor="grey" ];
+  Node5 [id="Node000005",label="aeTimeEvent",height=0.2,width=0.4,color="gray40", fillcolor="white", style="filled",URL="$structaeTimeEvent.html",tooltip=" "];
+  Node5 -> Node5 [id="edge5_Node000005_Node000005",dir="back",color="darkorchid3",style="dashed",tooltip=" ",label=" next\nprev",fontcolor="grey" ];
+}

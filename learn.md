@@ -109,5 +109,21 @@
 - **Null-Termination:** 
   - 'm_slice' does not null-terminate. Replaced with 's_slice' in 'lib/m_http.c' for HTTP parsing.
   - 'm_hdf.c' parser ('parse_quoted_string' and 'parse_raw_string') was not null-terminating strings, causing 'strlen' crashes in ASan builds.
-- **Build System:** Added 'makefile.qa' for static analysis (cppcheck, clang-tidy) and runtime sanitizers (ASan, UBSan).
-- **Style:** Implemented Linux Kernel style via '.clang-format'.
+## Session: April 2, 2026 - Documentation & Server Testing
+
+### Makefile Build Constraints
+- **Debug Extensions**: The build system in `rules.mk` uses a conditional `OBJ` variable to distinguish between debug and production builds. 
+  - In **Debug mode** (default), `OBJ=d`, resulting in `.od` for object files and `.exed` for executables.
+  - In **Production mode** (`production=1`), `OBJ` is empty, resulting in `.o` and `.exe`.
+- **Consistency**: All targets in `tests/makefile` must use the `${OBJ}` suffix (e.g., `memcached_server.exe${OBJ}`) to ensure they work in both modes.
+- **Library Dependencies**: Executables in the `tests/` directory rely on `DEPS` defined in the makefile, which points to the library object files in `../lib/`. These must also use the correct `${OBJ}` suffix.
+
+### Testing and Debugging
+- **Mandatory Initialization**: Every test or server must include `m_init()`, `conststr_init()`, and set `trace_level = 1` for effective debugging and handle tracking.
+- **ASAN Integration**: The debug flags include `-fsanitize=address`, which is critical for catching the heap-buffer-overflows encountered during `m_table` key comparisons and Base64 decoding.
+
+### LRU & Memory Management
+- **Trace Noise Bottleneck**: High `trace_level` settings (e.g., 1 or higher) generate massive amounts of I/O during repetitive operations like HTTP parsing or large table evictions. This can slow the application enough to trigger client-side timeouts. Always use `trace_level = 0` for high-volume tests.
+- **Handle Ownership in Lists**: When implementing LRU with `mls` handles, it's safer to have the list own its own `s_dup` copy of keys. Relying on handles owned by other structures (like an `m_table`) is dangerous because they may be freed during updates/overwrites.
+- **Robust Removal**: `m_table_remove_by_str` should ideally support searching by content if searching by handle fails, especially if multiple duplicates of the same string content exist as different handles.
+- **UAF Protection**: The `mls` library's handle-reusing mechanism with UAF protection bits is excellent for catching bugs but will call `exit(1)` if a stale handle is accessed via `mls()` or `m_buf()`. Use `m_is_freed()` to safely check handle validity without crashing.

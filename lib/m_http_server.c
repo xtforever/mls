@@ -43,9 +43,9 @@ http_server_config_t http_server_config_load (int h)
 			int child = INT (children, i);
 			if (hdf_get_type (child) == HDF_TYPE_LIST) {
 				int sc = hdf_get_children (child);
-				if (m_len (sc) > 0 &&
-				    strcmp (hdf_get_value (INT (sc, 0)),
-					    "route") == 0) {
+				const char *val = hdf_get_value (INT (sc, 0));
+				if (m_len (sc) > 0 && val &&
+				    strcmp (val, "route") == 0) {
 					const char *path = hdf_get_property (
 						child, "path");
 					if (path) {

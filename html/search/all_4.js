@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['4_20·_20build_20any_20config_20you_20like_0',['4 · Build any config you like',['../md_redis-mls_2deps_2xxhash_2build_2make_2README.html#autotoc_md808',1,'']]],
+  ['4_201_20lists_20forms_1',['4.1 Lists (Forms)',['../md_spec-hdf.html#autotoc_md933',1,'']]],
+  ['4_202_20elements_2',['4.2 Elements',['../md_spec-hdf.html#autotoc_md935',1,'']]],
+  ['4_20buckets_20label_20each_20one_20as_20such_3a_3',['Divide the world into 4 buckets.  Label each one as such:',['../geohash_8c.html#autotoc_md881',1,'']]],
+  ['4_20code_20comparison_3a_20side_20by_20side_4',['4. Code Comparison: Side-by-Side',['../md_docs_2memory__management.html#autotoc_md538',1,'']]],
+  ['4_20conclusion_3a_20it_20pays_20to_20learn_20a_20library_5',['4. Conclusion: It Pays to Learn a Library',['../md_docs_2case__study__curl.html#autotoc_md450',1,'']]],
+  ['4_20conclusion_3a_20should_20you_20use_20mls_6',['4. Conclusion: Should You Use MLS?',['../md_docs_2why__mls.html#autotoc_md606',1,'']]],
+  ['4_20explicit_20tt_20m_5finit_20tt_7',['4. Explicit &lt;tt&gt;m_init()&lt;/tt&gt;',['../md_docs_2beginners__guide.html#autotoc_md435',1,'']]],
+  ['4_20freeing_20your_20mind_20from_20dereferencing_8',['4. Freeing your Mind from Dereferencing',['../md_docs_2real-world-examples.html#autotoc_md566',1,'']]],
+  ['4_20full_20array_20expansion_9',['4. Full Array Expansion',['../md_docs_2string__expansion.html#autotoc_md580',1,'']]],
+  ['4_20key_20security_20advantages_10',['4. Key Security Advantages',['../md_docs_2security.html#autotoc_md573',1,'']]],
+  ['4_20less_20boilerplate_20more_20logic_11',['4. Less Boilerplate, More Logic',['../md_docs_2philosophy.html#autotoc_md554',1,'']]],
+  ['4_20minimal_20runtime_20overhead_12',['4. Minimal Runtime Overhead',['../md_README.html#autotoc_md667',1,'']]],
+  ['4_20multiline_20comments_13',['9.4 Multiline Comments',['../md_spec-hdf.html#autotoc_md957',1,'']]],
+  ['4_20protocol_20parsers_20irc_20clients_20e_20g_20tt_20sic_20tt_14',['4. Protocol Parsers &amp; IRC Clients (e.g., &lt;tt&gt;sic&lt;/tt&gt;)',['../md_showroom.html#autotoc_md904',1,'']]],
+  ['4_20real_20time_20tracing_15',['4. Real-time Tracing',['../md_docs_2debugging.html#autotoc_md474',1,'']]],
+  ['4_20structural_20forms_16',['4. Structural Forms',['../md_spec-hdf.html#autotoc_md932',1,'']]],
+  ['4_20substrings_20the_20safe_20slice_17',['4. Substrings (The Safe Slice)',['../md_docs_2strings.html#autotoc_md587',1,'']]],
+  ['4_20testing_20the_20tool_18',['4. Testing the Tool',['../md_flaskREADME.html#autotoc_md626',1,'']]],
+  ['4_20the_20ideal_20starting_20point_3a_20tt_20lib_20socks_20c_20tt_19',['4. The Ideal Starting Point: &lt;tt&gt;lib/socks.c&lt;/tt&gt;',['../md_docs_2curl__integration.html#autotoc_md462',1,'']]],
+  ['416_20',['Use-After-Free / Dangling Pointers (CWE-416)',['../md_docs_2why__mls.html#autotoc_md597',1,'']]],
+  ['4_3a_20body_20parsing_20chunked_20vs_20fixed_21',['Phase 4: Body Parsing (Chunked vs. Fixed)',['../md_docs_2httpparser.html#autotoc_md507',1,'']]]
+];

@@ -10,7 +10,7 @@
 typedef struct m_table_entry {
 	int key;   // If is_str, this is a handle to the string. Else, it's the
 		   // raw int key.
-	int value; // Handle to actual data (string, list, table) or a raw int.
+	uint64_t value; // Handle to actual data (string, list, table), raw int or pointer.
 	unsigned char type;	// mls_table_type_t of the 'value'.
 	unsigned char key_type; // mls_table_type_t of the 'key'.
 } m_table_entry_t;
@@ -55,8 +55,8 @@ static void m_table_free_handler ( int m )
 	int p;
 	TRACE (1, "m_table_free_handler called");
 	m_foreach( m, p, entry ) {
-		if (m_table_is_free (entry->type) && entry->value > 0 && !m_is_freed(entry->value)) {
-			m_free (entry->value);
+		if (m_table_is_free (entry->type) && entry->value > 0 && entry->value < 0xFFFFFFFF && !m_is_freed((int)entry->value)) {
+			m_free ((int)entry->value);
 		}
 		if (m_table_is_free (entry->key_type) && entry->key > 0 && !m_is_freed(entry->key)) {
 			m_free (entry->key);
@@ -70,6 +70,13 @@ static int MFREE_TABLE_ENTRIES_HDLR = 0;
 
 // --- Table Management ---
 
+/**
+ * Creates a new empty table handle.
+ * A table stores key-value pairs where keys can be integers or strings, 
+ * and values can be various types (ints, strings, lists, other tables).
+ *
+ * @return The handle of the new table.
+ */
 int m_table_create ()
 {
 	if (!MFREE_TABLE_ENTRIES_HDLR) {
@@ -79,6 +86,12 @@ int m_table_create ()
 	return m_alloc (0, sizeof (m_table_entry_t), MFREE_TABLE_ENTRIES_HDLR);
 }
 
+/**
+ * Checks if a handle refers to a table.
+ *
+ * @param table_h The handle to check.
+ * @return 1 if it is a table, 0 otherwise.
+ */
 int m_is_table (int table_h)
 {
 	if (table_h <= 0 || m_is_freed (table_h))
@@ -86,6 +99,11 @@ int m_is_table (int table_h)
 	return m_free_hdl (table_h) == MFREE_TABLE_ENTRIES_HDLR;
 }
 
+/**
+ * Frees a table and all its contents recursively.
+ *
+ * @param table_h The handle of the table to free.
+ */
 void m_table_free (int table_h) { m_free (table_h); }
 
 // --- Internal Lookup Helpers ---
@@ -113,7 +131,38 @@ static m_table_entry_t *m_table_find_cstr_key_entry (int table_h,
 	return p >= 0 ? mls (table_h, p) : NULL;
 }
 
-// --- Unified Internal Setter ---
+/**
+ * Removes a table entry by string handle key.
+ * Frees both the key (if dynamic) and the value (if it's an MLS handle).
+ *
+ * @param table_h The handle of the table.
+ * @param key_str_h The handle of the string key to remove.
+ */
+void m_table_remove_by_str(int table_h, int key_str_h)
+{
+    if (table_h <= 0 || key_str_h <= 0 || m_is_freed(key_str_h)) return;
+    
+    // 1. Try to find the exact handle first
+    m_table_entry_t search = { .key = key_str_h, .key_type = MLS_TABLE_TYPE_STRING };
+    int p = m_bsearch(&search, table_h, m_table_entry_cmp);
+    
+    // 2. If handle not found, try searching by C-string content
+    if (p < 0) {
+        const char *ks = m_str(key_str_h);
+        p = m_bsearch(ks, table_h, m_table_entry_cmp_cstr);
+    }
+
+    if (p >= 0) {
+        m_table_entry_t *entry = mls(table_h, p);
+        if (m_table_is_free (entry->type) && entry->value > 0 && entry->value < 0xFFFFFFFF && !m_is_freed((int)entry->value)) {
+            m_free ((int)entry->value);
+        }
+        if (m_table_is_free (entry->key_type) && entry->key > 0 && !m_is_freed(entry->key)) {
+            m_free (entry->key);
+        }
+        m_del(table_h, p);
+    }
+}
 
 static void m_table_set_entry (int table_h, m_table_entry_t *new_data)
 {
@@ -126,8 +175,8 @@ static void m_table_set_entry (int table_h, m_table_entry_t *new_data)
 		m_table_entry_t *entry = mls (table_h, pos);
 
 		// Free old value if needed
-		if (m_table_is_free (entry->type) && entry->value > 0) {
-			m_free (entry->value);
+		if (m_table_is_free (entry->type) && entry->value > 0 && entry->value < 0xFFFFFFFF && !m_is_freed((int)entry->value)) {
+			m_free ((int)entry->value);
 		}
 
 		// Key management: ensure we don't leak or use-after-free
@@ -155,7 +204,15 @@ static void m_table_set_entry (int table_h, m_table_entry_t *new_data)
 
 // --- Generic Setters ---
 
-void m_table_set_int_key (int table_h, int key_idx, int value,
+/**
+ * Sets a value for an integer key in the table.
+ *
+ * @param table_h Handle of the table.
+ * @param key_idx Integer key.
+ * @param value Value (raw int or handle).
+ * @param type Type of the value.
+ */
+void m_table_set_int_key (int table_h, int key_idx, uint64_t value,
 			  mls_table_type_t type)
 {
 	if (table_h <= 0)
@@ -167,8 +224,17 @@ void m_table_set_int_key (int table_h, int key_idx, int value,
 	m_table_set_entry (table_h, &entry);
 }
 
+/**
+ * Sets a value for a string handle key with a specific key type.
+ *
+ * @param table_h Handle of the table.
+ * @param key_str_h Handle of the key string.
+ * @param key_type Type of the key (e.g. MLS_TABLE_TYPE_STRING or MLS_TABLE_TYPE_CONST_STRING).
+ * @param value Value (raw int or handle).
+ * @param type Type of the value.
+ */
 void m_table_set_str_key_ext (int table_h, int key_str_h,
-			      mls_table_type_t key_type, int value,
+			      mls_table_type_t key_type, uint64_t value,
 			      mls_table_type_t type)
 {
 	if (table_h <= 0 || key_str_h <= 0)
@@ -180,14 +246,30 @@ void m_table_set_str_key_ext (int table_h, int key_str_h,
 	m_table_set_entry (table_h, &entry);
 }
 
-void m_table_set_str_key (int table_h, int key_str_h, int value,
+/**
+ * Sets a value for a string handle key (defaults key type to MLS_TABLE_TYPE_STRING).
+ *
+ * @param table_h Handle of the table.
+ * @param key_str_h Handle of the key string.
+ * @param value Value (raw int or handle).
+ * @param type Type of the value.
+ */
+void m_table_set_str_key (int table_h, int key_str_h, uint64_t value,
 			  mls_table_type_t type)
 {
 	m_table_set_str_key_ext (table_h, key_str_h, MLS_TABLE_TYPE_STRING,
 				 value, type);
 }
 
-void m_table_set_cstr_key (int table_h, const char *key_cstr, int value,
+/**
+ * Sets a value for a C-style string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_cstr The C-style string key.
+ * @param value Value (raw int or handle).
+ * @param type Type of the value.
+ */
+void m_table_set_cstr_key (int table_h, const char *key_cstr, uint64_t value,
 			   mls_table_type_t type)
 {
 	if (table_h <= 0 || !key_cstr)
@@ -202,128 +284,174 @@ void m_table_set_cstr_key (int table_h, const char *key_cstr, int value,
 
 // --- New Simplified API (mt_ prefix) ---
 
-void mt_seti (int table_h, const char *key, int val)
+/**
+ * Sets an integer value for a C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key Key name.
+ * @param val Integer value.
+ */
+void mt_seti (int table_h, const char *key, int64_t val)
 {
-	m_table_set_cstr_key (table_h, key, val, MLS_TABLE_TYPE_INT);
+	m_table_set_cstr_key (table_h, key, (uint64_t)val, MLS_TABLE_TYPE_INT);
 }
 
+/**
+ * Sets a string value for a C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key Key name.
+ * @param val String value.
+ */
 void mt_sets (int table_h, const char *key, const char *val)
 {
-	m_table_set_cstr_key (table_h, key, s_strdup_c (val),
+	m_table_set_cstr_key (table_h, key, (uint64_t)s_strdup_c (val),
 			      MLS_TABLE_TYPE_STRING);
 }
 
+/**
+ * Sets a constant string value for a C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key Key name.
+ * @param val String value.
+ */
 void mt_setc (int table_h, const char *key, const char *val)
 {
-	m_table_set_cstr_key (table_h, key, s_cstr (val),
+	m_table_set_cstr_key (table_h, key, (uint64_t)s_cstr (val),
 			      MLS_TABLE_TYPE_CONST_STRING);
 }
 
-void mt_seth (int table_h, const char *key, int handle, mls_table_type_t type)
+/**
+ * Sets a handle value for a C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key Key name.
+ * @param handle The handle to store.
+ * @param type The type of the handle.
+ */
+void mt_seth (int table_h, const char *key, uint64_t handle, mls_table_type_t type)
 {
 	m_table_set_cstr_key (table_h, key, handle, type);
 }
 
-int mt_get (int table_h, const char *key)
+/**
+ * Gets a value from the table by C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key Key name.
+ * @return The value (int or handle).
+ */
+uint64_t mt_get (int table_h, const char *key)
 {
 	return m_table_get_cstr (table_h, key);
 }
 
+void mt_setp(int table_h, const char *key, void *ptr)
+{
+	m_table_set_cstr_key(table_h, key, (uint64_t)(uintptr_t)ptr, MLS_TABLE_TYPE_PTR);
+}
+
+void *mt_getp(int table_h, const char *key)
+{
+	return (void *)(uintptr_t)m_table_get_cstr(table_h, key);
+}
+
 // --- Old API Forwarding ---
 
-void m_table_set_int_val_by_int (int table_h, int key_idx, int raw_int_value)
+void m_table_set_int_val_by_int (int table_h, int key_idx, int64_t raw_int_value)
 {
-	m_table_set_int_key (table_h, key_idx, raw_int_value,
+	m_table_set_int_key (table_h, key_idx, (uint64_t)raw_int_value,
 			     MLS_TABLE_TYPE_INT);
 }
 void m_table_set_string_by_int (int table_h, int key_idx,
 				const char *raw_c_string)
 {
-	m_table_set_int_key (table_h, key_idx, s_strdup_c (raw_c_string),
+	m_table_set_int_key (table_h, key_idx, (uint64_t)s_strdup_c (raw_c_string),
 			     MLS_TABLE_TYPE_STRING);
 }
 void m_table_set_const_string_by_int (int table_h, int key_idx,
 				      const char *raw_c_string)
 {
-	m_table_set_int_key (table_h, key_idx, s_cstr (raw_c_string),
+	m_table_set_int_key (table_h, key_idx, (uint64_t)s_cstr (raw_c_string),
 			     MLS_TABLE_TYPE_CONST_STRING);
 }
 void m_table_set_list_by_int (int table_h, int key_idx, int list_h)
 {
-	m_table_set_int_key (table_h, key_idx, list_h, MLS_TABLE_TYPE_LIST);
+	m_table_set_int_key (table_h, key_idx, (uint64_t)list_h, MLS_TABLE_TYPE_LIST);
 }
 void m_table_set_table_by_int (int table_h, int key_idx, int nested_table_h)
 {
-	m_table_set_int_key (table_h, key_idx, nested_table_h,
+	m_table_set_int_key (table_h, key_idx, (uint64_t)nested_table_h,
 			     MLS_TABLE_TYPE_TABLE);
 }
-void m_table_set_handle_by_int (int table_h, int key_idx, int value_h,
+void m_table_set_handle_by_int (int table_h, int key_idx, uint64_t value_h,
 				mls_table_type_t type)
 {
 	m_table_set_int_key (table_h, key_idx, value_h, type);
 }
 
 void m_table_set_int_val_by_cstr (int table_h, const char *key_cstr,
-				  int raw_int_value)
+				  int64_t raw_int_value)
 {
-	m_table_set_cstr_key (table_h, key_cstr, raw_int_value,
+	m_table_set_cstr_key (table_h, key_cstr, (uint64_t)raw_int_value,
 			      MLS_TABLE_TYPE_INT);
 }
 void m_table_set_string_by_cstr (int table_h, const char *key_cstr,
 				 const char *raw_c_string)
 {
-	m_table_set_cstr_key (table_h, key_cstr, s_strdup_c (raw_c_string),
+	m_table_set_cstr_key (table_h, key_cstr, (uint64_t)s_strdup_c (raw_c_string),
 			      MLS_TABLE_TYPE_STRING);
 }
 void m_table_set_const_string_by_cstr (int table_h, const char *key_cstr,
 				       const char *raw_c_string)
 {
-	m_table_set_cstr_key (table_h, key_cstr, s_cstr (raw_c_string),
+	m_table_set_cstr_key (table_h, key_cstr, (uint64_t)s_cstr (raw_c_string),
 			      MLS_TABLE_TYPE_CONST_STRING);
 }
 void m_table_set_list_by_cstr (int table_h, const char *key_cstr, int list_h)
 {
-	m_table_set_cstr_key (table_h, key_cstr, list_h, MLS_TABLE_TYPE_LIST);
+	m_table_set_cstr_key (table_h, key_cstr, (uint64_t)list_h, MLS_TABLE_TYPE_LIST);
 }
 void m_table_set_table_by_cstr (int table_h, const char *key_cstr,
 				int nested_table_h)
 {
-	m_table_set_cstr_key (table_h, key_cstr, nested_table_h,
+	m_table_set_cstr_key (table_h, key_cstr, (uint64_t)nested_table_h,
 			      MLS_TABLE_TYPE_TABLE);
 }
-void m_table_set_handle_by_cstr (int table_h, const char *key_cstr, int value_h,
+void m_table_set_handle_by_cstr (int table_h, const char *key_cstr, uint64_t value_h,
 				 mls_table_type_t type)
 {
 	m_table_set_cstr_key (table_h, key_cstr, value_h, type);
 }
 
-void m_table_set_int_val_by_str (int table_h, int key_str_h, int raw_int_value)
+void m_table_set_int_val_by_str (int table_h, int key_str_h, int64_t raw_int_value)
 {
-	m_table_set_str_key (table_h, key_str_h, raw_int_value,
+	m_table_set_str_key (table_h, key_str_h, (uint64_t)raw_int_value,
 			     MLS_TABLE_TYPE_INT);
 }
 void m_table_set_string_by_str (int table_h, int key_str_h,
 				const char *raw_c_string)
 {
-	m_table_set_str_key (table_h, key_str_h, s_strdup_c (raw_c_string),
+	m_table_set_str_key (table_h, key_str_h, (uint64_t)s_strdup_c (raw_c_string),
 			     MLS_TABLE_TYPE_STRING);
 }
 void m_table_set_const_string_by_str (int table_h, int key_str_h,
 				      const char *raw_c_string)
 {
-	m_table_set_str_key (table_h, key_str_h, s_cstr (raw_c_string),
+	m_table_set_str_key (table_h, key_str_h, (uint64_t)s_cstr (raw_c_string),
 			     MLS_TABLE_TYPE_CONST_STRING);
 }
 void m_table_set_list_by_str (int table_h, int key_str_h, int list_h)
 {
-	m_table_set_str_key (table_h, key_str_h, list_h, MLS_TABLE_TYPE_LIST);
+	m_table_set_str_key (table_h, key_str_h, (uint64_t)list_h, MLS_TABLE_TYPE_LIST);
 }
 void m_table_set_table_by_str (int table_h, int key_str_h, int nested_table_h)
 {
-	m_table_set_str_key (table_h, key_str_h, nested_table_h,
+	m_table_set_str_key (table_h, key_str_h, (uint64_t)nested_table_h,
 			     MLS_TABLE_TYPE_TABLE);
 }
-void m_table_set_handle_by_str (int table_h, int key_str_h, int value_h,
+void m_table_set_handle_by_str (int table_h, int key_str_h, uint64_t value_h,
 				mls_table_type_t type)
 {
 	m_table_set_str_key (table_h, key_str_h, value_h, type);
@@ -331,7 +459,14 @@ void m_table_set_handle_by_str (int table_h, int key_str_h, int value_h,
 
 // --- Getting Values ---
 
-int m_table_get_int (int table_h, int key_idx)
+/**
+ * Gets a value from the table by integer key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_idx Integer key.
+ * @return The value (int or handle), or 0 if not found.
+ */
+uint64_t m_table_get_int (int table_h, int key_idx)
 {
 	if (table_h <= 0)
 		return 0;
@@ -339,7 +474,14 @@ int m_table_get_int (int table_h, int key_idx)
 	return entry ? entry->value : 0;
 }
 
-int m_table_get_str (int table_h, int key_str_h)
+/**
+ * Gets a value from the table by string handle key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_str_h String handle key.
+ * @return The value (int or handle), or 0 if not found.
+ */
+uint64_t m_table_get_str (int table_h, int key_str_h)
 {
 	if (table_h <= 0)
 		return 0;
@@ -348,17 +490,33 @@ int m_table_get_str (int table_h, int key_str_h)
 	return entry ? entry->value : 0;
 }
 
-int m_table_get_cstr (int table_h, const char *key_cstr)
+/**
+ * Gets a value from the table by C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_cstr C-string key.
+ * @return The value (int or handle), or 0 if not found.
+ */
+uint64_t m_table_get_cstr (int table_h, const char *key_cstr)
 {
 	if (table_h <= 0 || !key_cstr)
 		return 0;
+	int tmp_key = s_dup(key_cstr);
 	m_table_entry_t *entry =
-		m_table_find_cstr_key_entry (table_h, key_cstr);
+		m_table_find_str_key_entry (table_h, tmp_key);
+	m_free(tmp_key);
 	return entry ? entry->value : 0;
 }
 
 // --- Introspection ---
 
+/**
+ * Returns a list of all keys in the table.
+ *
+ * @param table_h Handle of the table.
+ * @return Handle of the m-array containing the keys. 
+ *         User is responsible for freeing the list (but not the keys themselves).
+ */
 int m_table_keys (int table_h)
 {
 	if (table_h <= 0)
@@ -370,6 +528,13 @@ int m_table_keys (int table_h)
 	return keys_h;
 }
 
+/**
+ * Gets the type of a value by integer key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_idx Integer key.
+ * @return The type of the value.
+ */
 mls_table_type_t m_table_get_type_int (int table_h, int key_idx)
 {
 	if (table_h <= 0)
@@ -378,6 +543,13 @@ mls_table_type_t m_table_get_type_int (int table_h, int key_idx)
 	return entry ? (mls_table_type_t)entry->type : MLS_TABLE_TYPE_UNKNOWN;
 }
 
+/**
+ * Gets the type of a value by string handle key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_str_h String handle key.
+ * @return The type of the value.
+ */
 mls_table_type_t m_table_get_type_str (int table_h, int key_str_h)
 {
 	if (table_h <= 0)
@@ -387,6 +559,13 @@ mls_table_type_t m_table_get_type_str (int table_h, int key_str_h)
 	return entry ? (mls_table_type_t)entry->type : MLS_TABLE_TYPE_UNKNOWN;
 }
 
+/**
+ * Gets the type of a value by C-string key.
+ *
+ * @param table_h Handle of the table.
+ * @param key_cstr C-string key.
+ * @return The type of the value.
+ */
 mls_table_type_t m_table_get_type_cstr (int table_h, const char *key_cstr)
 {
 	if (table_h <= 0 || !key_cstr)
