@@ -727,6 +727,20 @@ int m_reg_freefn ( free_fn_t  free_fn )
 	return lst_put ( &freefn, & free_fn );
 }
 
+
+/**
+ * Checks if an MLS handle is valid and hasn't been freed.
+ * the purpose of this function is make sure your program
+ * does not exit() if you have an invalid handle
+ *
+ * @param h The handle to check.
+ * @return 1 if the handle is valid, 0 if it is not valid.
+ */
+int m_is_valid(int h)
+{
+	return !m_is_freed(h);
+}
+
 /**
  * Checks if an MLS handle is valid and hasn't been freed.
  *
@@ -1050,7 +1064,7 @@ void m_resize (int m, int new_size)
 #define m_alloc_internal(n, w, h) m_alloc (n, w, h)
 #endif
 
-/**
+/**TODO
  * Extracts a sub-range of elements from one list and appends or writes them into another.
  * Supports negative indices (relative to end of list).
  *
@@ -1063,34 +1077,36 @@ void m_resize (int m, int new_size)
  */
 int m_slice (int dest, int offs, int m, int a, int b)
 {
-	if (!m) {
-		if (dest > 0)
-			m_setlen (dest, offs);
-		return dest;
+	int cnt = 0;
+	int len = 0;
+	int width = 1;
+	if (m) {
+
+		len = m_len (m);
+		if (b < 0)
+			b += len;
+		if (a < 0)
+			a += len;
+		if (b >= len)
+			b = len - 1;
+		if (a >= len)
+			a = len - 1;
+		if (a < 0)
+			a = 0;
+		cnt = b - a + 1;
+		if (cnt < 0)
+			cnt = 0;
+		width = m_width (m); 
 	}
-	int len = m_len (m);
-	if (b < 0)
-		b += len;
-	if (a < 0)
-		a += len;
-	if (b >= len)
-		b = len - 1;
-	if (a >= len)
-		a = len - 1;
-	if (a < 0)
-		a = 0;
-	int cnt = b - a + 1;
-	if (cnt < 0)
-		cnt = 0;
 	if (dest <= 0) {
                 #ifdef MLS_DEBUG
-		dest = _m_create (__LINE__, __FILE__, __FUNCTION__, cnt + offs, m_width (m) );
+		dest = _m_create (__LINE__, __FILE__, __FUNCTION__, cnt + offs, width );
 		#else
-		dest = m_create (cnt + offs, m_width (m));		
+		dest = m_create (cnt + offs, width );		
 		#endif
 	}
 	m_setlen (dest, offs);
-	if (cnt > 0) {
+	if ( m && cnt > 0) {
 		m_write (dest, offs, mls (m, a), cnt);
 	}
 	return dest;
@@ -1161,7 +1177,7 @@ int m_fscan (int m, char delim, FILE *fp)
 
 /**
  * Compares two handle's lists element-by-element using memcmp.
- *
+ * only makes sense if width is equal on booth lists
  * @param a The first handle.
  * @param b The second handle.
  * @return <0 if a < b, 0 if a == b, >0 if a > b.
@@ -1170,6 +1186,8 @@ int m_cmp (int a, int b)
 {
 	if (a == b)
 		return 0;
+	if( m_width(a) != m_width(b) )
+		return -1;	
 	int len_a = m_len (a);
 	int len_b = m_len (b);
 	int min_len = len_a < len_b ? len_a : len_b;
@@ -1192,7 +1210,9 @@ int m_lookup (int m, int key)
 	int p, *d;
 	if (m_len (key) == 0)
 		ERR ("Key of zero size");
-	m_foreach (m, p, d) if (m_cmp (*d, key) == 0) return *d;
+	m_foreach (m, p, d)
+		if (m_cmp (*d, key) == 0)
+			return *d;
 	m_put (m, &key);
 	return key;
 }
@@ -1210,7 +1230,9 @@ int m_lookup_obj (int m, void *obj, int size)
 {
 	int p;
 	void *d;
-	m_foreach (m, p, d) if (memcmp (d, obj, size) == 0) return p;
+	m_foreach (m, p, d)
+		if (memcmp (d, obj, size) == 0)
+			return p;
 	p = m_new (m, 1);
 	memcpy (mls (m, p), obj, size);
 	return p;
@@ -1252,7 +1274,10 @@ int m_lookup_str (int m, const char *key, int NOT_INSERT)
  * @param c The character to append.
  * @return The character appended.
  */
-int m_putc (int m, char c) { return *(char *)m_add (m) = c; }
+int m_putc (int m, char c)
+{
+	return *(char *)m_add (m) = c;
+}
 
 /**
  * Appends a single integer to a handle's list.
@@ -1261,7 +1286,10 @@ int m_putc (int m, char c) { return *(char *)m_add (m) = c; }
  * @param c The integer to append.
  * @return The integer appended.
  */
-int m_puti (int m, int c) { return *(int *)m_add (m) = c; }
+int m_puti (int m, int c)
+{
+	return *(int *)m_add (m) = c;
+}
 
 #define UTF8GET()                                                              \
 	if (EOS ())                                                            \

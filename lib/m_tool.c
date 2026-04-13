@@ -1,3 +1,4 @@
+
 #include "m_tool.h"
 #include "mls.h"
 #include "m_table.h"
@@ -7,6 +8,7 @@
 #include <regex.h>
 #include <search.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 /* Internal prototypes */
 static int vas_app (int m, va_list ap);
@@ -639,7 +641,7 @@ int s_ncat (int h, const char *src, int n)
 	return h;
 }
 
-/**
+/**TODO!
  * Extracts a substring into a new string buffer.
  *
  * @param h The handle of the source string buffer.
@@ -649,19 +651,7 @@ int s_ncat (int h, const char *src, int n)
  */
 int s_sub (int h, int pos, int len)
 {
-	if (h <= 0 || len == 0)
-		return s_new ();
-
-	int h_len = s_strlen (h);
-	if (pos < 0)
-		pos = 0;
-	if (pos >= h_len)
-		return s_new ();
-
-	if (len < 0 || pos + len > h_len)
-		len = h_len - pos;
-
-	return s_slice (0, 0, h, pos, pos + len - 1);
+	return s_slice( 0,0, h, pos, pos + len -1 );
 }
 
 /**
@@ -721,7 +711,7 @@ int s_replace_c (int h, const char *old, const char *replacement)
 	return new_h;
 }
 
-/**
+/**TODO!
  * Trims specified characters from both ends of a string buffer.
  *
  * @param h The handle of the string buffer.
@@ -732,7 +722,7 @@ int s_trim_c (int h, const char *chars)
 {
 	if (h == 0)
 		return s_new ();
-	if (chars == NULL || *chars == 0)
+	if (is_empty(chars))
 		chars = " \t\n\r";
 
 	const char *s = m_str (h);
@@ -745,7 +735,7 @@ int s_trim_c (int h, const char *chars)
 	while (end >= start && strchr (chars, s[end]))
 		end--;
 
-	return s_sub (h, start, end - start + 1);
+	return s_slice (0,0, h, start, end - start + 1);
 }
 
 /**
@@ -887,7 +877,7 @@ int s_strstr (int m, int offs, int pattern)
 	int p_len = s_strlen (pattern);
 	if (p_len == 0)
 		return offs;
-
+	
 	void *res = memmem (m_buf (m) + offs, m_len_val - offs, m_buf (pattern), p_len);
 	if (res)
 		return (char *)res - (char *)m_buf (m);
@@ -1009,7 +999,7 @@ int s_isempty (int m)
 	return (CHAR (m, 0) == 0);
 }
 
-/**
+/**TODO!
  * Trims whitespace from both ends of a string buffer (in-place).
  *
  * @param m The handle of the string buffer.
@@ -1029,7 +1019,6 @@ int s_trim (int m)
 		p--;
 	m_setlen (m, p + 1);
 	m_putc (m, 0);
-	m_setlen (m, p + 1);
 	return m;
 }
 
@@ -1153,18 +1142,18 @@ int s_strcpy_c (int out, const char *s)
  */
 void s_puts (int m) { printf ("%s\n", m_str (m)); }
 
-/**
- * Truncates a string buffer to a given length and ensures null-termination.
+/** TODO!
+ * print up to n charcaters of string 
  *
  * @param m The handle of the string buffer.
- * @param n The new length.
+ * @param n The length
  */
 void s_write (int m, int n)
 {
-	if (m_len (m) > n) {
-		m_setlen (m, n);
-		m_putc (m, 0);
-		m_setlen (m, n);
+	int p; char *d;
+	m_foreach( m, p, d ) { 
+		if(!*d) break;
+		fputc( *d, stdout );
 	}
 }
 

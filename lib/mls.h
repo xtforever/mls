@@ -4,7 +4,9 @@
 #ifdef __plusplus
 extern "C" {
 #endif
-
+	#ifndef _GNU_SOURCE
+           #define _GNU_SOURCE
+	#endif
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -103,6 +105,7 @@ int m_alloc (int max, int w, uint8_t hfree);
 int m_free (int m);
 	
 int m_is_freed (int h);
+int m_is_valid (int h);
 int m_free_hdl (int h);
 
 	

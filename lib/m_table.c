@@ -16,21 +16,49 @@ typedef struct m_table_entry {
 } m_table_entry_t;
 
 // --- Internal Helpers ---
+static void free_key( m_table_entry_t *entry )
+{
+	if (m_table_is_free (entry->key_type) &&  m_is_valid((int)entry->key)) 
+		m_free (entry->key);	
+}
+
+static void free_value( m_table_entry_t *entry )
+{
+	f (m_table_is_free (entry->type) && m_is_valid((int)entry->value)) 
+            m_free ((int)entry->value);
+}
+
+
+static void free_table_entry( int h, int p )
+{
+	m_table_entry_t *entry = mls(h, p);
+	if(! entry ) return;
+	free_key(entry);    entry->key = 0;
+	free_value(entry);  entry->value = 0;
+
+
+}
+
+static const char *key_str( m_table_entry_t *ea )
+{
+	if( ea->key_type == MLS_TABLE_TYPE_CONST_STRING ) {
+		return (char*)ea->key;
+	}
+	if( ea->key_type == MLS_TABLE_TYPE_STRING ) {
+		return  m_str (ea->key);
+	}
+	return NULL;
+}
+
 
 static int m_table_entry_cmp (const void *a, const void *b)
 {
 	const m_table_entry_t *ea = a;
-	const m_table_entry_t *eb = b;
-
-	int a_is_str = m_table_is_str_key (ea->key_type);
-	int b_is_str = m_table_is_str_key (eb->key_type);
-
-	if (a_is_str != b_is_str) {
-		return a_is_str - b_is_str;
-	}
-
-	if (a_is_str) {
-		return strcmp (m_str (ea->key), m_str (eb->key));
+	const m_table_entry_t *eb = b;	
+	const char *a=key_str(ea);
+	const char *b=key_str(eb);
+	if( a && b ) {
+		return strcmp (a,b);
 	} else {
 		return ea->key - eb->key;
 	}
@@ -39,28 +67,20 @@ static int m_table_entry_cmp (const void *a, const void *b)
 static int m_table_entry_cmp_cstr (const void *key, const void *element)
 {
 	const char *search_cstr = key;
-	const m_table_entry_t *entry = element;
-
-	int entry_is_str = m_table_is_str_key (entry->key_type);
-	if (!entry_is_str)
-		return 1; // Ints are "lower" than strings in our cmp
-
-	return strcmp (search_cstr, m_str (entry->key));
+	const char *key = key_str(element);
+	if (entry && search_cstr ) {
+		return strcmp (search_cstr, key );
+	}
+	return 1;
 }
 
 // Custom free handler for the table itself
+// Called by m_free, registerd to the mls lib with m_reg_freefn
 static void m_table_free_handler ( int m )
 {
-	m_table_entry_t *entry;
-	int p;
 	TRACE (1, "m_table_free_handler called");
-	m_foreach( m, p, entry ) {
-		if (m_table_is_free (entry->type) && entry->value > 0 && entry->value < 0xFFFFFFFF && !m_is_freed((int)entry->value)) {
-			m_free ((int)entry->value);
-		}
-		if (m_table_is_free (entry->key_type) && entry->key > 0 && !m_is_freed(entry->key)) {
-			m_free (entry->key);
-		}
+	for(i=0;i < m_len(m); i++ )
+		free_table_entry( m, p );
 	}
 }
 
@@ -94,9 +114,7 @@ int m_table_create ()
  */
 int m_is_table (int table_h)
 {
-	if (table_h <= 0 || m_is_freed (table_h))
-		return 0;
-	return m_free_hdl (table_h) == MFREE_TABLE_ENTRIES_HDLR;
+	return m_is_valid(table_h) && (m_free_hdl (table_h) == MFREE_TABLE_ENTRIES_HDLR);
 }
 
 /**
@@ -131,6 +149,7 @@ static m_table_entry_t *m_table_find_cstr_key_entry (int table_h,
 	return p >= 0 ? mls (table_h, p) : NULL;
 }
 
+
 /**
  * Removes a table entry by string handle key.
  * Frees both the key (if dynamic) and the value (if it's an MLS handle).
@@ -153,14 +172,8 @@ void m_table_remove_by_str(int table_h, int key_str_h)
     }
 
     if (p >= 0) {
-        m_table_entry_t *entry = mls(table_h, p);
-        if (m_table_is_free (entry->type) && entry->value > 0 && entry->value < 0xFFFFFFFF && !m_is_freed((int)entry->value)) {
-            m_free ((int)entry->value);
-        }
-        if (m_table_is_free (entry->key_type) && entry->key > 0 && !m_is_freed(entry->key)) {
-            m_free (entry->key);
-        }
-        m_del(table_h, p);
+	    free_table_entry(table_h, p);
+	    m_del(table_h, p);
     }
 }
 
