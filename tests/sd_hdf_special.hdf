@@ -1,0 +1,10 @@
+(settings
+  (enabled true)
+  (disabled false)
+  (timeout 30)
+  (rate 3.14)
+  (empty null)
+  (raw_text [[multi
+line
+text]])
+)

@@ -1,0 +1,10 @@
+(config
+  (database
+    (host "db.example.com")
+    (port 5432)
+    (credentials
+      (user "admin")
+      (password "secret")
+    )
+  )
+)

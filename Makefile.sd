@@ -1,0 +1,82 @@
+.PHONY: all clean test test-short test-long run bench bench-sd bench-mls bench-compare \
+	test-debug bench-debug test-strings test-strings-debug test-hdf test-hdf-debug \
+	test-ser test-ser-debug
+
+CC = gcc
+CFLAGS = -Wall -Wextra -g -O2 -I./lib
+LDFLAGS = -lpthread
+
+all: test_sd test_strings test_hdf test_ser bench_sd bench_mls
+
+test_sd: tests/test_sd.c lib/sd.c lib/sd.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -o $@ tests/test_sd.c lib/sd.c $(LDFLAGS)
+
+test_sd_debug: tests/test_sd.c lib/sd.c lib/sd.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -DSD_DEBUG -o $@ tests/test_sd.c lib/sd.c $(LDFLAGS)
+
+test_strings: tests/test_sd_strings.c lib/sd.c lib/sd_strings.c lib/sd.h lib/sd_strings.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -o $@ tests/test_sd_strings.c lib/sd.c lib/sd_strings.c $(LDFLAGS)
+
+test_strings_debug: tests/test_sd_strings.c lib/sd.c lib/sd_strings.c lib/sd.h lib/sd_strings.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -DSD_DEBUG -o $@ tests/test_sd_strings.c lib/sd.c lib/sd_strings.c $(LDFLAGS)
+
+test_hdf: tests/test_sd_hdf.c lib/sd.c lib/sd_hdf.c lib/sd_strings.c lib/sd.h lib/sd_hdf.h lib/sd_strings.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -o $@ tests/test_sd_hdf.c lib/sd.c lib/sd_strings.c lib/sd_hdf.c $(LDFLAGS)
+
+test_hdf_debug: tests/test_sd_hdf.c lib/sd.c lib/sd_hdf.c lib/sd_strings.c lib/sd.h lib/sd_hdf.h lib/sd_strings.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -DSD_DEBUG -o $@ tests/test_sd_hdf.c lib/sd.c lib/sd_strings.c lib/sd_hdf.c $(LDFLAGS)
+
+test_ser: tests/test_sd_ser.c lib/sd.c lib/sd_ser.c lib/sd_hdf.c lib/sd_strings.c lib/sd.h lib/sd_ser.h lib/sd_hdf.h lib/sd_strings.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -o $@ tests/test_sd_ser.c lib/sd.c lib/sd_strings.c lib/sd_hdf.c lib/sd_ser.c $(LDFLAGS)
+
+test_ser_debug: tests/test_sd_ser.c lib/sd.c lib/sd_ser.c lib/sd_hdf.c lib/sd_strings.c lib/sd.h lib/sd_ser.h lib/sd_hdf.h lib/sd_strings.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -DSD_DEBUG -o $@ tests/test_sd_ser.c lib/sd.c lib/sd_strings.c lib/sd_hdf.c lib/sd_ser.c $(LDFLAGS)
+
+bench_sd: tests/bench_sd.c lib/sd.c lib/sd.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -o $@ tests/bench_sd.c lib/sd.c $(LDFLAGS)
+
+bench_sd_debug: tests/bench_sd.c lib/sd.c lib/sd.h lib/sd_thread.h
+	$(CC) $(CFLAGS) -DSD_THREADSAFE -DSD_DEBUG -o $@ tests/bench_sd.c lib/sd.c $(LDFLAGS)
+
+bench_mls: tests/bench_mls.c lib/mls.c lib/m_tool.c lib/m_table.c
+	$(CC) $(CFLAGS) -DMLS_THREADSAFE -o $@ tests/bench_mls.c lib/mls.c lib/m_tool.c lib/m_table.c $(LDFLAGS)
+
+bench: bench_sd bench_mls
+	@echo "=== SD Library ===" && ./bench_sd 1000000
+	@echo "" && echo "=== MLS Library ===" && ./bench_mls 1000000
+
+test: test_sd
+	./test_sd -d 30000
+
+test-debug: test_sd_debug
+	./test_sd_debug -d 30000
+
+test-short: test_sd
+	./test_sd -d 10000
+
+test-long: test_sd
+	./test_sd -d 300000
+
+test-strings: test_strings
+	./test_strings
+
+test-strings-debug: test_strings_debug
+	./test_strings_debug
+
+test-hdf: test_hdf
+	./test_hdf
+
+test-hdf-debug: test_hdf_debug
+	./test_hdf_debug
+
+test-ser: test_ser
+	./test_ser
+
+test-ser-debug: test_ser_debug
+	./test_ser_debug
+
+run: test_sd
+	./test_sd -d 30000
+
+clean:
+	rm -f test_sd test_sd_debug test_strings test_strings_debug test_hdf test_hdf_debug bench_sd bench_sd_debug bench_mls

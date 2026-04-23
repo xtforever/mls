@@ -1,0 +1,25 @@
+# Makefile for thread-safety tests (always clean compile)
+include ../rules.mk
+
+CFLAGS+=-DMLS_THREADSAFE
+
+DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} \
+     ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} \
+     ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
+
+.PHONY: run clean
+
+run: clean test_threads.exed
+	./test_threads.exed
+
+test_threads.exed: test_threads.od $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_threads.od: test_threads.c ../lib/mls_thread.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+../lib/%.od: ../lib/%.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+clean:
+	-${RM} test_threads.exed test_threads.od ../lib/mls.od

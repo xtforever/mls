@@ -1,0 +1,9 @@
+; Application configuration
+(app_name "Test App")
+(version "1.0.0")
+
+; Database settings
+(database
+  (host "localhost")
+  (port 3306)
+)

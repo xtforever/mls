@@ -1,0 +1,10 @@
+(users
+  (alice (role "admin") (email "alice@example.com"))
+  (bob   (role "user")  (email "bob@example.com"))
+  (charlie (role "guest") (email "charlie@example.com"))
+)
+
+(routes
+  (api (path "/api/v1") (methods "GET,POST"))
+  (static (path "/static") (methods "GET"))
+)
