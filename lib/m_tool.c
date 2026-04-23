@@ -89,25 +89,6 @@ void m_qsort (int list, int (*compar) (const void *, const void *))
 	qsort (m_buf (list), m_len (list), m_width (list), compar);
 }
 
-/**
- * Performs a binary search on a sorted m-array.
- *
- * @param key Pointer to the element to search for.
- * @param list The handle of the sorted m-array.
- * @param compar Comparison function pointer.
- * @return The index of the element if found, or -1.
- */
-int m_bsearch (const void *key, int list,
-	       int (*compar) (const void *, const void *))
-{
-	if (list < 1 || m_len (list) == 0)
-		return -1;
-	void *res = bsearch (key, m_buf (list), m_len (list), m_width (list),
-			     compar);
-	if (res)
-		return (res - m_buf (list)) / m_width (list);
-	return -1;
-}
 
 /**
  * Performs a linear search on an m-array.
@@ -130,54 +111,6 @@ int m_lfind (const void *key, int list,
 	return -1;
 }
 
-/**
- * Inserts an element into a sorted m-array, maintaining order.
- *
- * @param buf The handle of the m-array.
- * @param data Pointer to the element to insert.
- * @param cmpf Comparison function pointer.
- * @param with_duplicates If non-zero, allows duplicate elements.
- * @return The index where the element was inserted, or -index if it exists and duplicates are not allowed.
- */
-int m_binsert (int buf, const void *data,
-	       int (*cmpf) (const void *data, const void *buf_elem),
-	       int with_duplicates)
-{
-	int left = 0;
-	int right = m_len (buf) + 1;
-	int cur = 1;
-	void *obj;
-	int cmp;
-	if (m_len (buf) == 0) {
-		m_put (buf, data);
-		return 0;
-	}
-	while (1) {
-		cur = (left + right) / 2;
-		obj = mls (buf, cur - 1);
-		cmp = cmpf (data, obj);
-		if (cmp == 0) {
-			if (!with_duplicates)
-				return -cur;
-			break;
-		}
-		if (cmp < 0) {
-			right = cur;
-			if (left + 1 == right)
-				break;
-		} else {
-			left = cur;
-			if (left + 1 == right) {
-				cur++;
-				break;
-			}
-		}
-	}
-	cur--;
-	m_ins (buf, cur, 1);
-	m_write (buf, cur, data, 1);
-	return cur;
-}
 
 /**
  * Reads all available data from a file descriptor into an m-array.
@@ -1210,6 +1143,9 @@ void conststr_init (void)
 
 /**
  * Frees the constant string system.
+ * this function does nothing, freeing a constant does not make sense while program
+ * is running.
+ * instead m_destruct() will free allocated memory for us
  */
 void conststr_free (void)
 {
@@ -2045,9 +1981,9 @@ int s_readln (int buf, FILE *fp)
 int ring_create (int size)
 {
 	int r = m_create (size + 1, sizeof (int));
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
+	lst_t lp = exported_get_list (r);
+	int *rd = lst_peek (lp, 0);
+	int *wr = &(lp)->l;
 	*rd = -1;
 	*wr = 1;
 	return r;
@@ -2061,8 +1997,8 @@ int ring_create (int size)
  */
 int ring_empty (int r)
 {
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
+	lst_t lp = exported_get_list (r);
+	int *rd = lst_peek (lp, 0);
 	return (*rd < 0);
 }
 
@@ -2074,9 +2010,9 @@ int ring_empty (int r)
  */
 int ring_full (int r)
 {
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
+	lst_t lp = exported_get_list (r);
+	int *rd = lst_peek (lp, 0);
+	int *wr = &lp->l;
 	return (*rd == *wr);
 }
 
@@ -2089,11 +2025,11 @@ int ring_full (int r)
  */
 int ring_put (int r, int data)
 {
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
-	int max = (*lp)->max;
-	int *d = lst_peek (*lp, *wr);
+	lst_t lp = exported_get_list (r);
+	int *rd = lst_peek (lp, 0);
+	int *wr = &lp->l;
+	int max = lp->max;
+	int *d = lst_peek (lp, *wr);
 	if (*rd == *wr)
 		return -1;
 	*d = data;
@@ -2113,13 +2049,13 @@ int ring_put (int r, int data)
  */
 int ring_get (int r)
 {
-	lst_t *lp = exported_get_list (r);
-	int *rd = lst_peek (*lp, 0);
-	int *wr = &(*lp)->l;
-	int max = (*lp)->max;
+	lst_t lp = exported_get_list (r);
+	int *rd = lst_peek (lp, 0);
+	int *wr = &lp->l;
+	int max = lp->max;
 	if (*rd < 0)
 		return -1;
-	int *d = lst_peek (*lp, *rd);
+	int *d = lst_peek (lp, *rd);
 	(*rd)++;
 	if (*rd >= max)
 		*rd = 1;
@@ -2160,3 +2096,4 @@ void m_free_strings (int list, int CLEAR_ONLY)
 	else
 		m_free (list);
 }
+

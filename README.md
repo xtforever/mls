@@ -175,7 +175,6 @@ Appends `data` to the end of the array `m`. The library automatically resizes th
 
 #### `int m_write(int m, int pos, const void* data, int n)`
 A safer, handle-aware alternative to `memcpy`. Copies `n` elements from `data` into list `m` starting at `pos`.
-- **Note:** It does not resize the buffer automatically. If you write beyond the current length, you should call `m_setlen(m, pos + n)` to keep the list's size in sync.
 
 #### `int m_free(int m)`
 Frees the memory associated with handle `m`. If a specialized `free_hdl` was used during allocation (like `MFREE_STR`), it will also free the elements (e.g., the strings inside the list) before freeing the list itself. It handles circular references safely.

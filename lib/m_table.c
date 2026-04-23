@@ -24,7 +24,7 @@ static void free_key( m_table_entry_t *entry )
 
 static void free_value( m_table_entry_t *entry )
 {
-	f (m_table_is_free (entry->type) && m_is_valid((int)entry->value)) 
+	if (m_table_is_free (entry->type) && m_is_valid((int)entry->value)) 
             m_free ((int)entry->value);
 }
 
@@ -39,11 +39,8 @@ static void free_table_entry( int h, int p )
 
 }
 
-static const char *key_str( m_table_entry_t *ea )
+static const char *key_str( const m_table_entry_t *ea )
 {
-	if( ea->key_type == MLS_TABLE_TYPE_CONST_STRING ) {
-		return (char*)ea->key;
-	}
 	if( ea->key_type == MLS_TABLE_TYPE_STRING ) {
 		return  m_str (ea->key);
 	}
@@ -55,21 +52,21 @@ static int m_table_entry_cmp (const void *a, const void *b)
 {
 	const m_table_entry_t *ea = a;
 	const m_table_entry_t *eb = b;	
-	const char *a=key_str(ea);
-	const char *b=key_str(eb);
-	if( a && b ) {
-		return strcmp (a,b);
-	} else {
-		return ea->key - eb->key;
-	}
+	const char *sa=key_str(ea);
+	const char *sb=key_str(eb);
+	if( sa && sb ) {
+		return strcmp (sa,sb);
+	} 
+	return ea->key - eb->key;
+
 }
 
 static int m_table_entry_cmp_cstr (const void *key, const void *element)
 {
 	const char *search_cstr = key;
-	const char *key = key_str(element);
-	if (entry && search_cstr ) {
-		return strcmp (search_cstr, key );
+	const char *keystr = key_str(element);
+	if (keystr && search_cstr ) {
+		return strcmp (search_cstr, keystr );
 	}
 	return 1;
 }
@@ -79,8 +76,8 @@ static int m_table_entry_cmp_cstr (const void *key, const void *element)
 static void m_table_free_handler ( int m )
 {
 	TRACE (1, "m_table_free_handler called");
-	for(i=0;i < m_len(m); i++ )
-		free_table_entry( m, p );
+	for(int i=0;i < m_len(m); i++ ) {
+		free_table_entry( m, i );
 	}
 }
 

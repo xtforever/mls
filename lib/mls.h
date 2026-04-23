@@ -72,26 +72,29 @@ typedef struct ls_st {
 	int w, l, max;
 	char uaf_protection;
 	uint8_t free_hdl;
-	char d[0] __attribute__ ((aligned (8)));
+	char *data;
 } *lst_t;
 
 void *lst (lst_t l, int i) __attribute__ ((pure));
-lst_t lst_create (int max, int w);
-int lst_new (lst_t *LP, int n);
-int lst_put (lst_t *LP, const void *d);
+void lst_create (lst_t l, int max, int w);
+int lst_new (lst_t LP, int n);
+int lst_put (lst_t LP, const void *d);
 int lst_next (lst_t l, int *p, void *data);
 int lst_read (lst_t l, int p, void **data, int n);
-int lst_write (lst_t *lp, int p, const void *data, int n);
+int lst_write (lst_t lp, int p, const void *data, int n);
 void *lst_peek (lst_t l, int i);
 void lst_del (lst_t l, int p);
-void *lst_ins (lst_t *lp, int p, int n);
-void lst_resize (lst_t *LP, int new_size);
+void *lst_ins (lst_t lp, int p, int n);
+void lst_resize (lst_t LP, int new_size);
 
 enum predefined_free_handler {
 	MFREE = 0,
 	MFREE_STR = 1,
 	MFREE_EACH = 2,
-	MFREE_MAX = 2
+	MFREE_MAX = 127,
+	NOALLOC = 128, /* BITMAP: do not alloc/free memory for this list */
+	NOHDL   = 255,  /* do not touch on m_free(), leave alone */
+	MFREE_MASK = 127
 };
 typedef void (*free_fn_t) ( int m );
 	
@@ -192,7 +195,7 @@ void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),
 int m_binsert_int (int buf, int key);
 int m_bsearch_int (int buf, int key);
 
-lst_t *exported_get_list (int r);
+lst_t exported_get_list (int r);
 
 #ifdef __plusplus
 }
