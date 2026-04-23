@@ -295,6 +295,9 @@ void exit_error ()
  */
 void lst_resize (lst_t lp, int new_size)
 {
+	if( lp->free_hdl & NOALLOC ) {
+		ERR("List is marked as NOALLOC, unable to resize");		
+	}
 	int w = (*lp).w;
 	int newSize = new_size * w;
 	int oldSize = (*lp).max * w;
@@ -668,7 +671,9 @@ int m_alloc (int max, int w, uint8_t hfree)
 	l->max = max;
 	l->w   = w;
 	l->l   = 0;
-	if(! (hfree & NOALLOC) ) {
+	if( hfree & NOALLOC )  {
+		l->data  = "";
+	} else {
 		l->data = calloc(max,w);
 		if (!l->data)
 			ERR ("Out of Memory");
@@ -678,6 +683,31 @@ int m_alloc (int max, int w, uint8_t hfree)
 	int res = (h + 1) | (((int)(l->uaf_protection) << 24));
 	return res;
 }
+
+int m_set_data(int m, int len, int w, const void *data)
+{
+	if( m <= 0 ) {
+		m = m_alloc( len, w, NOALLOC );
+	}
+
+	int idx =  (m & 0xffffff) - 1;
+	int uaf =  ((m >> 24) & 0x7f);
+	if (idx < 0 || idx >= ML.l) {
+		ERR( "Invalid Handle %d", idx );
+	}
+	lst_t lp = lst( &ML, idx);
+	if(! (lp->free_hdl & NOALLOC) ) {
+		ERR("List %d is not marked NOALLOC", m );
+	}
+	if ( lp->uaf_protection != uaf ) {
+		ERR("uaf protection pattern does not match, expected:%d, got:%d",
+		    lp->uaf_protection, uaf );
+	}
+	lp->l = len; lp->max=len; lp->w = w;
+	lp->data = (void*)data;
+	return m;
+}
+
 
 /**
  * Creates a new MLS handle with the default free handler (MFREE).
@@ -1637,7 +1667,7 @@ void _m_destruct ()
 }
 
 /**
- * Internal debug version of m_create.
+ * Internal debug version of m_alloc.
  * Records caller information and allocation source.
  *
  * @param ln Caller line number.
@@ -1647,12 +1677,12 @@ void _m_destruct ()
  * @param w Element width.
  * @return The new handle.
  */
-int _m_create (int ln, const char *fn, const char *fun, int n, int w)
+int _m_alloc (int ln, const char *fn, const char *fun, int n, int w, uint8_t hfree)
 {
 	lst_owner *lo;
 	int len, m, m_uaf;
 	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 0, 0, 0, 0);
-	m_uaf = m_create (n, w);
+	m_uaf = m_alloc (n, w, hfree);
 
 	m = m_uaf & 0xffffff;
 	len = m_len (DEB);
@@ -1792,7 +1822,7 @@ void *_m_buf (int ln, const char *fn, const char *fun, int m)
 }
 
 /**
- * Internal debug version of m_alloc.
+ * Internal debug version of m_create.
  * Records caller information and allocation source.
  *
  * @param ln Caller line number.
@@ -1803,11 +1833,7 @@ void *_m_buf (int ln, const char *fn, const char *fun, int m)
  * @param hfree The free handler ID.
  * @return The new handle.
  */
-int _m_alloc (int ln, const char *fn, const char *fun, int n, int w,
-	      uint8_t hfree)
+int _m_create (int ln, const char *fn, const char *fun, int n, int w )
 {
-	int h = _m_create (ln, fn, fun, n, w);
-	lst_t lp = get_list (h);
-	lp->free_hdl = hfree;
-	return h;
+	return _m_alloc (ln, fn, fun, n, w, MFREE );
 }

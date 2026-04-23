@@ -127,6 +127,7 @@ int m_next (int m, int *p, void *d);
 int m_init ();
 void m_destruct ();
 int m_create (int max, int w);
+int m_set_data (int m, int len, int w, const void *data);
 int m_put (int m, const void *data);
 int m_setlen (int m, int len);
 int m_bufsize (int m);
