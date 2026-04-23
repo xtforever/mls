@@ -70,6 +70,10 @@ typedef struct ls_st {
 	int w, l, max;
 	char uaf_protection;
 	uint8_t free_hdl;
+#ifdef MLS_THREADSAFE
+	pthread_mutex_t mtx;
+	char shared;
+#endif
 	char d[0] __attribute__ ((aligned (8)));
 } *lst_t;
 
@@ -91,24 +95,27 @@ enum predefined_free_handler {
 	MFREE_EACH = 2,
 	MFREE_MAX = 2
 };
-typedef void (*free_fn_t) ( int m );
-	
+typedef void (*free_fn_t) (int m);
+
 /* the function free_fn will be called if m_free(this array) is called
    the free_fn can now iterate and clean all elements of the array,
    before this array is removed.
    the returned value is the handle id that you supply to m_alloc.
 */
-int m_reg_freefn ( free_fn_t free_fn );
+int m_reg_freefn (free_fn_t free_fn);
 int m_alloc (int max, int w, uint8_t hfree);
 int m_free (int m);
-	
+
 int m_is_freed (int h);
 int m_free_hdl (int h);
 
-	
+#ifdef MLS_THREADSAFE
+int m_create_shared (int max, int w);
+int m_set_shared (int m, int shared);
+void m_lock (int m);
+void m_unlock (int m);
+#endif
 
-
-	
 int m_len (int m);
 void *m_buf (int m);
 
