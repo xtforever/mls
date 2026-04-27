@@ -1,0 +1,11 @@
+
+PUSH  - create stack
+
+all alloced handles go to current stack
+
+push( s=s_new() ) - push handle to current stack
+
+s_printf(s,0, "Hello World" );
+
+POP - free all handles on current stack
+
