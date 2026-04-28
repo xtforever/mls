@@ -227,11 +227,11 @@ int main (int argc, char **argv)
 {
 	GREATEST_MAIN_BEGIN ();
 	m_init ();
-	conststr_init ();
+	// conststr_init ();
 	RUN_SUITE (mls_core_suite);
 	RUN_SUITE (mls_string_suite);
 	RUN_SUITE (mls_search_suite);
 	RUN_SUITE (mls_variable_suite);
-	conststr_free ();
+	// conststr_free ();
 	GREATEST_MAIN_END ();
 }

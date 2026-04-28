@@ -15,8 +15,7 @@ static int vas_app (int m, va_list ap);
 static int field_escape (int s2, char *s, int quotes);
 static void repl_char (int buf, char ch);
 
-/* alphabetisch sortierte liste von mstr */
-static int CS_ZERO = -1;
+
 
 /* Relocated Core Utilities */
 
@@ -1126,87 +1125,7 @@ void m_register_printf ()
 	}
 }
 
-/* Conststr System */
 
-static int CS_MAP = 0;
-
-/**
- * Initializes the constant string system.
- */
-void conststr_init (void)
-{
-	if (CS_MAP)
-		return;
-	CS_MAP = m_create (100, sizeof (int));
-	CS_ZERO = s_dup ("");
-}
-
-/**
- * Frees the constant string system.
- * this function does nothing, freeing a constant does not make sense while program
- * is running.
- * instead m_destruct() will free allocated memory for us
- */
-void conststr_free (void)
-{
-	if (!CS_MAP)
-		return;
-	int p;
-	int *d;
-	m_foreach (CS_MAP, p, d) { s_free (*d); }
-	m_free (CS_MAP);
-	CS_MAP = 0;
-	s_free (CS_ZERO);
-	CS_ZERO = -1;
-}
-
-/**
- * Looks up or creates a constant string from a C-style string.
- *
- * @param s The C-style string.
- * @return The handle of the constant string.
- */
-int conststr_lookup_c (const char *s)
-{
-	if (!s || !*s)
-		return CS_ZERO;
-	int p, *d;
-	m_foreach (CS_MAP, p, d)
-	{
-		if (strcmp (m_str (*d), s) == 0)
-			return *d;
-	}
-	int h = s_dup (s);
-	m_put (CS_MAP, &h);
-	return h;
-}
-
-/**
- * Looks up or creates a constant string from an existing string buffer.
- *
- * @param s Handle of the source string buffer.
- * @return The handle of the constant string.
- */
-int conststr_lookup (int s) { return conststr_lookup_c (m_str (s)); }
-
-/**
- * Formatted creation of a constant string.
- *
- * @param format Format string.
- * @param ... Arguments.
- * @return The handle of the constant string.
- */
-int cs_printf (const char *format, ...)
-{
-	va_list ap;
-	va_start (ap, format);
-	int h = s_new ();
-	vas_printf (h, 0, format, ap);
-	va_end (ap);
-	int res = conststr_lookup (h);
-	s_free (h);
-	return res;
-}
 
 /* Variable System */
 

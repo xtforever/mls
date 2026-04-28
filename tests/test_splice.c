@@ -38,7 +38,7 @@ static void crash_write(int m)
 
 TEST test_m_alloc_free (void)
 {
-	int h = m_alloc (10, 1, NOALLOC );
+	int h = m_alloc (10, 1, MFREE_NOALLOC );
 	static const char *str = "constant string";
 	m_set_data( h, 10, 1, str ); 
 	ASSERT (h > 0);
@@ -99,6 +99,54 @@ TEST test_m_del_remove (void)
 	PASS ();
 }
 
+TEST test_wrappers1 (void)
+{
+	trace_level=1;
+	int h1 = s_ccstr("hello\n");
+	int h2 = s_ccstr("hello\n");
+	int h3 = s_ccstr("world\n");
+	ASSERT_EQ (h1,h2);
+	char *s1 = m_str(h1);
+	char *s2 = m_str(h3);
+	ASSERT_EQ(0, strcmp(s1,"hello\n") );
+	ASSERT_EQ(0, strcmp(s2,"world\n") );
+	PASS ();
+}
+
+TEST test_wrappers2 (void)
+{
+	int ii[] = { 1,2,3 };
+	int h =  m_wrapints( ii, 3 );
+
+	ASSERT_EQ( 1, INT(h,0) );
+	ASSERT_EQ( 3, INT(h,2) );
+	m_free(h);
+
+	char *w[] = { "hello\n", "world\n", NULL };
+	h =  m_wrapstrings( w, 3 );
+
+	char *s1,*s2;
+	s1 = STR( h, 0 );
+	s2 = STR( h, 1 );
+	
+	ASSERT_EQ( 3, m_len(h) );
+	ASSERT_EQ(0, strcmp(s1,"hello\n") );
+	ASSERT_EQ(0, strcmp(s2,"world\n") );
+
+	char mod[] =  "hello world\n";
+	int h2 = s_cstrdup(mod);
+	int h3 = m_wrapcstr(mod);
+	mod[0]='x';
+	ASSERT_EQ( 0, strcmp(m_str(h2),"hello world\n") );
+	ASSERT_EQ( 0, strcmp(m_str(h3),"xello world\n") );
+	m_free(h2);
+	m_free(h3);
+	
+	PASS ();
+	
+
+	
+}
 
 /* Suite definitions */
 GREATEST_SUITE (mls_core_suite)
@@ -106,6 +154,8 @@ GREATEST_SUITE (mls_core_suite)
 	RUN_TEST (test_m_alloc_free);
 	RUN_TEST (test_m_put_get);
 	RUN_TEST (test_m_del_remove);
+	RUN_TEST (test_wrappers1);
+	RUN_TEST (test_wrappers2);
 }
 
 /* Main function */
@@ -115,9 +165,9 @@ int main (int argc, char **argv)
 {
 	GREATEST_MAIN_BEGIN ();
 	m_init ();
-	conststr_init ();
+
 	RUN_SUITE (mls_core_suite);
-	conststr_free ();
+
 	m_destruct();
 	GREATEST_MAIN_END ();
 }

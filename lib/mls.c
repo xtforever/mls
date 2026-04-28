@@ -15,12 +15,21 @@
 int trace_level = 0;
 static int error_occurred = 0;
 /* this could be a define but that is not easy to debug */
-static inline int REAL_HDL( int m ) { return (m &  0xffffff) - 1; }
+static inline int REAL_HDL( int m ) { return (m &  0xffffff); }
+static inline int REAL_UAF( int m ) { return (m>>24) & 0x7f; }
 static int UAF_PROTECTION = 0;
 static struct ls_st freefn = { 0 };
 static struct ls_st ML = { 0 }; // stack allocated vars
 static struct ls_st FR = { 0 }; // stack freed vars
+static int CS_MAP  = 0;
+static int CS_ZERO = 0;
 
+
+/* prototypes */
+static int get_free_hdl(void);
+int m_binsert (int buf, const void *data,
+	       int (*cmpf) (const void *data, const void *buf_elem),
+	       int with_duplicates);
 
 /**
  * Prints an error message with file and line information and terminates the program.
@@ -188,27 +197,29 @@ static int _mlsdb_check_handle ()
 	lst_t lp;
 	lst_owner *o;
 	int orig = debi.handle;
-	int h = (orig & 0xffffff);
-	perr ("  Handle:    %d (UAF protection: %d)", h, (orig >> 24) & 0x7f);
+	int h = REAL_HDL(orig);
+	int uaf = REAL_UAF(orig);
 
-	if (h < 1 || h > m_len (DEB)) {
+	perr ("  Handle:    %d (UAF protection: %d)", h, uaf );
+
+	if (h < 0 || h >= m_len (DEB)) {
 		perr ("  Status:    Handle out of range (max=%d)", m_len (DEB));
 		return -1;
 	}
 
-	lp = (lst_t) lst ( &ML, h - 1);
+	lp = (lst_t) lst ( &ML, h );
 	if (lp->data == NULL) {
 		perr ("  Status:    List base address for handle %d is not allocated",
 		      h);
 	} else {
-		if ((*lp).uaf_protection != ((orig >> 24) & 0x7f)) {
+		if ((*lp).uaf_protection != uaf ) {
 			perr ("  Status:    uaf protection pattern does not match, expected:%d, got:%d",
-			      (*lp).uaf_protection, (orig >> 24) & 0x7f);
+			      (*lp).uaf_protection, uaf );
 			return -1;
 		}
 	}
 
-	o = (lst_owner *)mls (DEB, h - 1);
+	o = (lst_owner *)mls (DEB, h );
 	if (!o || o->allocated != 42) {
 		perr ("  Status:    Array was not allocated");
 		return -1;
@@ -295,7 +306,7 @@ void exit_error ()
  */
 void lst_resize (lst_t lp, int new_size)
 {
-	if( lp->free_hdl & NOALLOC ) {
+	if( lp->free_hdl & MFREE_NOALLOC ) {
 		ERR("List is marked as NOALLOC, unable to resize");		
 	}
 	int w = (*lp).w;
@@ -515,8 +526,8 @@ int lst_write (lst_t lp, int p, const void *data, int n)
  */
 
 static inline lst_t get_list(int m) {
-	int idx =  (m & 0xffffff) - 1;
-	int uaf =  ((m >> 24) & 0x7f);
+	int idx =  REAL_HDL(m);
+	int uaf =  REAL_UAF(m);
 	if (idx < 0 || idx >= ML.l) {
 		ERR( "Invalid Handle %d", idx );
 	}
@@ -585,6 +596,131 @@ static void free_list_wrap (int h)
 		}
 	}
 }
+void set_free_protection(int h, int p)
+{
+	lst_t lp = get_list(h);
+	lp->free_hdl |= p;
+}
+void unset_free_protection(int h, int p)
+{
+	lst_t lp = get_list(h);
+	lp->free_hdl &= ~(p);
+}
+
+static int
+mscmpc(const void *a, const void *b)
+{
+	const char *s0= a;
+	const int *d = b;
+	const char *s1 = m_str(*d);		
+	return strncmp(s0,s1,m_len(*d) );
+}
+
+
+
+static int new_list(const char *buf, int len, int max, int w, int hdl )
+{
+	int h=get_free_hdl();       	
+	lst_t lp = (lst_t) lst (&ML, h);
+	lp->w = w;
+	lp->data = (char*)buf;
+	lp->max = max;
+	lp->l = len;
+	lp->free_hdl = hdl;
+	lp->uaf_protection =  UAF_PROTECTION;
+	TRACE(1,"Created: %d", h );
+	return  (h) | (((int)(lp->uaf_protection) << 24));
+}
+
+
+/**
+ * Looks up or creates a constant string from a C-style string.
+ *
+ * @param s The C-style string.
+ * @return The handle of the constant string.
+ */
+int conststr_lookup_c (const char *s, int copy_string )
+{
+	if (!s || !*s)
+		return CS_ZERO;
+	
+	int p = m_binsert(CS_MAP, s, mscmpc, 0);
+	if (p < 0) {
+		return INT(CS_MAP, (-p) - 1);
+	}
+
+	int hdl;
+	int len = strlen(s) +1;	
+	if( copy_string ) {
+		s=strdup(s);
+		hdl = MFREE_NODESTRUCT;
+	} else  hdl = MFREE_NODESTRUCT | MFREE_NOALLOC;
+
+	return INT(CS_MAP,p) = new_list( s, len, len,1, hdl );
+}
+
+/**
+ * Looks up or creates a constant string from an existing string buffer.
+ *
+ * @param s Handle of the source string buffer.
+ * @return The handle of the constant string.
+ */
+int conststr_lookup (int s) { return conststr_lookup_c (m_str (s) , 1); }
+
+/**
+ * Formatted creation of a constant string.
+ *
+ * @param format Format string.
+ * @param ... Arguments.
+ * @return The handle of the constant string.
+ */
+int cs_printf (const char *format, ...)
+{
+	int p;
+	char *s;
+	va_list ap;	
+	va_start (ap, format);
+	int len = vasprintf (&s, format, ap);
+	va_end (ap);
+
+	p = m_binsert(CS_MAP, s, mscmpc, 0);
+	if (p < 0) {
+		free(s);
+		return INT(CS_MAP, (-p) - 1);
+	}
+	return new_list( s, len+1, len+1,1,  MFREE_NODESTRUCT | MFREE_NOALLOC );
+}
+
+/* make a constant string handle from a constant c string */
+int s_ccstr(const char *s) {
+	return conststr_lookup_c(s, 0); 	
+}
+
+/* make a constant string handle from a c string */
+int s_cstrdup(const char *s) {
+	return conststr_lookup_c(s, 1); 
+}
+
+/* wrap a string  list into a mls string list */
+int m_wrapstrings( char **list, int nelem )
+{
+	return new_list( (char*)list, nelem, nelem, sizeof(char*),  MFREE_NOALLOC );
+}
+
+/* wrap a int  list into a mls string list */
+int m_wrapints( int *list, int nelem )
+{
+	return new_list(  (char*)list, nelem, nelem, sizeof(int),  MFREE_NOALLOC );
+}
+
+int m_wrapcstr( char *s ) {
+	int len = strlen(s)+1;
+	return new_list( s, len, len, 1, MFREE_NOALLOC );
+}
+
+
+
+
 
 /**
  * Initializes the MLS library system.
@@ -594,35 +730,57 @@ static void free_list_wrap (int h)
  */
 int m_init ()
 {
+	if( ML.data ) return 0;	
 	lst_create (&ML, 100, sizeof (struct ls_st));
+	lst_new (&ML, 1);
 	lst_create (&FR, 100, sizeof (int));
-	lst_create (&freefn, MFREE_MAX + 1, sizeof (void *));
+	/* init basic free hdl */
+	lst_create (&freefn, 3, sizeof (void *));
 	free_fn_t f = NULL;
 	lst_put (&freefn, &f);
 	f = free_strings_wrap;
 	lst_put (&freefn, &f);
 	f = free_list_wrap;
 	lst_put (&freefn, &f);
+	/* system up and running, now some specials */
+	CS_ZERO	= new_list("",1,1,1, MFREE_NOALLOC | MFREE_NODESTRUCT );
+	CS_MAP  = m_alloc (100, sizeof (int), 0 ); /* create list 0 */
+	/* init constant string specials */
+	m_puti(CS_MAP,CS_ZERO);       
+	set_free_protection(CS_MAP, MFREE_NODESTRUCT );
 	return 0;
+}
+
+/**
+ * Frees the constant string system.
+ * this function does nothing, freeing a constant does not make sense while program
+ * is running.
+ * instead m_destruct() will free allocated memory for us
+ */
+void conststr_free (void)
+{
+	return;
 }
 
 /**
  * Destroys the MLS library system.
  * Explicitly frees all remaining allocated handles and their contents.
+ * Policy: Do not call user registered free_handler functions 
  */
 void m_destruct ()
 {
 	int idx;
 	lst_t d;
 	if (!ML.data) ERR ("Not Init.");
-
 	idx = -1;
 	while (lst_next (&ML, &idx, &d)) {
-		if (d && d->data) {
-			int m = (idx + 1) | ((int)(d->uaf_protection) << 24);
-			m_free (m);
+		if( d && d->data && !(d->free_hdl & MFREE_NOALLOC)  ) {
+			TRACE(1,"Free %d", idx );
+			free(d->data);
+			d->data=0;
 		}
 	}
+
 
 	if (FR.data) {
 		free (FR.data);
@@ -640,17 +798,19 @@ void m_destruct ()
 	}
 }
 
+static int last_created_hdl = -1;
 /* find free handle slot or create a new slot and return slot number */
 static int get_free_hdl(void)
 {
-	int h;
+	
 	if (FR.l > 0) {
-		h = *(int *)lst (&FR, FR.l - 1);
+		last_created_hdl = *(int *)lst (&FR, FR.l - 1);
 		FR.l--;
 	} else {
-		h = lst_new (&ML, 1);
+		 last_created_hdl = lst_new (&ML, 1);
 	}
-	return h;
+
+	return last_created_hdl;
 }
 
 /**
@@ -663,45 +823,31 @@ static int get_free_hdl(void)
  */
 int m_alloc (int max, int w, uint8_t hfree)
 {
-	int h;
+	char *data;
 	if( max <= 0 ) max = 1;
 	if( w <= 0 )     w = 1;
-	h=get_free_hdl();       	
-	lst_t l = (lst_t) lst (&ML, h);
-	l->max = max;
-	l->w   = w;
-	l->l   = 0;
-	if( hfree & NOALLOC )  {
-		l->data  = "";
+	int hdl =  hfree & MFREE_MASK;
+	if( hdl && hdl >= freefn.l ) {
+		ERR("no such handler: %d", hfree );
+	}
+	if( hfree & MFREE_NOALLOC )  {
+		data  = "";
 	} else {
-		l->data = calloc(max,w);
-		if (!l->data)
+		data = calloc(max,w);
+		if (!data)
 			ERR ("Out of Memory");
 	}
-	l->free_hdl = hfree;
-	l->uaf_protection = UAF_PROTECTION;
-	int res = (h + 1) | (((int)(l->uaf_protection) << 24));
-	return res;
+	return new_list(data,0,max,w, hfree );
 }
 
 int m_set_data(int m, int len, int w, const void *data)
 {
 	if( m <= 0 ) {
-		m = m_alloc( len, w, NOALLOC );
+		return  new_list(data,len,len, w,  MFREE_NOALLOC  );
 	}
-
-	int idx =  (m & 0xffffff) - 1;
-	int uaf =  ((m >> 24) & 0x7f);
-	if (idx < 0 || idx >= ML.l) {
-		ERR( "Invalid Handle %d", idx );
-	}
-	lst_t lp = lst( &ML, idx);
-	if(! (lp->free_hdl & NOALLOC) ) {
-		ERR("List %d is not marked NOALLOC", m );
-	}
-	if ( lp->uaf_protection != uaf ) {
-		ERR("uaf protection pattern does not match, expected:%d, got:%d",
-		    lp->uaf_protection, uaf );
+	lst_t lp = get_list (m);
+	if(! (lp->free_hdl & MFREE_NOALLOC) ) {
+		ERR("List %d is not marked MFREE_NOALLOC", m );
 	}
 	lp->l = len; lp->max=len; lp->w = w;
 	lp->data = (void*)data;
@@ -721,8 +867,8 @@ int m_create (int max, int w) { return m_alloc (max, w, MFREE); }
 /**
  * Frees an MLS handle and its associated list data.
  * The handle is marked as freed and returned to the free list for reuse.
- * Handles with free_hdl==255 will not be touched - useful if you want to make
- * sure that the memory stays allocated forever
+ * Handles with MFREE_NODESTRUCT will not be touched - useful if you want to make
+ * sure that the memory stays allocated forever and the list never gets destroyed
  *
  * @param m The handle to free.
  * @return 0 on success.
@@ -733,34 +879,28 @@ int m_free (int m)
 	TRACE(1, "RH: %d, Hdl: %d", realh, m );
 	if( m == 0 ) return 0;
 	lst_t lp = get_list (m);
-	int freehdl = lp->free_hdl;
+	int freehdl = lp->free_hdl;	
 	int hdl = freehdl & MFREE_MASK;
-		
-	if( freehdl == 255 ) {
-		TRACE(1, "HDL %d free-in-progress", realh );
-		return 0;
-	};
-	if(! lp->data ) {
-		WARN("Real-HDL %d not allocated", realh );
-		return 0;	
-	}
-	
-	if (hdl >= freefn.l)
-		ERR ("free handler %d for list %d is invalid max: %d", hdl, realh, freefn.l );
-	
-	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
 
-	if ( hdl >  0 ) { 
-		lp->free_hdl = 255; /* Mark handle as being freed */
-		free_fn_t *xfree = lst (&freefn, hdl);
-		if (*xfree) (*xfree) (m);
+	if( freehdl == 255 || (freehdl & MFREE_NODESTRUCT) ) return 0;
+	if( hdl == 0   ) goto simple_free;
+	
+	/* special free handler */
+	if( hdl >= freefn.l ) {
+		ERR("no such handler: %d, List:%d", hdl, realh );
 	}
+	lp->free_hdl = 255; /* Mark handle as being freed */
+	free_fn_t *xfree = lst (&freefn, hdl);
+	if (*xfree) (*xfree) (m);
 
-	if(! (freehdl & NOALLOC) ) {
+	
+simple_free:
+	if(! (freehdl & MFREE_NOALLOC) ) {
 		free(lp->data);
 	}
 	lp->data=0;
 	lst_put(&FR, &realh);
+	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
 	TRACE(1, "freed: %d, Hdl: %d", realh, m );
 	return 0;
 }
@@ -776,7 +916,7 @@ int m_free (int m)
  */
 int m_reg_freefn ( free_fn_t  free_fn )
 {
-	if( freefn.l >= MFREE_MAX || ! free_fn ) return -1;
+	if( freefn.l >= MFREE_MASK || ! free_fn ) ERR("Out Of space for free handler");
 	return lst_put ( &freefn, & free_fn );
 }
 
@@ -802,18 +942,18 @@ int m_is_valid(int h)
  */
 int m_is_freed (int h)
 {
-	if (h < 1 || !ML.data )
+	if (h < 0 || !ML.data )
 		return 1;
-	int i = (h & 0xffffff) - 1;
-	if (i < 0 || i >= ML.l)
+
+	int m =  REAL_HDL(h);
+	int u =  REAL_UAF(h);
+	
+
+	if ( m >= ML.l)
 		return 1;
-	lst_t l = lst (&ML, i);
-	if (!l->data)
-		return 1;
-	if (((h >> 24) & 0x7f) != l->uaf_protection)
-		return 1;
-	if( l->free_hdl == 255 ) return 1;
-	return 0;
+	
+	lst_t l = lst (&ML, m);
+	return (!l->data ||  u != l->uaf_protection ||  l->free_hdl == 255 );
 }
 
 /**
@@ -1657,13 +1797,30 @@ void _m_destruct ()
 	for (i = -1; m_next (DEB, &i, &o);) {
 		if (o->allocated == 42 && o->ln > 0) {
 			WARN ("List %d still allocated. Source: %s() in %s:%d",
-			      i + 1, o->fun, o->fn, o->ln);
+			      i, o->fun, o->fn, o->ln);
 		}
 	}
 	m_free (DEB);
 	DEB = 0;
 	m_destruct ();
 	debi.me = NULL;
+}
+
+static void _debug_create_list( int m_uaf, const char *dfunc, int ln, const char *fn, const char *fun )
+{
+	_mlsdb_caller ( dfunc, ln, fn, fun, 0, 0, 0, 0);
+	int m = REAL_HDL(m_uaf);
+	int len = m_len (DEB);
+	if (m >= len) {
+		m_new (DEB, m - len + 1);
+	}
+	
+	lst_owner *lo = (lst_owner *)mls (DEB, m);
+	lo->ln = ln;
+	lo->fn = fn;
+	lo->fun = fun;
+	lo->allocated = 42;
+	TRACE (1, "[%s:%d] [%s] %s(): New: %d (real: %d)", fn,ln, fun, dfunc, m_uaf, m );
 }
 
 /**
@@ -1679,24 +1836,8 @@ void _m_destruct ()
  */
 int _m_alloc (int ln, const char *fn, const char *fun, int n, int w, uint8_t hfree)
 {
-	lst_owner *lo;
-	int len, m, m_uaf;
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 0, 0, 0, 0);
-	m_uaf = m_alloc (n, w, hfree);
-
-	m = m_uaf & 0xffffff;
-	len = m_len (DEB);
-	if (m > len) {
-		m_new (DEB, m - len);
-	}
-	
-	lo = (lst_owner *)mls (DEB, m - 1);
-
-	lo->ln = ln;
-	lo->fn = fn;
-	lo->fun = fun;
-	lo->allocated = 42;
-	TRACE (1, "NEW LIST %d (real: %d) allocated by %s:%d in %s", m_uaf, m-1, fun, ln, fn);
+	int m_uaf = m_alloc (n, w, hfree);
+	_debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
 	return m_uaf;
 }
 
@@ -1712,9 +1853,9 @@ int _m_alloc (int ln, const char *fn, const char *fun, int n, int w, uint8_t hfr
  */
 int _m_free (int ln, const char *fn, const char *fun, int m)
 {
-	int h = m & 0xffffff;
+	int h = REAL_HDL(m);
 
-	TRACE (1, "[DEBUG] Free List %d", h-1);
+	TRACE (1, "[DEBUG] Free List %d", h );
 	
 	if (!h)
 		return 0;
@@ -1722,7 +1863,6 @@ int _m_free (int ln, const char *fn, const char *fun, int m)
 	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, m, 0, 0);
 	m_free (m);
 
-	h=h-1;
 	if( h >= m_len(DEB) ) {
 		WARN("h=%d not in debug list", h );
 		return 0;
@@ -1837,3 +1977,49 @@ int _m_create (int ln, const char *fn, const char *fun, int n, int w )
 {
 	return _m_alloc (ln, fn, fun, n, w, MFREE );
 }
+
+int _s_ccstr(int ln, const char *fn, const char *fun,const char *s)
+{
+	last_created_hdl = -1;
+	int m_uaf = s_ccstr(s);
+	if( last_created_hdl != -1 ) {
+		// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	}
+	return  m_uaf;
+}
+
+int _s_cstrdup(int ln, const char *fn, const char *fun,const char *s)
+{
+	last_created_hdl = -1;
+	int m_uaf = s_cstrdup(s);
+	if( last_created_hdl != -1 ) {
+		_debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	}
+	return  m_uaf;	
+}
+
+int _m_wrapstrings(int ln, const char *fn, const char *fun, char **list, int nelem )
+{
+	int m_uaf = m_wrapstrings(list,nelem);
+	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	return  m_uaf;	
+}
+
+int _m_wrapints(int ln, const char *fn, const char *fun, int *list, int nelem )
+{
+	int m_uaf = m_wrapints(list,nelem);
+	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	return  m_uaf;	
+}
+
+int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s )
+{
+	int m_uaf = m_wrapcstr(s);
+	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	return  m_uaf;	
+}
+
+
+
+int conststr_init() { return 0;      }
+

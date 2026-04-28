@@ -88,7 +88,7 @@ int main ()
 {
 	trace_level = 1;
 	m_init ();
-	conststr_init ();
+	// conststr_init ();
 
 	test_nested_3_levels ();
 	test_mixed_nested_elements ();
@@ -97,7 +97,7 @@ int main ()
 	test_circular_reference ();
 	test_deep_nesting ();
 
-	conststr_free ();
+	// conststr_free ();
 	m_destruct ();
 	printf ("All nested list tests completed successfully.\n");
 	return 0;

@@ -89,12 +89,12 @@ void lst_resize (lst_t LP, int new_size);
 
 enum predefined_free_handler {
 	MFREE = 0,
-	MFREE_STR = 1,
-	MFREE_EACH = 2,
-	MFREE_MAX = 127,
-	NOALLOC = 128, /* BITMAP: do not alloc/free memory for this list */
-	NOHDL   = 255,  /* do not touch on m_free(), leave alone */
-	MFREE_MASK = 127
+	MFREE_STR = 1,		/* iterate each element and call free() */
+	MFREE_EACH = 2,		/* iterate each element and call m_free() */
+	MFREE_NODESTRUCT = 64,	/* do not touch at all */
+	MFREE_NOALLOC = 128,		/* BITMAP: runtime protection against free/realloc */
+	NOHDL   = 255,		/* do not touch on m_free(), leave alone */
+	MFREE_MASK = 63,
 };
 typedef void (*free_fn_t) ( int m );
 	
@@ -165,7 +165,15 @@ void _m_clear (int ln, const char *fn, const char *fun, int h);
 void *_m_buf (int ln, const char *fn, const char *fun, int m);
 int _m_alloc (int ln, const char *fn, const char *fun, int n, int w,
 	      uint8_t hfree);
+	int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s );
+	int _m_wrapints(int ln, const char *fn, const char *fun, int *list, int nelem );
+	int _m_wrapstrings(int ln, const char *fn, const char *fun, char **list, int nelem );
+	int _s_cstrdup(int ln, const char *fn, const char *fun,const char *s);
+	int _s_ccstr(int ln, const char *fn, const char *fun,const char *s);
+	
 
+
+	
 #define m_foreach(lst, index, ptr) for (index = -1; m_next (lst, &index, &ptr);)
 #define STR(x, i) (*(char **)mls ((x), (i)))
 #define INT(x, i) (*(int *)mls ((x), (i)))
@@ -198,6 +206,14 @@ int m_bsearch_int (int buf, int key);
 
 lst_t exported_get_list (int r);
 
+	/* handle immuteable zero copy array */ 
+	int s_ccstr(const char *s);
+	int s_cstrdup(const char *s);
+	int m_wrapstrings( char **list, int nelem );
+	int m_wrapints( int *list, int nelem );
+	int m_wrapcstr( char *s );
+
+	
 #ifdef __plusplus
 }
 #endif
@@ -217,4 +233,20 @@ lst_t exported_get_list (int r);
 #define m_next(m, i, d)                                                        \
 	_m_next (__LINE__, __FILE__, __FUNCTION__, (m), (i), (d))
 #define m_clear(m) _m_clear (__LINE__, __FILE__, __FUNCTION__, (m))
+
+#define m_wrapcstr(s)						\
+	_m_wrapcstr (__LINE__, __FILE__, __FUNCTION__, (s))
+
+#define m_wrapints(s,n)							\
+	_m_wrapints (__LINE__, __FILE__, __FUNCTION__, (s), (n))
+
+#define m_wrapstrings(s,n)						\
+	_m_wrapstrings (__LINE__, __FILE__, __FUNCTION__, (s), (n))
+
+#define s_cstrdup(s)						\
+	_s_cstrdup (__LINE__, __FILE__, __FUNCTION__, (s))
+
+#define s_ccstr(s)						\
+	_s_ccstr (__LINE__, __FILE__, __FUNCTION__, (s))
+
 #endif
