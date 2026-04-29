@@ -76,7 +76,7 @@ void test_m_table_get_with_defaults ()
 
 int main ()
 {
-	trace_level = 1;
+	trace_level = 0;
 	m_init ();
 	conststr_init ();
 

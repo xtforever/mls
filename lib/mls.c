@@ -18,11 +18,10 @@ static int error_occurred = 0;
 static inline int REAL_HDL( int m ) { return (m &  0xffffff); }
 static inline int REAL_UAF( int m ) { return (m>>24) & 0x7f; }
 static int UAF_PROTECTION = 0;
-static struct ls_st freefn = { 0 };
 static struct ls_st ML = { 0 }; // stack allocated vars
-static struct ls_st FR = { 0 }; // stack freed vars
 static int CS_MAP  = 0;
 static int CS_ZERO = 0;
+static int FH      = 0;
 
 
 /* prototypes */
@@ -127,14 +126,16 @@ void *lst (lst_t l, int i) {
 	return &l->data[l->w * i];
 }
 
+
+
+
+
 struct lst_owner_st {
 	int allocated;
 	const char *fn, *fun;
 	int ln;
 };
 typedef struct lst_owner_st lst_owner;
-
-static int DEB = 0; // debug list
 
 struct debug_info_st {
 	char msg[500];
@@ -143,6 +144,7 @@ struct debug_info_st {
 	const void *data;
 };
 
+static int DEB = 0; // debug list
 static struct debug_info_st debi;
 
 /**
@@ -628,7 +630,7 @@ static int new_list(const char *buf, int len, int max, int w, int hdl )
 	lp->l = len;
 	lp->free_hdl = hdl;
 	lp->uaf_protection =  UAF_PROTECTION;
-	TRACE(1,"Created: %d", h );
+	TRACE(1,"Created: %d  %s", h, (hdl & MFREE_NOALLOC) ? "" : "+BUF" );
 	return  (h) | (((int)(lp->uaf_protection) << 24));
 }
 
@@ -730,24 +732,28 @@ int m_wrapcstr( char *s ) {
  */
 int m_init ()
 {
+	// Free List FR : 0
+	// Conststr  CS : 1
+	// Custom Freefn: 2
+	
 	if( ML.data ) return 0;	
 	lst_create (&ML, 100, sizeof (struct ls_st));
-	lst_new (&ML, 1);
-	lst_create (&FR, 100, sizeof (int));
-	/* init basic free hdl */
-	lst_create (&freefn, 3, sizeof (void *));
-	free_fn_t f = NULL;
-	lst_put (&freefn, &f);
-	f = free_strings_wrap;
-	lst_put (&freefn, &f);
-	f = free_list_wrap;
-	lst_put (&freefn, &f);
+	lst_t lp = lst(&ML,lst_new (&ML, 1));
+	lst_create (lp, 100, sizeof (int));
+
+	CS_MAP  = m_alloc (100, sizeof (int), 0 ); /* create list 1 */
 	/* system up and running, now some specials */
 	CS_ZERO	= new_list("",1,1,1, MFREE_NOALLOC | MFREE_NODESTRUCT );
-	CS_MAP  = m_alloc (100, sizeof (int), 0 ); /* create list 0 */
-	/* init constant string specials */
 	m_puti(CS_MAP,CS_ZERO);       
 	set_free_protection(CS_MAP, MFREE_NODESTRUCT );
+
+	FH = m_alloc (10, sizeof (void*), 0 ); 
+	free_fn_t f = NULL;
+	m_put (FH, &f);
+	f = free_strings_wrap;
+	m_put (FH, &f);
+	f = free_list_wrap;
+	m_put (FH, &f);
 	return 0;
 }
 
@@ -772,42 +778,33 @@ void m_destruct ()
 	int idx;
 	lst_t d;
 	if (!ML.data) ERR ("Not Init.");
+	get_list(CS_MAP)->free_hdl = 0;
 	idx = -1;
-	while (lst_next (&ML, &idx, &d)) {
+	while (lst_next (&ML, &idx, &d)) {		
 		if( d && d->data && !(d->free_hdl & MFREE_NOALLOC)  ) {
-			TRACE(1,"Free %d", idx );
+			TRACE(1,"%d Free", idx );
 			free(d->data);
 			d->data=0;
-		}
-	}
-
-
-	if (FR.data) {
-		free (FR.data);
-		FR.data = 0;
+		} else TRACE(1,"%d", idx );
 	}
 
 	if (ML.data) {
 		free (ML.data);
 		ML.data = 0;
 	}
-
-	if (freefn.data) {
-		free (freefn.data);
-		freefn.data = 0;
-	}
+	UAF_PROTECTION=0;
 }
 
 static int last_created_hdl = -1;
 /* find free handle slot or create a new slot and return slot number */
 static int get_free_hdl(void)
 {
-	
-	if (FR.l > 0) {
-		last_created_hdl = *(int *)lst (&FR, FR.l - 1);
-		FR.l--;
+	lst_t lp = lst(&ML,0);
+	if (lp->l > 0) {
+		last_created_hdl = *(int *)lst (lp, lp->l - 1);
+		lp->l--;
 	} else {
-		 last_created_hdl = lst_new (&ML, 1);
+		last_created_hdl = lst_new (&ML, 1);
 	}
 
 	return last_created_hdl;
@@ -827,7 +824,7 @@ int m_alloc (int max, int w, uint8_t hfree)
 	if( max <= 0 ) max = 1;
 	if( w <= 0 )     w = 1;
 	int hdl =  hfree & MFREE_MASK;
-	if( hdl && hdl >= freefn.l ) {
+	if( hdl && hdl >= m_len(FH) ) {
 		ERR("no such handler: %d", hfree );
 	}
 	if( hfree & MFREE_NOALLOC )  {
@@ -886,11 +883,11 @@ int m_free (int m)
 	if( hdl == 0   ) goto simple_free;
 	
 	/* special free handler */
-	if( hdl >= freefn.l ) {
+	if( hdl >= m_len(FH) ) {
 		ERR("no such handler: %d, List:%d", hdl, realh );
 	}
 	lp->free_hdl = 255; /* Mark handle as being freed */
-	free_fn_t *xfree = lst (&freefn, hdl);
+	free_fn_t *xfree = mls( FH, hdl );
 	if (*xfree) (*xfree) (m);
 
 	
@@ -899,7 +896,7 @@ simple_free:
 		free(lp->data);
 	}
 	lp->data=0;
-	lst_put(&FR, &realh);
+	lst_put( (lst_t)ML.data, &realh);
 	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
 	TRACE(1, "freed: %d, Hdl: %d", realh, m );
 	return 0;
@@ -916,8 +913,9 @@ simple_free:
  */
 int m_reg_freefn ( free_fn_t  free_fn )
 {
-	if( freefn.l >= MFREE_MASK || ! free_fn ) ERR("Out Of space for free handler");
-	return lst_put ( &freefn, & free_fn );
+	if( m_len(FH) >= MFREE_MASK ) ERR("Too many free-fn registered");
+	if( !free_fn ) ERR("custom free funtion is null");
+	return m_put(FH, & free_fn );
 }
 
 
@@ -1766,7 +1764,7 @@ int m_bsearch_int (int buf, int key)
 
 
 /* Debug implementations */
-
+#ifdef MLS_DEBUG
 /**
  * Internal debug version of m_init.
  * Initializes the master list and the debug ownership list.
@@ -1796,8 +1794,7 @@ void _m_destruct ()
 
 	for (i = -1; m_next (DEB, &i, &o);) {
 		if (o->allocated == 42 && o->ln > 0) {
-			WARN ("List %d still allocated. Source: %s() in %s:%d",
-			      i, o->fun, o->fn, o->ln);
+			WARN ("[%s:%d] [%s]: %d still allocated", o->fn,o->ln, o->fun, i );
 		}
 	}
 	m_free (DEB);
@@ -2018,7 +2015,7 @@ int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s )
 	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
 	return  m_uaf;	
 }
-
+#endif
 
 
 int conststr_init() { return 0;      }
