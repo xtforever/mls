@@ -849,6 +849,63 @@ Supports negative indices (relative to end of list).
 - a The starting index in the source list.
 - b The ending index in the source list (inclusive).
 
+---
+
+### `s_ccstr`
+
+**Signature:**
+```c
+int s_ccstr(const char *s)
+```
+
+Creates a constant string handle from a constant C string (literal). Does not copy the string data.
+
+---
+
+### `s_cstrdup`
+
+**Signature:**
+```c
+int s_cstrdup(const char *s)
+```
+
+Creates a constant string handle from a C string using constant string lookup. Copies the string data into internal storage.
+
+---
+
+### `m_wrapcstr`
+
+**Signature:**
+```c
+int m_wrapcstr(char *s)
+```
+
+Wraps an existing C string into an MLS list without copying.
+
+---
+
+### `m_wrapints`
+
+**Signature:**
+```c
+int m_wrapints(int *list, int nelem)
+```
+
+Wraps an existing integer array into an MLS list without copying.
+
+---
+
+### `m_wrapstrings`
+
+**Signature:**
+```c
+int m_wrapstrings(char **list, int nelem)
+```
+
+Wraps an existing string array (char**) into an MLS list without copying.
+
+---
+
 **Returns:** The destination handle.
 
 ---
@@ -2336,25 +2393,25 @@ Registers the %M specifier for printf to handle m-array string handles.
 
 ---
 
-### `conststr_init`
+### `conststr_init` (Obsolete)
 
 **Signature:**
 ```c
-void conststr_init(void)
+int conststr_init(void)
 ```
 
-Initializes the constant string system.
+Initializes the constant string system. This is now handled automatically by `m_init()`. Calling it is no longer required and does nothing.
 
 ---
 
-### `conststr_free`
+### `conststr_free` (Obsolete)
 
 **Signature:**
 ```c
 void conststr_free(void)
 ```
 
-Frees the constant string system.
+Frees the constant string system. This is now handled automatically by `m_destruct()`. Calling it is no longer required and does nothing.
 
 ---
 
@@ -2362,8 +2419,10 @@ Frees the constant string system.
 
 **Signature:**
 ```c
-int conststr_lookup_c(const char *s)
+int conststr_lookup_c(const char *s, int copy_string)
 ```
+
+Looks up or creates a constant string from a C-style string. If `copy_string` is true, the string is duplicated into internal storage.
 
 Looks up or creates a constant string from a C-style string.
 

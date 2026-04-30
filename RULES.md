@@ -21,7 +21,7 @@ This document outlines the mandatory programming standards and best practices de
 
 ## 3. Code Style and Complexity
 - **Strict Nesting Limits:** Never use nesting (loops, conditionals, or data structures) with more than **5 levels**. If complexity increases, refactor into smaller, focused functions.
-- **Consistent Initialization:** Every standalone program or test must call `m_init()` and `conststr_init()` at startup, and their corresponding free functions at exit.
+- **Consistent Initialization:** Every standalone program or test must call `m_init()` at startup and `m_destruct()` at exit. The constant string system is automatically managed.
 - **Doxygen Documentation:** All public functions must have Doxygen-style comments specifying `@param`, `@return`, and overall behavior.
 
 ## 4. Build and Debugging

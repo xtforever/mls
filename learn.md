@@ -7,8 +7,10 @@
 - String lists created by `s_cstr`, `s_strdup_c`, or `s_printf` often include a null terminator in their length. For example, `s_cstr("Hello World")` has a length of 12. This affects slicing indices, especially negative ones.
 - When slicing strings with `s_slice`, remember that the last index (e.g., length - 1) is the null terminator.
 
-### `s_cstr` Initialization
-- Using `s_cstr` requires calling `conststr_init()` at the beginning and `conststr_free()` at the end of the program/test. Without this, the library will report "Not initialized".
+### `s_ccstr` and `s_cstrdup` Initialization
+- Constant string interning is now automatically initialized by `m_init()` and cleaned up by `m_destruct()`.
+- Explicit calls to `conststr_init()` and `conststr_free()` are obsolete and no longer required.
+- `s_ccstr` is for literal zero-copy interning, while `s_cstrdup` copies the string.
 
 ### Handle Validation and `m_is_freed`
 - `m_is_freed(h)` returns `1` only if the handle's slot index is currently in the free list `FR`.

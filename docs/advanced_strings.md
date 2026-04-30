@@ -1,34 +1,68 @@
-# Advanced: Global Constant Strings with `s_cstr`
+# Advanced: Global Constant Strings and Interning
 
-For more advanced use cases, `mls` provides a special interning system for **Global Constant Strings**. 
+The MLS library provides a specialized interning system for **Global Constant Strings**. This system ensures that identical strings share the same memory and handle, improving performance and reducing memory usage.
 
-## What is `s_cstr`?
-`s_cstr(const char *s)` creates a handle to a string that is intended to exist throughout the **entire lifetime of your program**. These strings are interned, meaning if you call `s_cstr("FOO")` multiple times, you will always get the same handle.
+## 1. What is Constant String Interning?
 
-## Key Rules:
-1. **Never `m_free(s)` a constant handle.** Individual constant handles should not be freed.
-2. **Read-Only:** These strings are intended for internal constants, keywords, or dictionary keys—not for general user input or modifiable buffers.
-3. **Global Cleanup:** All memory used by constant strings is released at once using `conststr_free()`.
+Interning is the process of storing only one copy of each distinct string value. In MLS, when you "intern" a string, you receive a handle. Multiple calls with the same string content will return the same handle.
 
-## Example: Internal Constants
+## 2. Key Functions
+
+### `s_ccstr` - Intern Constant C Strings
 ```c
-// At program start
-conststr_init();
+int s_ccstr(const char *s);
+```
+Use this for **string literals** or strings that are guaranteed to exist for the entire lifetime of the program. 
+- **Zero-Copy:** It wraps the provided pointer directly.
+- **Fast:** Ideal for internal keys, keywords, or fixed identifiers.
 
-// Use internally as constants
-int KEY_ID = s_cstr("ID");
-int KEY_NAME = s_cstr("NAME");
+### `s_cstrdup` - Intern Dynamic Strings
+```c
+int s_cstrdup(const char *s);
+```
+Use this when you want to intern a string that might be temporary (e.g., read from a file or user input).
+- **Copies Data:** It duplicates the string into internal storage managed by MLS.
+- **Persistent:** The handle remains valid until `m_destruct()` is called.
 
-// ... do some work ...
+## 3. Lifecycle Management
 
-// At program exit
-conststr_free();
+The constant string system is automatically managed by the main MLS lifecycle:
+- **Initialization:** Handled automatically by `m_init()`. You no longer need to call `conststr_init()`.
+- **Cleanup:** All interned strings (including those duplicated by `s_cstrdup`) are released when you call `m_destruct()`.
+
+## 4. Key Rules
+
+1. **Immutable:** Interned strings are read-only. Do not attempt to modify the buffer returned by `m_buf()` for these handles.
+2. **Do Not Free Individually:** Constant handles are managed by the global interning map. Calling `m_free()` on them will be refused or have no effect (protected by `MFREE_NOALLOC` and `MFREE_NODESTRUCT`).
+3. **Handle Comparison:** Since strings are interned, you can compare two handles using `==` instead of `strcmp()` to check if the strings are identical.
+
+## 5. Example: Internal Keywords
+
+```c
+// MLS initialization handles everything
+m_init();
+
+// Interning literals (Zero-Copy)
+int KEY_ID = s_ccstr("ID");
+int KEY_NAME = s_ccstr("NAME");
+
+// Interning dynamic data (Copies)
+char buffer[100];
+snprintf(buffer, sizeof(buffer), "USER_%d", 123);
+int USER_KEY = s_cstrdup(buffer);
+
+// Handle comparison is fast!
+if (some_handle == KEY_ID) {
+    // ...
+}
+
+// Cleanup everything at once
+m_destruct();
 ```
 
-## Why use this?
-- **Speed:** Comparing handles is much faster than `strcmp`.
-- **Memory Efficiency:** Identical strings are only stored once in memory.
-- **Cognitive Ease:** No need to manage the lifecycle of these handles in your main logic.
+## 6. Wrapper Functions
+
+For zero-copy integration with existing C arrays, see the [Wrappers Documentation](wrappers.md).
 
 ---
 
