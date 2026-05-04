@@ -19,6 +19,16 @@ static inline int REAL_HDL( int m ) { return (m &  0xffffff); }
 static inline int REAL_UAF( int m ) { return (m>>24) & 0x7f; }
 static int UAF_PROTECTION = 0;
 static struct ls_st ML = { 0 }; // stack allocated vars
+#ifdef MLS_THREAD_SAFE
+static pthread_mutex_t ml_lock = PTHREAD_MUTEX_INITIALIZER;
+static __thread int freeing_handle = 0;
+#define MLS_MASTER_LOCK() pthread_mutex_lock (&ml_lock)
+#define MLS_MASTER_UNLOCK() pthread_mutex_unlock (&ml_lock)
+#else
+static int freeing_handle = 0;
+#define MLS_MASTER_LOCK() ((void)0)
+#define MLS_MASTER_UNLOCK() ((void)0)
+#endif
 static int CS_MAP  = 0;
 static int CS_ZERO = 0;
 static int FH      = 0;
@@ -29,6 +39,89 @@ static int get_free_hdl(void);
 int m_binsert (int buf, const void *data,
 	       int (*cmpf) (const void *data, const void *buf_elem),
 	       int with_duplicates);
+#ifdef MLS_DEBUG
+static void _debug_create_list (int m_uaf, const char *dfunc, int ln,
+				const char *fn, const char *fun);
+#endif
+
+static void init_handle_lock (lst_t lp)
+{
+#ifdef MLS_THREAD_SAFE
+	if (lp->lock)
+		return;
+	lp->lock = malloc (sizeof (*lp->lock));
+	if (!lp->lock)
+		ERR ("Out of Memory");
+	if (pthread_rwlock_init (lp->lock, NULL) != 0)
+		ERR ("Unable to initialize handle lock");
+#else
+	(void)lp;
+#endif
+}
+
+static void destroy_handle_lock (lst_t lp)
+{
+#ifdef MLS_THREAD_SAFE
+	if (!lp->lock)
+		return;
+	pthread_rwlock_destroy (lp->lock);
+	free (lp->lock);
+	lp->lock = NULL;
+#else
+	(void)lp;
+#endif
+}
+
+static inline lst_t get_list_locked (int m)
+{
+	int idx = REAL_HDL (m);
+	int uaf = REAL_UAF (m);
+	if (idx < 0 || idx >= ML.l) {
+		ERR ("Invalid Handle %d", idx);
+	}
+	lst_t l = lst (&ML, idx);
+	if (l->data == NULL) {
+		ERR ("List %d not allocated", idx);
+	}
+
+	if (l->uaf_protection != uaf) {
+		ERR ("uaf protection pattern does not match, expected:%d, got:%d",
+		     l->uaf_protection, uaf);
+	}
+	if (l->free_hdl == 255 && REAL_HDL (freeing_handle) != idx) {
+		ERR ("List %d is being freed", idx);
+	}
+
+	init_handle_lock (l);
+	return l;
+}
+
+static lst_t lock_handle (int m, int write)
+{
+	lst_t lp;
+
+	MLS_MASTER_LOCK ();
+	lp = get_list_locked (m);
+#ifdef MLS_THREAD_SAFE
+	if (write)
+		pthread_rwlock_wrlock (lp->lock);
+	else
+		pthread_rwlock_rdlock (lp->lock);
+#else
+	(void)write;
+#endif
+	MLS_MASTER_UNLOCK ();
+	return lp;
+}
+
+static void unlock_handle (lst_t lp)
+{
+#ifdef MLS_THREAD_SAFE
+	pthread_rwlock_unlock (lp->lock);
+#else
+	(void)lp;
+#endif
+}
 
 /**
  * Prints an error message with file and line information and terminates the program.
@@ -528,22 +621,12 @@ int lst_write (lst_t lp, int p, const void *data, int n)
  */
 
 static inline lst_t get_list(int m) {
-	int idx =  REAL_HDL(m);
-	int uaf =  REAL_UAF(m);
-	if (idx < 0 || idx >= ML.l) {
-		ERR( "Invalid Handle %d", idx );
-	}
-	lst_t l = lst( &ML, idx);
-	if (l->data == NULL) {
-		ERR("List %d not allocated", idx );
-	}
-	
-	if ( l->uaf_protection != uaf ) {
-		ERR("uaf protection pattern does not match, expected:%d, got:%d",
-		    l->uaf_protection, uaf );
-	}
+	lst_t lp;
 
-	return l;
+	MLS_MASTER_LOCK ();
+	lp = get_list_locked (m);
+	MLS_MASTER_UNLOCK ();
+	return lp;
 }
 
 /**
@@ -600,13 +683,15 @@ static void free_list_wrap (int h)
 }
 void set_free_protection(int h, int p)
 {
-	lst_t lp = get_list(h);
+	lst_t lp = lock_handle(h, 1);
 	lp->free_hdl |= p;
+	unlock_handle (lp);
 }
 void unset_free_protection(int h, int p)
 {
-	lst_t lp = get_list(h);
+	lst_t lp = lock_handle(h, 1);
 	lp->free_hdl &= ~(p);
+	unlock_handle (lp);
 }
 
 static int
@@ -622,8 +707,10 @@ mscmpc(const void *a, const void *b)
 
 static int new_list(const char *buf, int len, int max, int w, int hdl )
 {
-	int h=get_free_hdl();       	
+	MLS_MASTER_LOCK ();
+	int h=get_free_hdl();
 	lst_t lp = (lst_t) lst (&ML, h);
+	init_handle_lock (lp);
 	lp->w = w;
 	lp->data = (char*)buf;
 	lp->max = max;
@@ -631,7 +718,9 @@ static int new_list(const char *buf, int len, int max, int w, int hdl )
 	lp->free_hdl = hdl;
 	lp->uaf_protection =  UAF_PROTECTION;
 	TRACE(1,"Created: %d  %s", h, (hdl & MFREE_NOALLOC) ? "" : "+BUF" );
-	return  (h) | (((int)(lp->uaf_protection) << 24));
+	int ret = (h) | (((int)(lp->uaf_protection) << 24));
+	MLS_MASTER_UNLOCK ();
+	return ret;
 }
 
 
@@ -736,10 +825,16 @@ int m_init ()
 	// Conststr  CS : 1
 	// Custom Freefn: 2
 	
-	if( ML.data ) return 0;	
+	MLS_MASTER_LOCK ();
+	if( ML.data ) {
+		MLS_MASTER_UNLOCK ();
+		return 0;
+	}
 	lst_create (&ML, 100, sizeof (struct ls_st));
 	lst_t lp = lst(&ML,lst_new (&ML, 1));
 	lst_create (lp, 100, sizeof (int));
+	init_handle_lock (lp);
+	MLS_MASTER_UNLOCK ();
 
 	CS_MAP  = m_alloc (100, sizeof (int), 0 ); /* create list 1 */
 	/* system up and running, now some specials */
@@ -777,8 +872,9 @@ void m_destruct ()
 {
 	int idx;
 	lst_t d;
+	MLS_MASTER_LOCK ();
 	if (!ML.data) ERR ("Not Init.");
-	get_list(CS_MAP)->free_hdl = 0;
+	((lst_t)lst(&ML, REAL_HDL(CS_MAP)))->free_hdl = 0;
 	idx = -1;
 	while (lst_next (&ML, &idx, &d)) {		
 		if( d && d->data && !(d->free_hdl & MFREE_NOALLOC)  ) {
@@ -786,6 +882,8 @@ void m_destruct ()
 			free(d->data);
 			d->data=0;
 		} else TRACE(1,"%d", idx );
+		if (d)
+			destroy_handle_lock (d);
 	}
 
 	if (ML.data) {
@@ -793,6 +891,7 @@ void m_destruct ()
 		ML.data = 0;
 	}
 	UAF_PROTECTION=0;
+	MLS_MASTER_UNLOCK ();
 }
 
 static int last_created_hdl = -1;
@@ -842,12 +941,13 @@ int m_set_data(int m, int len, int w, const void *data)
 	if( m <= 0 ) {
 		return  new_list(data,len,len, w,  MFREE_NOALLOC  );
 	}
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	if(! (lp->free_hdl & MFREE_NOALLOC) ) {
 		ERR("List %d is not marked MFREE_NOALLOC", m );
 	}
 	lp->l = len; lp->max=len; lp->w = w;
 	lp->data = (void*)data;
+	unlock_handle (lp);
 	return m;
 }
 
@@ -875,20 +975,39 @@ int m_free (int m)
 	int realh =  REAL_HDL(m);
 	TRACE(1, "RH: %d, Hdl: %d", realh, m );
 	if( m == 0 ) return 0;
-	lst_t lp = get_list (m);
+retry:
+	lst_t lp = lock_handle (m, 1);
 	int freehdl = lp->free_hdl;	
 	int hdl = freehdl & MFREE_MASK;
 
-	if( freehdl == 255 || (freehdl & MFREE_NODESTRUCT) ) return 0;
+	if( freehdl == 255 || (freehdl & MFREE_NODESTRUCT) ) {
+		unlock_handle (lp);
+		return 0;
+	}
 	if( hdl == 0   ) goto simple_free;
 	
 	/* special free handler */
+	unlock_handle (lp);
 	if( hdl >= m_len(FH) ) {
 		ERR("no such handler: %d, List:%d", hdl, realh );
 	}
+	free_fn_t xfree = *(free_fn_t *)mls( FH, hdl );
+	lp = lock_handle (m, 1);
+	if (lp->free_hdl != freehdl) {
+		unlock_handle (lp);
+		goto retry;
+	}
 	lp->free_hdl = 255; /* Mark handle as being freed */
-	free_fn_t *xfree = mls( FH, hdl );
-	if (*xfree) (*xfree) (m);
+	unlock_handle (lp);
+	if (xfree) {
+		int prev_freeing_handle = freeing_handle;
+		freeing_handle = m;
+		xfree (m);
+		lp = lock_handle (m, 1);
+		freeing_handle = prev_freeing_handle;
+	} else {
+		lp = lock_handle (m, 1);
+	}
 
 	
 simple_free:
@@ -896,8 +1015,12 @@ simple_free:
 		free(lp->data);
 	}
 	lp->data=0;
+	lp->free_hdl = 255;
+	unlock_handle (lp);
+	MLS_MASTER_LOCK ();
 	lst_put( (lst_t)ML.data, &realh);
 	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
+	MLS_MASTER_UNLOCK ();
 	TRACE(1, "freed: %d, Hdl: %d", realh, m );
 	return 0;
 }
@@ -940,18 +1063,26 @@ int m_is_valid(int h)
  */
 int m_is_freed (int h)
 {
-	if (h < 0 || !ML.data )
+	if (h < 0)
 		return 1;
 
 	int m =  REAL_HDL(h);
 	int u =  REAL_UAF(h);
-	
 
-	if ( m >= ML.l)
+	MLS_MASTER_LOCK ();
+	if (!ML.data) {
+		MLS_MASTER_UNLOCK ();
 		return 1;
+	}
+	if ( m >= ML.l) {
+		MLS_MASTER_UNLOCK ();
+		return 1;
+	}
 	
 	lst_t l = lst (&ML, m);
-	return (!l->data ||  u != l->uaf_protection ||  l->free_hdl == 255 );
+	int freed = (!l->data ||  u != l->uaf_protection ||  l->free_hdl == 255 );
+	MLS_MASTER_UNLOCK ();
+	return freed;
 }
 
 /**
@@ -964,9 +1095,47 @@ int m_free_hdl (int h)
 {
 	if (h <= 0)
 		return 0;
-	lst_t lp = get_list (h);
-	return lp->free_hdl;
+	lst_t lp = lock_handle (h, 0);
+	int free_hdl = lp->free_hdl;
+	unlock_handle (lp);
+	return free_hdl;
 }
+
+/**
+ * Creates a duplicate of an existing m-array.
+ * if the original list was write-protected with MFREE_NOALLOC
+ * the copy will be read-write. This is not a deep copy operation.
+ *
+ * @param m The handle of the m-array to duplicate.
+ * @return A new handle to the duplicated m-array.
+ */
+int m_dub (int m)
+{
+	if (m <= 0)
+		return 0;
+
+	lst_t src = lock_handle (m, 0);
+	int len = src->l;
+	int width = src->w;
+	int free_hdl = src->free_hdl;
+	int max = len > 0 ? len : 1;
+	char *data = calloc ((size_t)max, (size_t)width);
+	if (!data)
+		ERR ("Out of Memory");
+	if (len > 0)
+		memcpy (data, src->data, (size_t)len * (size_t)width);
+	unlock_handle (src);
+
+	free_hdl &= ~MFREE_NOALLOC;
+	int ret = new_list (data, len, max, width, free_hdl);
+#ifdef MLS_DEBUG
+	if (DEB)
+		_debug_create_list (ret, __FUNCTION__, __LINE__, __FILE__,
+				    __FUNCTION__);
+#endif
+	return ret;
+}
+
 
 /**
  * Returns the number of elements in the list associated with a handle.
@@ -978,8 +1147,10 @@ int m_len (int m)
 {
 	if (m <= 0)
 		return 0;
-	lst_t lp = get_list (m);
-	return (*lp).l;
+	lst_t lp = lock_handle (m, 0);
+	int len = (*lp).l;
+	unlock_handle (lp);
+	return len;
 }
 
 /**
@@ -1006,12 +1177,14 @@ void *mls (int m, int i)
 {
 	if (m <= 0)
 		return NULL;
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 0);
 	if( i >= lp->l ) {
 		ERR ("Index %d out of bounds for handle %d (len %d)", i, m,
 		     (*lp).l);
 	}
-	return lst (lp, i);
+	void *ret = lst (lp, i);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1025,8 +1198,10 @@ int m_new (int m, int n)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = get_list (m);
-	return lst_new (lp, n);
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_new (lp, n);
+	unlock_handle (lp);
+	return p;
 }
 
 /**
@@ -1039,8 +1214,11 @@ void *m_add (int m)
 {
 	if (m <= 0)
 		return NULL;
-	int p = m_new (m, 1);
-	return mls (m, p);
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_new (lp, 1);
+	void *ret = lst (lp, p);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1055,8 +1233,10 @@ int m_next (int m, int *p, void *d)
 {
 	if (m <= 0)
 		return 0;
-	lst_t lp = get_list (m);
-	return lst_next (lp, p, d);
+	lst_t lp = lock_handle (m, 0);
+	int ret = lst_next (lp, p, d);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1070,8 +1250,10 @@ int m_put (int m, const void *data)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = get_list (m);
-	return lst_put (lp, data);
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_put (lp, data);
+	unlock_handle (lp);
+	return p;
 }
 
 /**
@@ -1087,10 +1269,11 @@ int m_setlen (int m, int len)
 		return -1;
 	if (len < 0)
 		ERR ("Wrong Arg len=%d", len);
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	if (len > (*lp).max)
 		lst_resize (lp, len);
 	(*lp).l = len;
+	unlock_handle (lp);
 	return 0;
 }
 
@@ -1104,8 +1287,10 @@ int m_bufsize (int m)
 {
 	if (m <= 0)
 		return 0;
-	lst_t lp = get_list (m);
-	return (*lp).max;
+	lst_t lp = lock_handle (m, 0);
+	int max = (*lp).max;
+	unlock_handle (lp);
+	return max;
 }
 
 /**
@@ -1119,8 +1304,10 @@ void *m_peek (int m, int i)
 {
 	if (m <= 0)
 		return NULL;
-	lst_t lp = get_list (m);
-	return lst_peek (lp, i);
+	lst_t lp = lock_handle (m, 0);
+	void *ret = lst_peek (lp, i);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1137,8 +1324,10 @@ int m_write (int m, int p, const void *data, int n)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = get_list (m);
-	return lst_write (lp, p, data, n);
+	lst_t lp = lock_handle (m, 1);
+	int ret = lst_write (lp, p, data, n);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1154,8 +1343,10 @@ int m_read (int h, int p, void **data, int n)
 {
 	if (h <= 0)
 		return -1;
-	lst_t lp = get_list (h);
-	return lst_read (lp, p, data, n);
+	lst_t lp = lock_handle (h, 0);
+	int ret = lst_read (lp, p, data, n);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1167,8 +1358,9 @@ void m_clear (int m)
 {
 	if (m <= 0)
 		return;
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	(*lp).l = 0;
+	unlock_handle (lp);
 }
 
 /**
@@ -1182,8 +1374,9 @@ void m_del (int m, int p)
 {
 	if (m <= 0)
 		return;
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	lst_del (lp, p);
+	unlock_handle (lp);
 }
 
 /**
@@ -1196,11 +1389,15 @@ void *m_pop (int m)
 {
 	if (m <= 0)
 		return NULL;
-	lst_t lp = get_list (m);
-	if ((*lp).l == 0)
+	lst_t lp = lock_handle (m, 1);
+	if ((*lp).l == 0) {
+		unlock_handle (lp);
 		return NULL;
+	}
 	(*lp).l--;
-	return lst (lp, (*lp).l);
+	void *ret = lst (lp, (*lp).l);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1215,8 +1412,10 @@ int m_ins (int m, int p, int n)
 {
 	if (m <= 0)
 		return 0;
-	lst_t lp = get_list (m);
-	return (lst_ins (lp, p, n) != NULL);
+	lst_t lp = lock_handle (m, 1);
+	int ret = (lst_ins (lp, p, n) != NULL);
+	unlock_handle (lp);
+	return ret;
 }
 
 /**
@@ -1229,8 +1428,10 @@ int m_width (int m)
 {
 	if (m <= 0)
 		return 0;
-	lst_t lp = get_list (m);
-	return (*lp).w;
+	lst_t lp = lock_handle (m, 0);
+	int width = (*lp).w;
+	unlock_handle (lp);
+	return width;
 }
 
 /**
@@ -1243,8 +1444,9 @@ void m_resize (int m, int new_size)
 {
 	if (m <= 0)
 		return;
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	lst_resize (lp, new_size);
+	unlock_handle (lp);
 }
 
 #ifdef MLS_DEBUG
@@ -1313,8 +1515,9 @@ int m_slice (int dest, int offs, int m, int a, int b)
  */
 void m_remove (int m, int p, int n)
 {
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	lst_remove (lp, p, n);
+	unlock_handle (lp);
 }
 
 
@@ -1325,8 +1528,9 @@ void m_remove (int m, int p, int n)
  */
 void m_bzero (int m)
 {
-	lst_t lp = get_list (m);
+	lst_t lp = lock_handle (m, 1);
 	memset ((*lp).data, 0, (*lp).l * (*lp).w);
+	unlock_handle (lp);
 }
 
 /**
@@ -1467,7 +1671,11 @@ int m_lookup_str (int m, const char *key, int NOT_INSERT)
  */
 int m_putc (int m, char c)
 {
-	return *(char *)m_add (m) = c;
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_new (lp, 1);
+	*(char *)lst (lp, p) = c;
+	unlock_handle (lp);
+	return c;
 }
 
 /**
@@ -1479,7 +1687,11 @@ int m_putc (int m, char c)
  */
 int m_puti (int m, int c)
 {
-	return *(int *)m_add (m) = c;
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_new (lp, 1);
+	*(int *)lst (lp, p) = c;
+	unlock_handle (lp);
+	return c;
 }
 
 #define UTF8GET()                                                              \
@@ -2019,4 +2231,3 @@ int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s )
 
 
 int conststr_init() { return 0;      }
-
