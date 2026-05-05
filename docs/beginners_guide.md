@@ -20,6 +20,18 @@ struct Student {
     int grade_count;
 };
 
+
+typedef H_STR int;
+typedef H_LIST_INT int;
+
+struct Student {
+    H_STR  n    ame;
+    int  age;
+    H_LIST_INT  grades;
+};
+
+
+
 // You have to manually malloc the struct, then the name, then the grades...
 // And God help you if you forget to free them in the exact reverse order.
 ```
