@@ -109,8 +109,6 @@ int cs_printf (const char *format, ...);
 inline static int s_cstr (const char *s) { return conststr_lookup_c (s); }
 inline static int s_mstr (int m) { return conststr_lookup (m); }
 
-/* Relocated from mls.h */
-int m_dub (int m);
 int m_regex (int m, const char *regex, const char *s);
 void m_qsort (int list, int (*compar) (const void *, const void *));
 int m_bsearch (const void *key, int list,

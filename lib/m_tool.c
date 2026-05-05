@@ -15,24 +15,6 @@ static int vas_app (int m, va_list ap);
 static int field_escape (int s2, char *s, int quotes);
 static void repl_char (int buf, char ch);
 
-
-
-/* Relocated Core Utilities */
-
-/**
- * Creates a duplicate of an existing m-array.
- *
- * @param m The handle of the m-array to duplicate.
- * @return A new handle to the duplicated m-array.
- */
-int m_dub (int m)
-{
-	int h = m_free_hdl (m);
-	int r = m_alloc (m_len (m), m_width (m), h);
-	m_write (r, 0, mls (m, 0), m_len (m));
-	return r;
-}
-
 /**
  * Executes a regular expression on a string and stores sub-matches in an m-array.
  *
@@ -2015,4 +1997,3 @@ void m_free_strings (int list, int CLEAR_ONLY)
 	else
 		m_free (list);
 }
-

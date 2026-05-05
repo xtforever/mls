@@ -24,6 +24,23 @@ void flask_register (const char *name, flask_handler_t handler);
  */
 void flask_run (const char *hdf_path);
 
+#ifdef MLS_THREAD_SAFE
+/**
+ * @brief Run the server using one detached worker thread per client.
+ */
+void flask_run_mt (const char *hdf_path);
+
+/**
+ * @brief Internal server setup shared by single and multi-threaded runners.
+ */
+int flask_prepare_run (const char *hdf_path);
+
+/**
+ * @brief Internal per-client request processor shared by server runners.
+ */
+void flask_process_client (int client_fd);
+#endif
+
 /**
  * @brief Get the root handle of the HDF configuration.
  */

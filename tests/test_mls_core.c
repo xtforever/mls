@@ -4,6 +4,9 @@
    We undefine the one from mls.h before including greatest.h */
 #undef ASSERT
 #include "greatest.h"
+#ifdef MLS_THREAD_SAFE
+#include <pthread.h>
+#endif
 #include <string.h>
 
 /* Define a suite for core memory and list functions */
@@ -116,6 +119,94 @@ TEST test_m_del_remove (void)
 	PASS ();
 }
 
+TEST test_m_dub (void)
+{
+	int h = m_alloc (0, sizeof (int), MFREE);
+	m_puti (h, 10);
+	m_puti (h, 20);
+
+	int d = m_dub (h);
+	ASSERT_EQ (2, m_len (d));
+	ASSERT_EQ (sizeof (int), m_width (d));
+	ASSERT_EQ (10, INT (d, 0));
+	ASSERT_EQ (20, INT (d, 1));
+
+	m_puti (h, 30);
+	ASSERT_EQ (2, m_len (d));
+
+	int empty = m_alloc (0, sizeof (int), MFREE);
+	int empty_dub = m_dub (empty);
+	ASSERT_EQ (0, m_len (empty_dub));
+	ASSERT_EQ (sizeof (int), m_width (empty_dub));
+
+	m_free (h);
+	m_free (d);
+	m_free (empty);
+	m_free (empty_dub);
+	PASS ();
+}
+
+#ifdef MLS_THREAD_SAFE
+#define MLS_THREAD_COUNT 8
+#define MLS_THREAD_ITERS 1000
+
+typedef struct {
+	int h;
+	int base;
+} mls_thread_arg_t;
+
+static void *threaded_puti_worker (void *arg)
+{
+	mls_thread_arg_t *a = arg;
+	for (int i = 0; i < MLS_THREAD_ITERS; i++)
+		m_puti (a->h, a->base + i);
+	return NULL;
+}
+
+static void *threaded_alloc_free_worker (void *arg)
+{
+	(void)arg;
+	for (int i = 0; i < MLS_THREAD_ITERS; i++) {
+		int h = m_alloc (4, sizeof (int), MFREE);
+		m_puti (h, i);
+		m_free (h);
+	}
+	return NULL;
+}
+
+TEST test_m_put_threaded (void)
+{
+	pthread_t threads[MLS_THREAD_COUNT];
+	mls_thread_arg_t args[MLS_THREAD_COUNT];
+	int h = m_alloc (0, sizeof (int), MFREE);
+
+	for (int i = 0; i < MLS_THREAD_COUNT; i++) {
+		args[i].h = h;
+		args[i].base = i * MLS_THREAD_ITERS;
+		ASSERT_EQ (0, pthread_create (&threads[i], NULL, threaded_puti_worker,
+					      &args[i]));
+	}
+	for (int i = 0; i < MLS_THREAD_COUNT; i++)
+		ASSERT_EQ (0, pthread_join (threads[i], NULL));
+
+	ASSERT_EQ (MLS_THREAD_COUNT * MLS_THREAD_ITERS, m_len (h));
+	m_free (h);
+	PASS ();
+}
+
+TEST test_m_alloc_free_threaded (void)
+{
+	pthread_t threads[MLS_THREAD_COUNT];
+
+	for (int i = 0; i < MLS_THREAD_COUNT; i++)
+		ASSERT_EQ (0, pthread_create (&threads[i], NULL,
+					      threaded_alloc_free_worker, NULL));
+	for (int i = 0; i < MLS_THREAD_COUNT; i++)
+		ASSERT_EQ (0, pthread_join (threads[i], NULL));
+	PASS ();
+}
+#endif
+
 SUITE (mls_string_suite);
 
 TEST test_s_printf_app (void)
@@ -202,6 +293,11 @@ GREATEST_SUITE (mls_core_suite)
 	RUN_TEST (test_m_next);
 	RUN_TEST (test_m_clear);
 	RUN_TEST (test_m_del_remove);
+	RUN_TEST (test_m_dub);
+#ifdef MLS_THREAD_SAFE
+	RUN_TEST (test_m_put_threaded);
+	RUN_TEST (test_m_alloc_free_threaded);
+#endif
 }
 
 GREATEST_SUITE (mls_string_suite)

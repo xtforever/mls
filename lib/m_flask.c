@@ -105,7 +105,7 @@ static void compile_routes (int server_node)
 	}
 }
 
-static void process_client (int client_fd)
+void flask_process_client (int client_fd)
 {
 	http_parser_t parser;
 	http_parser_init_request (&parser);
@@ -160,16 +160,24 @@ static void process_client (int client_fd)
 	close (client_fd);
 }
 
-void flask_run (const char *hdf_path)
+int flask_prepare_run (const char *hdf_path)
 {
 	int root = hdf_parse_file (hdf_path);
 	if (root <= 0)
-		return;
+		return 0;
 	flask_config_root = root;
 	int server_node = hdf_find_node (root, "server");
 	if (server_node <= 0)
 		server_node = root;
 	compile_routes (server_node);
+	return server_node;
+}
+
+void flask_run (const char *hdf_path)
+{
+	int server_node = flask_prepare_run (hdf_path);
+	if (server_node <= 0)
+		return;
 	int port = hdf_get_int (server_node, "port", 8080),
 	    s_fd = socket (AF_INET, SOCK_STREAM, 0);
 	struct sockaddr_in addr = {
@@ -184,7 +192,7 @@ void flask_run (const char *hdf_path)
 	while (1) {
 		int c_fd = accept (s_fd, NULL, NULL);
 		if (c_fd >= 0)
-			process_client (c_fd);
+			flask_process_client (c_fd);
 	}
 }
 

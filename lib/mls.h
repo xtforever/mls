@@ -14,6 +14,13 @@ extern "C" {
 #include <string.h>
 #include <unistd.h>
 
+#ifdef MLS_THREAD_SAFE
+#include <pthread.h>
+typedef pthread_rwlock_t mls_rwlock_t;
+#else
+typedef void mls_rwlock_t;
+#endif
+
 #ifndef is_empty
 #define is_empty(s) (!((s) && *(s)))
 #endif
@@ -72,6 +79,7 @@ typedef struct ls_st {
 	int w, l, max;
 	char uaf_protection;
 	uint8_t free_hdl;
+	mls_rwlock_t *lock;
 	char *data;
 } *lst_t;
 
@@ -110,6 +118,7 @@ int m_free (int m);
 int m_is_freed (int h);
 int m_is_valid (int h);
 int m_free_hdl (int h);
+int m_dub (int m);
 
 	
 
