@@ -121,7 +121,7 @@
 - **Library Dependencies**: Executables in the `tests/` directory rely on `DEPS` defined in the makefile, which points to the library object files in `../lib/`. These must also use the correct `${OBJ}` suffix.
 
 ### Testing and Debugging
-- **Mandatory Initialization**: Every test or server must include `m_init()`, `conststr_init()`, and set `trace_level = 1` for effective debugging and handle tracking.
+- **Mandatory Initialization**: Every test or server must include `m_init()` and set `trace_level = 1` for effective debugging and handle tracking. `conststr_init()` is no longer required.
 - **ASAN Integration**: The debug flags include `-fsanitize=address`, which is critical for catching the heap-buffer-overflows encountered during `m_table` key comparisons and Base64 decoding.
 
 ### LRU & Memory Management

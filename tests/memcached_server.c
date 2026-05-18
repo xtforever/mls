@@ -146,11 +146,11 @@ static void handle_client(int fd) {
         else if (strcmp(uri, "/get") == 0) handle_get(fd, &p);
         else if (strcmp(uri, "/stats") == 0) {
             char stats[256];
-            snprintf(stats, sizeof(stats), "Keys: %d, Mem: %zu\n", m_len(kv_store), current_memory);
+            snprintf(stats, sizeof(stats), "Keys: %zu, Mem: %zu\n", m_len(kv_store), current_memory);
             send_response(fd, 200, "OK", stats, strlen(stats));
         } else if (strcmp(uri, "/memory") == 0) {
             char mem[512];
-            snprintf(mem, sizeof(mem), "Cur:%zu, Peak:%zu, Lim:%zu, LRU:%d\n", 
+            snprintf(mem, sizeof(mem), "Cur:%zu, Peak:%zu, Lim:%zu, LRU:%zu\n", 
                      current_memory, peak_memory, (size_t)MAX_MEMORY, m_len(lru_list));
             send_response(fd, 200, "OK", mem, strlen(mem));
         } else send_response(fd, 404, "Not Found", "Err", 3);

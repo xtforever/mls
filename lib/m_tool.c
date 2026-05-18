@@ -15,6 +15,11 @@ static int vas_app (int m, va_list ap);
 static int field_escape (int s2, char *s, int quotes);
 static void repl_char (int buf, char ch);
 
+
+
+/* Relocated Core Utilities */
+
+
 /**
  * Executes a regular expression on a string and stores sub-matches in an m-array.
  *
@@ -1884,7 +1889,7 @@ int ring_create (int size)
 	int r = m_create (size + 1, sizeof (int));
 	lst_t lp = exported_get_list (r);
 	int *rd = lst_peek (lp, 0);
-	int *wr = &(lp)->l;
+	size_t *wr = &(lp)->l;
 	*rd = -1;
 	*wr = 1;
 	return r;
@@ -1913,7 +1918,7 @@ int ring_full (int r)
 {
 	lst_t lp = exported_get_list (r);
 	int *rd = lst_peek (lp, 0);
-	int *wr = &lp->l;
+	size_t *wr = &lp->l;
 	return (*rd == *wr);
 }
 
@@ -1928,7 +1933,7 @@ int ring_put (int r, int data)
 {
 	lst_t lp = exported_get_list (r);
 	int *rd = lst_peek (lp, 0);
-	int *wr = &lp->l;
+	size_t *wr = &lp->l;
 	int max = lp->max;
 	int *d = lst_peek (lp, *wr);
 	if (*rd == *wr)
@@ -1952,7 +1957,7 @@ int ring_get (int r)
 {
 	lst_t lp = exported_get_list (r);
 	int *rd = lst_peek (lp, 0);
-	int *wr = &lp->l;
+	size_t *wr = &lp->l;
 	int max = lp->max;
 	if (*rd < 0)
 		return -1;
@@ -1997,3 +2002,4 @@ void m_free_strings (int list, int CLEAR_ONLY)
 	else
 		m_free (list);
 }
+

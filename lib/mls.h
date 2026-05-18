@@ -58,7 +58,7 @@ typedef void mls_rwlock_t;
 #define WARN(n, a...) deb_warn (__LINE__, __FILE__, __FUNCTION__, n, ##a)
 #define TRACE(l, n, a...)                                                      \
 	do {                                                                   \
-		if ((l) >= trace_level && trace_level != 0)                    \
+		if (((l) & trace_level) != 0)                                  \
 			deb_trace (l, __LINE__, __FILE__, __FUNCTION__, n,     \
 				   ##a);                                       \
 	} while (0)
@@ -76,24 +76,25 @@ void deb_trace (int l, int line, const char *file, const char *function,
 extern int trace_level;
 
 typedef struct ls_st {
-	int w, l, max;
+	size_t w, l, max;
 	char uaf_protection;
 	uint8_t free_hdl;
 	mls_rwlock_t *lock;
 	char *data;
 } *lst_t;
 
-void *lst (lst_t l, int i) __attribute__ ((pure));
-void lst_create (lst_t l, int max, int w);
-int lst_new (lst_t LP, int n);
+void *lst (lst_t l, size_t i) __attribute__ ((pure));
+void lst_create (lst_t l, size_t max, size_t w);
+int lst_new (lst_t LP, size_t n);
 int lst_put (lst_t LP, const void *d);
 int lst_next (lst_t l, int *p, void *data);
-int lst_read (lst_t l, int p, void **data, int n);
-int lst_write (lst_t lp, int p, const void *data, int n);
-void *lst_peek (lst_t l, int i);
-void lst_del (lst_t l, int p);
-void *lst_ins (lst_t lp, int p, int n);
-void lst_resize (lst_t LP, int new_size);
+int lst_read (lst_t l, size_t p, void **data, size_t n);
+int lst_write (lst_t lp, size_t p, const void *data, size_t n);
+void *lst_peek (lst_t l, size_t i);
+void lst_del (lst_t l, size_t p);
+void lst_remove (lst_t lp, size_t p, size_t n);
+void *lst_ins (lst_t lp, size_t p, size_t n);
+void lst_resize (lst_t LP, size_t new_size);
 
 enum predefined_free_handler {
 	MFREE = 0,
@@ -112,7 +113,7 @@ typedef void (*free_fn_t) ( int m );
    the returned value is the handle id that you supply to m_alloc.
 */
 int m_reg_freefn ( free_fn_t free_fn );
-int m_alloc (int max, int w, uint8_t hfree);
+int m_alloc (size_t max, size_t w, uint8_t hfree);
 int m_free (int m);
 	
 int m_is_freed (int h);
@@ -124,33 +125,33 @@ int m_dub (int m);
 
 
 	
-int m_len (int m);
+size_t m_len (int m);
 void *m_buf (int m);
 
 #define CHARP(m) ((char *)m_buf (m))
 
-void *mls (int m, int i);
-int m_new (int m, int n);
+void *mls (int m, size_t i);
+int m_new (int m, size_t n);
 void *m_add (int m);
 int m_next (int m, int *p, void *d);
 int m_init ();
 void m_destruct ();
-int m_create (int max, int w);
-int m_set_data (int m, int len, int w, const void *data);
+int m_create (size_t max, size_t w);
+int m_set_data (int m, size_t len, size_t w, const void *data);
 int m_put (int m, const void *data);
-int m_setlen (int m, int len);
-int m_bufsize (int m);
-void *m_peek (int m, int i);
-int m_write (int m, int p, const void *data, int n);
-int m_read (int h, int p, void **data, int n);
+int m_setlen (int m, size_t len);
+size_t m_bufsize (int m);
+void *m_peek (int m, size_t i);
+int m_write (int m, size_t p, const void *data, size_t n);
+int m_read (int h, size_t p, void **data, size_t n);
 void m_clear (int m);
-void m_del (int m, int p);
+void m_del (int m, size_t p);
 void *m_pop (int m);
-int m_ins (int m, int p, int n);
-int m_width (int m);
-void m_resize (int m, int new_size);
+int m_ins (int m, size_t p, size_t n);
+size_t m_width (int m);
+void m_resize (int m, size_t new_size);
 int m_slice (int dest, int offs, int m, int a, int b);
-void m_remove (int m, int p, int n);
+void m_remove (int m, size_t p, size_t n);
 static inline char *m_str (int m)
 {
 	if (m_is_freed (m) || m_len (m) == 0)
@@ -165,14 +166,14 @@ static inline char *m_str (int m)
 
 int _m_init ();
 void _m_destruct ();
-int _m_create (int ln, const char *fn, const char *fun, int n, int w);
+int _m_create (int ln, const char *fn, const char *fun, size_t n, size_t w);
 int _m_free (int ln, const char *fn, const char *fun, int m);
-void *_mls (int ln, const char *fn, const char *fun, int h, int i);
+void *_mls (int ln, const char *fn, const char *fun, int h, size_t i);
 int _m_put (int ln, const char *fn, const char *fun, int h, const void *d);
 int _m_next (int ln, const char *fn, const char *fun, int h, int *i, void *d);
 void _m_clear (int ln, const char *fn, const char *fun, int h);
 void *_m_buf (int ln, const char *fn, const char *fun, int m);
-int _m_alloc (int ln, const char *fn, const char *fun, int n, int w,
+int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w,
 	      uint8_t hfree);
 	int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s );
 	int _m_wrapints(int ln, const char *fn, const char *fun, int *list, int nelem );

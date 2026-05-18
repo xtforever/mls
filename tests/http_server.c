@@ -105,8 +105,8 @@ void handle_client (int client_fd)
 
 			printf ("Request: %s %s %s\n", method, uri,
 				m_str (p.version));
-			printf ("  Headers: %d, Body: %d bytes\n",
-				p.header_count, m_len (p.body));
+			printf ("  Headers: %zu, Body: %zu bytes\n",
+							(size_t)p.header_count, m_len (p.body));
 
 			if (strcmp (method, "GET") == 0) {
 				if (strcmp (uri, "/") == 0 ||

@@ -6,6 +6,8 @@
 
 typedef void (*flask_handler_t) (int req, int res);
 
+#define TRACE_FLASK (1 << 3)
+
 /**
  * @brief Initialize the flask application.
  */

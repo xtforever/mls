@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* Debug globals */
 int trace_level = 0;
@@ -214,7 +215,7 @@ int print_stacksize ()
  * @param i The index of the element.
  * @return A pointer to the element data.
  */
-void *lst (lst_t l, int i) {
+void *lst (lst_t l, size_t i) {
 	if(!l->data) ERR("Not init.");
 	return &l->data[l->w * i];
 }
@@ -399,20 +400,25 @@ void exit_error ()
  * @param lp Pointer to the list structure pointer.
  * @param new_size The new maximum number of elements.
  */
-void lst_resize (lst_t lp, int new_size)
+void lst_resize (lst_t lp, size_t new_size)
 {
 	if( lp->free_hdl & MFREE_NOALLOC ) {
 		ERR("List is marked as NOALLOC, unable to resize");		
 	}
-	int w = (*lp).w;
-	int newSize = new_size * w;
-	int oldSize = (*lp).max * w;
-	int diff = newSize - oldSize;
-	(*lp).data = realloc ( (*lp).data, newSize );
-	if (! lp->data )
+	size_t w = lp->w;
+	size_t newSize = new_size * w;
+	size_t oldSize = lp->max * w;
+	
+	if (new_size > 0 && newSize / new_size != w) {
+		ERR("Integer overflow in resize");
+	}
+
+	char *newData = realloc ( lp->data, newSize );
+	if (! newData )
 		ERR ("Out of Memory");
-	if ( diff > 0 ) {
-		memset ( lp->data + oldSize, 0, diff);
+	lp->data = newData;
+	if ( newSize > oldSize ) {
+		memset ( lp->data + oldSize, 0, newSize - oldSize);
 	}
 	lp->max = new_size;
 }
@@ -424,15 +430,20 @@ void lst_resize (lst_t lp, int new_size)
  * @param w The width of each element in bytes.
  * @return The newly created list structure.
  */
-void lst_create (lst_t l, int max, int w)
+void lst_create (lst_t l, size_t max, size_t w)
 {
+	if( max == 0 ) max = 1;
+	if( w == 0 )     w = 1;
+	
+	size_t alloc_size = max * w;
+	if (max > 0 && alloc_size / max != w) {
+		ERR("Integer overflow in allocation");
+	}
 
-	if( max <= 0 ) max = 1;
-	if( w <= 0 )     w = 1;
 	l->max = max;
 	l->l = 0;
 	l->w = w;
-	l->data = calloc(max,w);
+	l->data = calloc(max, w);
 	if (!l->data)
 		ERR ("Out of Memory");
 }
@@ -445,17 +456,17 @@ void lst_create (lst_t l, int max, int w)
  * @param n The number of elements to reserve.
  * @return The index of the first newly reserved element.
  */
-int lst_new (lst_t lp, int n)
+int lst_new (lst_t lp, size_t n)
 {
-	int p = (*lp).l;
-	int max = (*lp).max;
+	size_t p = lp->l;
+	size_t max = lp->max;
 	if (p + n > max) {
-		int newsiz = max + n;
+		size_t newsiz = max + n;
 		newsiz = increase_by_percent (newsiz, 50);
 		lst_resize (lp, newsiz);
 	}
-	(*lp).l += n;
-	return p;
+	lp->l += n;
+	return (int)p;
 }
 
 /**
@@ -482,10 +493,10 @@ int lst_put (lst_t lp, const void *d)
  * @param i The index of the element.
  * @return A pointer to the element data
  */
-void *lst_peek (lst_t l, int i)
+void *lst_peek (lst_t l, size_t i)
 {
-	if (i >= l->max || i < 0)
-		ERR("index out of bound max=%d index=%d", l->max, i );
+	if (i >= l->max)
+		ERR("index out of bound max=%zu index=%zu", l->max, i );
 	return lst (l, i);
 }
 
@@ -495,12 +506,12 @@ void *lst_peek (lst_t l, int i)
  * @param l The list structure.
  * @param p The index of the element to delete.
  */
-void lst_del (lst_t l, int p)
+void lst_del (lst_t l, size_t p)
 {
-	if (p < 0 || p >= l->l)
-		ERR ("Wrong Arg p=%d", p);
-	int w = l->w;
-	int n = l->l - p - 1;
+	if (p >= l->l)
+		ERR ("Wrong Arg p=%zu", p);
+	size_t w = l->w;
+	size_t n = l->l - p - 1;
 	if (n > 0)
 		memmove (lst (l, p), lst (l, p + 1), n * w);
 	l->l--;
@@ -513,15 +524,15 @@ void lst_del (lst_t l, int p)
  * @param p The starting index.
  * @param n The number of elements to remove.
  */
-void lst_remove (lst_t lp, int p, int n)
+void lst_remove (lst_t lp, size_t p, size_t n)
 {
-	if (p < 0 || n < 0 || p + n > (*lp).l)
-		ERR ("Wrong Arg p=%d n=%d", p, n);
-	int w = (*lp).w;
-	int move_n = (*lp).l - (p + n);
+	if (p + n > lp->l)
+		ERR ("Wrong Arg p=%zu n=%zu", p, n);
+	size_t w = lp->w;
+	size_t move_n = lp->l - (p + n);
 	if (move_n > 0)
 		memmove (lst (lp, p), lst (lp, p + n), move_n * w);
-	(*lp).l -= n;
+	lp->l -= n;
 }
 
 /**
@@ -532,16 +543,16 @@ void lst_remove (lst_t lp, int p, int n)
  * @param n The number of elements to insert.
  * @return A pointer to the first newly inserted element.
  */
-void *lst_ins (lst_t lp, int p, int n)
+void *lst_ins (lst_t lp, size_t p, size_t n)
 {
-	int cnt;
-	if (p < 0 || p > (*lp).l)
+	size_t cnt;
+	if (p > lp->l)
 		return 0;
-	cnt = (*lp).l - p;
+	cnt = lp->l - p;
 	lst_new (lp, n);
 	if (cnt > 0)
-		memmove (lst (lp, p + n), lst (lp, p), cnt * (*lp).w);
-	memset (lst (lp, p), 0, n * (*lp).w);
+		memmove (lst (lp, p + n), lst (lp, p), cnt * lp->w);
+	memset (lst (lp, p), 0, n * lp->w);
 	return lst (lp, p);
 }
 
@@ -562,7 +573,7 @@ int lst_next (lst_t l, int *p, void *data)
 		ERR ("Wrong Arg p=%d", *p);
 		return 0;
 	}
-	if (*p == (int)l->l)
+	if ((size_t)*p >= l->l)
 		return 0;
 	if (data)
 		*(void **)data = lst (l, *p);
@@ -578,12 +589,15 @@ int lst_next (lst_t l, int *p, void *data)
  * @param n The number of elements to read.
  * @return 0 on success.
  */
-int lst_read (lst_t l, int p, void **data, int n)
+int lst_read (lst_t l, size_t p, void **data, size_t n)
 {
-	if (p < 0 || n < 0 || data == NULL)
+	if (p + n > l->l || data == NULL)
 		ERR ("Wrong arguments");
-	if (*data == 0)
-		*data = malloc (l->w * n);
+	if (*data == 0) {
+		size_t alloc_size = l->w * n;
+		if (n > 0 && alloc_size / n != l->w) ERR("Overflow");
+		*data = malloc (alloc_size);
+	}
 	if (!*data)
 		ERR ("Out of Memory");
 	memcpy (*data, lst (l, p), n * l->w);
@@ -599,15 +613,15 @@ int lst_read (lst_t l, int p, void **data, int n)
  * @param n The number of elements to write.
  * @return 0 on success.
  */
-int lst_write (lst_t lp, int p, const void *data, int n)
+int lst_write (lst_t lp, size_t p, const void *data, size_t n)
 {
-	if (p < 0 || n < 0 || data == NULL)
+	if (data == NULL)
 		ERR ("Wrong arguments");
-	if (p + n > (*lp).max)
+	if (p + n > lp->max)
 		lst_resize (lp, p + n);
-	if (p + n > (*lp).l)
-		(*lp).l = p + n;
-	memcpy (lst (lp, p), data, n * (*lp).w);
+	if (p + n > lp->l)
+		lp->l = p + n;
+	memcpy (lst (lp, p), data, n * lp->w);
 	return 0;
 }
 
@@ -705,7 +719,7 @@ mscmpc(const void *a, const void *b)
 
 
 
-static int new_list(const char *buf, int len, int max, int w, int hdl )
+static int new_list(const char *buf, size_t len, size_t max, size_t w, int hdl )
 {
 	MLS_MASTER_LOCK ();
 	int h=get_free_hdl();
@@ -830,6 +844,10 @@ int m_init ()
 		MLS_MASTER_UNLOCK ();
 		return 0;
 	}
+	
+	srand((unsigned int)time(NULL));
+	UAF_PROTECTION = rand() & 0x7f;
+
 	lst_create (&ML, 100, sizeof (struct ls_st));
 	lst_t lp = lst(&ML,lst_new (&ML, 1));
 	lst_create (lp, 100, sizeof (int));
@@ -917,18 +935,20 @@ static int get_free_hdl(void)
  * @param hfree The ID of the registered free handler to use.
  * @return A new 1-based MLS handle with UAF protection pattern.
  */
-int m_alloc (int max, int w, uint8_t hfree)
+int m_alloc (size_t max, size_t w, uint8_t hfree)
 {
 	char *data;
-	if( max <= 0 ) max = 1;
-	if( w <= 0 )     w = 1;
+	if( max == 0 ) max = 1;
+	if( w == 0 )     w = 1;
 	int hdl =  hfree & MFREE_MASK;
-	if( hdl && hdl >= m_len(FH) ) {
+	if( hdl && (size_t)hdl >= m_len(FH) ) {
 		ERR("no such handler: %d", hfree );
 	}
 	if( hfree & MFREE_NOALLOC )  {
 		data  = "";
 	} else {
+		size_t alloc_size = max * w;
+		if (max > 0 && alloc_size / max != w) ERR("Overflow");
 		data = calloc(max,w);
 		if (!data)
 			ERR ("Out of Memory");
@@ -936,7 +956,7 @@ int m_alloc (int max, int w, uint8_t hfree)
 	return new_list(data,0,max,w, hfree );
 }
 
-int m_set_data(int m, int len, int w, const void *data)
+int m_set_data(int m, size_t len, size_t w, const void *data)
 {
 	if( m <= 0 ) {
 		return  new_list(data,len,len, w,  MFREE_NOALLOC  );
@@ -946,7 +966,7 @@ int m_set_data(int m, int len, int w, const void *data)
 		ERR("List %d is not marked MFREE_NOALLOC", m );
 	}
 	lp->l = len; lp->max=len; lp->w = w;
-	lp->data = (void*)data;
+	lp->data = (char*)data;
 	unlock_handle (lp);
 	return m;
 }
@@ -959,7 +979,7 @@ int m_set_data(int m, int len, int w, const void *data)
  * @param w Width of each element.
  * @return A new handle.
  */
-int m_create (int max, int w) { return m_alloc (max, w, MFREE); }
+int m_create (size_t max, size_t w) { return m_alloc (max, w, MFREE); }
 
 /**
  * Frees an MLS handle and its associated list data.
@@ -1012,6 +1032,9 @@ retry:
 	
 simple_free:
 	if(! (freehdl & MFREE_NOALLOC) ) {
+		if (lp->data && lp->max > 0) {
+			memset(lp->data, 0, lp->max * lp->w);
+		}
 		free(lp->data);
 	}
 	lp->data=0;
@@ -1115,15 +1138,19 @@ int m_dub (int m)
 		return 0;
 
 	lst_t src = lock_handle (m, 0);
-	int len = src->l;
-	int width = src->w;
+	size_t len = src->l;
+	size_t width = src->w;
 	int free_hdl = src->free_hdl;
-	int max = len > 0 ? len : 1;
-	char *data = calloc ((size_t)max, (size_t)width);
+	size_t max = len > 0 ? len : 1;
+	
+	size_t alloc_size = max * width;
+	if (max > 0 && alloc_size / max != width) ERR("Overflow");
+
+	char *data = calloc (max, width);
 	if (!data)
 		ERR ("Out of Memory");
 	if (len > 0)
-		memcpy (data, src->data, (size_t)len * (size_t)width);
+		memcpy (data, src->data, len * width);
 	unlock_handle (src);
 
 	free_hdl &= ~MFREE_NOALLOC;
@@ -1143,12 +1170,12 @@ int m_dub (int m)
  * @param m The handle.
  * @return The number of elements.
  */
-int m_len (int m)
+size_t m_len (int m)
 {
 	if (m <= 0)
 		return 0;
 	lst_t lp = lock_handle (m, 0);
-	int len = (*lp).l;
+	size_t len = lp->l;
 	unlock_handle (lp);
 	return len;
 }
@@ -1173,14 +1200,14 @@ void *m_buf (int m)
  * @param i The index.
  * @return A pointer to the element.
  */
-void *mls (int m, int i)
+void *mls (int m, size_t i)
 {
 	if (m <= 0)
 		return NULL;
 	lst_t lp = lock_handle (m, 0);
 	if( i >= lp->l ) {
-		ERR ("Index %d out of bounds for handle %d (len %d)", i, m,
-		     (*lp).l);
+		ERR ("Index %zu out of bounds for handle %d (len %zu)", i, m,
+		     lp->l);
 	}
 	void *ret = lst (lp, i);
 	unlock_handle (lp);
@@ -1194,7 +1221,7 @@ void *mls (int m, int i)
  * @param n The number of elements to reserve.
  * @return The index of the first newly reserved element.
  */
-int m_new (int m, int n)
+int m_new (int m, size_t n)
 {
 	if (m <= 0)
 		return -1;
@@ -1263,16 +1290,14 @@ int m_put (int m, const void *data)
  * @param len The new length.
  * @return 0 on success.
  */
-int m_setlen (int m, int len)
+int m_setlen (int m, size_t len)
 {
 	if (m <= 0)
 		return -1;
-	if (len < 0)
-		ERR ("Wrong Arg len=%d", len);
 	lst_t lp = lock_handle (m, 1);
-	if (len > (*lp).max)
+	if (len > lp->max)
 		lst_resize (lp, len);
-	(*lp).l = len;
+	lp->l = len;
 	unlock_handle (lp);
 	return 0;
 }
@@ -1283,12 +1308,12 @@ int m_setlen (int m, int len)
  * @param m The handle.
  * @return The maximum number of elements before a realloc is needed.
  */
-int m_bufsize (int m)
+size_t m_bufsize (int m)
 {
 	if (m <= 0)
 		return 0;
 	lst_t lp = lock_handle (m, 0);
-	int max = (*lp).max;
+	size_t max = lp->max;
 	unlock_handle (lp);
 	return max;
 }
@@ -1300,7 +1325,7 @@ int m_bufsize (int m)
  * @param i The index.
  * @return A pointer to the element, or NULL if index is out of bounds.
  */
-void *m_peek (int m, int i)
+void *m_peek (int m, size_t i)
 {
 	if (m <= 0)
 		return NULL;
@@ -1320,11 +1345,15 @@ void *m_peek (int m, int i)
  * @param n The number of elements to write.
  * @return 0 on success.
  */
-int m_write (int m, int p, const void *data, int n)
+int m_write (int m, size_t p, const void *data, size_t n)
 {
 	if (m <= 0)
 		return -1;
 	lst_t lp = lock_handle (m, 1);
+	
+	// Overflow check for p + n
+	if (p + n < p) ERR("Overflow in write index");
+
 	int ret = lst_write (lp, p, data, n);
 	unlock_handle (lp);
 	return ret;
@@ -1339,11 +1368,15 @@ int m_write (int m, int p, const void *data, int n)
  * @param n The number of elements to read.
  * @return 0 on success.
  */
-int m_read (int h, int p, void **data, int n)
+int m_read (int h, size_t p, void **data, size_t n)
 {
 	if (h <= 0)
 		return -1;
 	lst_t lp = lock_handle (h, 0);
+	
+	// Overflow check for p + n
+	if (p + n < p) ERR("Overflow in read index");
+
 	int ret = lst_read (lp, p, data, n);
 	unlock_handle (lp);
 	return ret;
@@ -1370,7 +1403,7 @@ void m_clear (int m)
  * @param m The handle.
  * @param p The index of the element to delete.
  */
-void m_del (int m, int p)
+void m_del (int m, size_t p)
 {
 	if (m <= 0)
 		return;
@@ -1390,12 +1423,12 @@ void *m_pop (int m)
 	if (m <= 0)
 		return NULL;
 	lst_t lp = lock_handle (m, 1);
-	if ((*lp).l == 0) {
+	if (lp->l == 0) {
 		unlock_handle (lp);
 		return NULL;
 	}
-	(*lp).l--;
-	void *ret = lst (lp, (*lp).l);
+	lp->l--;
+	void *ret = lst (lp, lp->l);
 	unlock_handle (lp);
 	return ret;
 }
@@ -1408,7 +1441,7 @@ void *m_pop (int m)
  * @param n The number of elements to insert.
  * @return 1 on success, 0 on failure.
  */
-int m_ins (int m, int p, int n)
+int m_ins (int m, size_t p, size_t n)
 {
 	if (m <= 0)
 		return 0;
@@ -1424,12 +1457,12 @@ int m_ins (int m, int p, int n)
  * @param m The handle.
  * @return The element width.
  */
-int m_width (int m)
+size_t m_width (int m)
 {
 	if (m <= 0)
 		return 0;
 	lst_t lp = lock_handle (m, 0);
-	int width = (*lp).w;
+	size_t width = lp->w;
 	unlock_handle (lp);
 	return width;
 }
@@ -1440,7 +1473,7 @@ int m_width (int m)
  * @param m The handle.
  * @param new_size The new maximum number of elements.
  */
-void m_resize (int m, int new_size)
+void m_resize (int m, size_t new_size)
 {
 	if (m <= 0)
 		return;
@@ -1470,25 +1503,23 @@ void m_resize (int m, int new_size)
  */
 int m_slice (int dest, int offs, int m, int a, int b)
 {
-	int cnt = 0;
-	int len = 0;
-	int width = 1;
+	size_t cnt = 0;
+	size_t len = 0;
+	size_t width = 1;
 	if (m) {
 
 		len = m_len (m);
 		if (b < 0)
-			b += len;
+			b += (int)len;
 		if (a < 0)
-			a += len;
-		if (b >= len)
-			b = len - 1;
-		if (a >= len)
-			a = len - 1;
+			a += (int)len;
+		if (b >= (int)len)
+			b = (int)len - 1;
+		if (a >= (int)len)
+			a = (int)len - 1;
 		if (a < 0)
 			a = 0;
-		cnt = b - a + 1;
-		if (cnt < 0)
-			cnt = 0;
+		cnt = (b >= a) ? (size_t)(b - a + 1) : 0;
 		width = m_width (m); 
 	}
 	if (dest <= 0) {
@@ -1500,7 +1531,7 @@ int m_slice (int dest, int offs, int m, int a, int b)
 	}
 	m_setlen (dest, offs);
 	if ( m && cnt > 0) {
-		m_write (dest, offs, mls (m, a), cnt);
+		m_write (dest, offs, mls (m, (size_t)a), cnt);
 	}
 	return dest;
 }
@@ -1513,8 +1544,10 @@ int m_slice (int dest, int offs, int m, int a, int b)
  * @param p The starting index.
  * @param n The number of elements to remove.
  */
-void m_remove (int m, int p, int n)
+void m_remove (int m, size_t p, size_t n)
 {
+	if (m <= 0)
+		return;
 	lst_t lp = lock_handle (m, 1);
 	lst_remove (lp, p, n);
 	unlock_handle (lp);
@@ -2043,7 +2076,7 @@ static void _debug_create_list( int m_uaf, const char *dfunc, int ln, const char
  * @param w Element width.
  * @return The new handle.
  */
-int _m_alloc (int ln, const char *fn, const char *fun, int n, int w, uint8_t hfree)
+int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w, uint8_t hfree)
 {
 	int m_uaf = m_alloc (n, w, hfree);
 	_debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
@@ -2072,7 +2105,7 @@ int _m_free (int ln, const char *fn, const char *fun, int m)
 	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, m, 0, 0);
 	m_free (m);
 
-	if( h >= m_len(DEB) ) {
+	if( (size_t)h >= m_len(DEB) ) {
 		WARN("h=%d not in debug list", h );
 		return 0;
 	}
@@ -2096,9 +2129,9 @@ int _m_free (int ln, const char *fn, const char *fun, int m)
  * @param i The index.
  * @return A pointer to the element.
  */
-void *_mls (int ln, const char *fn, const char *fun, int h, int i)
+void *_mls (int ln, const char *fn, const char *fun, int h, size_t i)
 {
-	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, i, 0);
+	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, (int)i, 0);
 	return mls (h, i);
 }
 
@@ -2182,7 +2215,7 @@ void *_m_buf (int ln, const char *fn, const char *fun, int m)
  * @param hfree The free handler ID.
  * @return The new handle.
  */
-int _m_create (int ln, const char *fn, const char *fun, int n, int w )
+int _m_create (int ln, const char *fn, const char *fun, size_t n, size_t w )
 {
 	return _m_alloc (ln, fn, fun, n, w, MFREE );
 }

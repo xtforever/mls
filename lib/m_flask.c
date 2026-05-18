@@ -5,8 +5,10 @@
 #include "m_tool.h"
 #include "m_extra.h"
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <stdarg.h>
+#include <string.h>
 #include <sys/socket.h>
 
 typedef struct {
@@ -180,19 +182,29 @@ void flask_run (const char *hdf_path)
 		return;
 	int port = hdf_get_int (server_node, "port", 8080),
 	    s_fd = socket (AF_INET, SOCK_STREAM, 0);
+	if (s_fd < 0) {
+		WARN ("socket: %s", strerror (errno));
+		return;
+	}
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = inet_addr (
 			hdf_get_property (server_node, "host") ?: "0.0.0.0"),
 		.sin_port = htons (port)};
 	setsockopt (s_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof (int));
-	bind (s_fd, (struct sockaddr *)&addr, sizeof (addr));
+	if (bind (s_fd, (struct sockaddr *)&addr, sizeof (addr)) < 0) {
+		WARN ("bind: %s", strerror (errno));
+		close (s_fd);
+		return;
+	}
 	listen (s_fd, 10);
-	printf ("Flask running on %d\n", port);
+	TRACE (TRACE_FLASK, "Flask running on %d", port);
 	while (1) {
 		int c_fd = accept (s_fd, NULL, NULL);
 		if (c_fd >= 0)
 			flask_process_client (c_fd);
+		else if (errno != EINTR)
+			WARN ("accept: %s", strerror (errno));
 	}
 }
 

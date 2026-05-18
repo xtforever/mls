@@ -62,19 +62,19 @@ void test_get (const char *uri)
 	http_parser_t p;
 	http_parser_init_response (&p);
 
-	printf ("Raw response (%d bytes):\n%.*s\n", m_len (resp_data_h),
-		m_len (resp_data_h), (char *)m_buf (resp_data_h));
+	printf ("Raw response (%zu bytes):\n%.*s\n", m_len (resp_data_h),
+		(int)m_len (resp_data_h), (char *)m_buf (resp_data_h));
 
 	int res = http_parse (&p, resp_data_h);
 	if (res == 0 && p.state == HTTP_STATE_DONE) {
 		printf ("\nParsed response:\n");
 		printf ("  Version: %s\n", m_str (p.version));
 		printf ("  Status: %d\n", p.status_code);
-		printf ("  Headers: %d\n", p.header_count);
-		printf ("  Body: %d bytes\n", m_len (p.body));
+		printf ("  Headers: %zu\n", (size_t)p.header_count);
+		printf ("  Body: %zu bytes\n", m_len (p.body));
 
 		if (m_len (p.body) > 0) {
-			printf ("  Body content: %.*s\n", m_len (p.body),
+			printf ("  Body content: %.*s\n", (int)m_len (p.body),
 				(char *)m_buf (p.body));
 		}
 
@@ -141,14 +141,14 @@ void test_post (const char *uri, const char *body)
 	http_parser_t p;
 	http_parser_init_response (&p);
 
-	printf ("Raw response (%d bytes):\n%.*s\n", m_len (resp_data_h),
-		m_len (resp_data_h), (char *)m_buf (resp_data_h));
+	printf ("Raw response (%zu bytes):\n%.*s\n", m_len (resp_data_h),
+		(int)m_len (resp_data_h), (char *)m_buf (resp_data_h));
 
 	int res = http_parse (&p, resp_data_h);
 	if (res == 0 && p.state == HTTP_STATE_DONE) {
 		printf ("\nParsed response:\n");
 		printf ("  Status: %d\n", p.status_code);
-		printf ("  Body: %.*s\n", m_len (p.body),
+		printf ("  Body: %.*s\n", (int)m_len (p.body),
 			(char *)m_buf (p.body));
 	}
 
