@@ -39,5 +39,9 @@ endif
 %.exe: %.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-%.exed: %.od $(DEPS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(DEPS)
+%.exed: %.od 
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+
+
+
