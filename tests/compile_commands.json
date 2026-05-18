@@ -1,0 +1,717 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:30 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_mls_core.od",
+      "test_mls_core.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_mls_core.c",
+    "output": "/home/jens/git/mls/tests/test_mls_core.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:30 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/mls.od",
+      "../lib/mls.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/mls.c",
+    "output": "/home/jens/git/mls/lib/mls.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:30 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_tool.od",
+      "../lib/m_tool.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_tool.c",
+    "output": "/home/jens/git/mls/lib/m_tool.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:30 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_table.od",
+      "../lib/m_table.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_table.c",
+    "output": "/home/jens/git/mls/lib/m_table.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:30 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_http.od",
+      "../lib/m_http.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_http.c",
+    "output": "/home/jens/git/mls/lib/m_http.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:30 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_hdf.od",
+      "../lib/m_hdf.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_hdf.c",
+    "output": "/home/jens/git/mls/lib/m_hdf.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:31 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_http_server.od",
+      "../lib/m_http_server.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_http_server.c",
+    "output": "/home/jens/git/mls/lib/m_http_server.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:31 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_flask.od",
+      "../lib/m_flask.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_flask.c",
+    "output": "/home/jens/git/mls/lib/m_flask.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:31 CEST 2026\"",
+      "-c",
+      "-o",
+      "../lib/m_extra.od",
+      "../lib/m_extra.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_extra.c",
+    "output": "/home/jens/git/mls/lib/m_extra.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:31 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_autofree.od",
+      "test_autofree.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_autofree.c",
+    "output": "/home/jens/git/mls/tests/test_autofree.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:31 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_ssplit.od",
+      "test_ssplit.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_ssplit.c",
+    "output": "/home/jens/git/mls/tests/test_ssplit.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:31 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_nested_lists.od",
+      "test_nested_lists.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_nested_lists.c",
+    "output": "/home/jens/git/mls/tests/test_nested_lists.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:32 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_circular_marker.od",
+      "test_circular_marker.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_circular_marker.c",
+    "output": "/home/jens/git/mls/tests/test_circular_marker.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:32 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_slice.od",
+      "test_slice.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_slice.c",
+    "output": "/home/jens/git/mls/tests/test_slice.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:32 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_table.od",
+      "test_table.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_table.c",
+    "output": "/home/jens/git/mls/tests/test_table.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:32 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_table_advanced.od",
+      "test_table_advanced.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_table_advanced.c",
+    "output": "/home/jens/git/mls/tests/test_table_advanced.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:32 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_memory_advanced.od",
+      "test_memory_advanced.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_memory_advanced.c",
+    "output": "/home/jens/git/mls/tests/test_memory_advanced.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:33 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_http.od",
+      "test_http.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_http.c",
+    "output": "/home/jens/git/mls/tests/test_http.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:33 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_http_improved.od",
+      "test_http_improved.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_http_improved.c",
+    "output": "/home/jens/git/mls/tests/test_http_improved.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:33 CEST 2026\"",
+      "-c",
+      "-o",
+      "http_server.od",
+      "http_server.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/http_server.c",
+    "output": "/home/jens/git/mls/tests/http_server.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:33 CEST 2026\"",
+      "-c",
+      "-o",
+      "http_client.od",
+      "http_client.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/http_client.c",
+    "output": "/home/jens/git/mls/tests/http_client.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:33 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_hdf.od",
+      "test_hdf.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_hdf.c",
+    "output": "/home/jens/git/mls/tests/test_hdf.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:34 CEST 2026\"",
+      "-c",
+      "-o",
+      "hdf_http_server.od",
+      "hdf_http_server.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/hdf_http_server.c",
+    "output": "/home/jens/git/mls/tests/hdf_http_server.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:34 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_flask.od",
+      "test_flask.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_flask.c",
+    "output": "/home/jens/git/mls/tests/test_flask.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:34 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_flask_advanced.od",
+      "test_flask_advanced.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_flask_advanced.c",
+    "output": "/home/jens/git/mls/tests/test_flask_advanced.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:34 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_extra.od",
+      "test_extra.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_extra.c",
+    "output": "/home/jens/git/mls/tests/test_extra.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:35 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_se_string.od",
+      "test_se_string.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_se_string.c",
+    "output": "/home/jens/git/mls/tests/test_se_string.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:35 CEST 2026\"",
+      "-c",
+      "-o",
+      "memcached_server.od",
+      "memcached_server.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/memcached_server.c",
+    "output": "/home/jens/git/mls/tests/memcached_server.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:35 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_string_robustness.od",
+      "test_string_robustness.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_string_robustness.c",
+    "output": "/home/jens/git/mls/tests/test_string_robustness.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:35 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_table_pointers.od",
+      "test_table_pointers.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_table_pointers.c",
+    "output": "/home/jens/git/mls/tests/test_table_pointers.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-DMLS_DEBUG",
+      "-fstack-protector-all",
+      "-fsanitize=address",
+      "-D_GNU_SOURCE",
+      "-I../lib",
+      "-I../redis-mls/deps/jemalloc/include",
+      "-DCOMP_TAG=\"DEBUG_Do 30. Apr 11:22:36 CEST 2026\"",
+      "-c",
+      "-o",
+      "test_splice.od",
+      "test_splice.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/test_splice.c",
+    "output": "/home/jens/git/mls/tests/test_splice.od"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-DMLS_DEBUG",
+      "-I",
+      "../lib",
+      "-o",
+      "error-handler",
+      "error-handler.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/tests/error-handler.c",
+    "output": "/home/jens/git/mls/tests/error-handler"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-DMLS_DEBUG",
+      "-I",
+      "../lib",
+      "-o",
+      "error-handler",
+      "../lib/mls.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/mls.c",
+    "output": "/home/jens/git/mls/tests/error-handler"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-DMLS_DEBUG",
+      "-I",
+      "../lib",
+      "-o",
+      "error-handler",
+      "../lib/m_tool.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_tool.c",
+    "output": "/home/jens/git/mls/tests/error-handler"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-DMLS_DEBUG",
+      "-I",
+      "../lib",
+      "-o",
+      "error-handler",
+      "../lib/m_table.c"
+    ],
+    "directory": "/home/jens/git/mls/tests",
+    "file": "/home/jens/git/mls/lib/m_table.c",
+    "output": "/home/jens/git/mls/tests/error-handler"
+  }
+]
