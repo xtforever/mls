@@ -18,10 +18,9 @@ CFLAGS+=$(DEBUGFLAGS)
 OBJ=d
 endif
 
-JEMALLOC_DIR=../redis-mls/deps/jemalloc
-CFLAGS+=-D_GNU_SOURCE -I../lib -I$(JEMALLOC_DIR)/include -DCOMP_TAG=$(TAG)
-LDFLAGS+=-L$(JEMALLOC_DIR)/lib
-LDLIBS+=-ljemalloc -ldl -lm
+
+CFLAGS+=-D_GNU_SOURCE -I../lib -DCOMP_TAG=$(TAG)
+LDLIBS+=-ldl -lm
 
 ifeq ($(thread_safe),1)
 CFLAGS+=-DMLS_THREAD_SAFE
@@ -41,4 +40,4 @@ endif
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 %.exed: %.od $(DEPS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(DEPS)
