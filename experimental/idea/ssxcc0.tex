@@ -1,0 +1,1310 @@
+\input cwebmac
+\datethis
+
+\N{1}{1}Intro. This program is an ``{\mc XCC} solver'' that I'm writing
+as an experiment in the use of so-called sparse-set data structures
+instead of the dancing links structures that I've played with for thirty years.
+I plan to write it as if I live on a planet where the sparse-set
+ideas are well known, but doubly linked links are almost unheard-of.
+As I begin, I know that the similar program {\mc SSXC1} works fine.
+
+I shall accept the {\mc DLX} input format used in the previous solvers,
+without change, so that a fair comparison can be made.
+(See the program {\mc DLX2} for definitions. Much of the code from
+that program is used to parse the input for this one.)
+
+My original attempt, {\mc SSXC0}, kept the basic structure of {\mc DLX1}
+and changed only the data structure link conventions. The present
+version incorporates new ideas from Christine Solnon's
+program {\mc XCC-WITH-DANCING-CELLS}, which she wrote in October 2020.
+In particular, she proposed saving all the active set sizes on a stack;
+program {\mc SSXC0} recomputed them by undoing the forward calculations
+in reverse. She also showed how to unify ``purification'' with ``covering.''
+
+\fi
+
+\M{2}After this program finds all solutions, it normally prints their total
+number on \PB{\\{stderr}}, together with statistics about how many
+nodes were in the search tree, and how many ``updates'' were made.
+The running time in ``mems'' is also reported, together with the approximate
+number of bytes needed for data storage.
+(An ``update'' is the removal of an option from its item list,
+or the removal of a satisfied color constraint from its option.
+One ``mem'' essentially means a memory access to a 64-bit word.
+The reported totals don't include the time or space needed to parse the
+input or to format the output.)
+
+Here is the overall structure:
+
+\Y\B\4\D\|o\5
+$\\{mems}\PP{}$\C{ count one mem }\par
+\B\4\D\\{oo}\5
+$\\{mems}\MRL{+{\K}}{}$\T{2}\C{ count two mems }\par
+\B\4\D\\{ooo}\5
+$\\{mems}\MRL{+{\K}}{}$\T{3}\C{ count three mems }\par
+\B\4\D\|O\5
+\.{"\%"}\C{ used for percent signs in format strings }\par
+\B\4\D\\{mod}\5
+$\MOD{}$\C{ used for percent signs denoting remainder in \CEE/ }\par
+\B\4\D\\{max\_level}\5
+\T{5000}\C{ at most this many options in a solution }\par
+\B\4\D\\{max\_cols}\5
+\T{100000}\C{ at most this many items }\par
+\B\4\D\\{max\_nodes}\5
+\T{10000000}\C{ at most this many nonzero elements in the matrix }\par
+\B\4\D\\{savesize}\5
+\T{10000000}\C{ at most this many entries on \PB{\\{savestack}} }\par
+\B\4\D\\{bufsize}\5
+$(\T{9}*\\{max\_cols}+\T{3}{}$)\C{ a buffer big enough to hold all item names }%
+\par
+\Y\B\8\#\&{include} \.{<stdio.h>}\6
+\8\#\&{include} \.{<stdlib.h>}\6
+\8\#\&{include} \.{<string.h>}\6
+\8\#\&{include} \.{<ctype.h>}\6
+\8\#\&{include} \.{"gb\_flip.h"}\6
+\&{typedef} \&{unsigned} \&{int} \&{uint};\C{ a convenient abbreviation }\6
+\&{typedef} \&{unsigned} \&{long} \&{long} \&{ullng};\C{ ditto }\7
+\X7:Type definitions\X;\6
+\X3:Global variables\X;\6
+\X10:Subroutines\X;\7
+\1\1\\{main}(\&{int} \\{argc}${},\39{}$\&{char} ${}{*}\\{argv}[\,])\2\2{}$\6
+${}\{{}$\1\6
+\&{register} \&{int} \|c${},{}$ \\{cc}${},{}$ \|i${},{}$ \|j${},{}$ \|k${},{}$ %
+\|p${},{}$ \\{pp}${},{}$ \|q${},{}$ \|r${},{}$ \|s${},{}$ \|t${},{}$ \\{cur%
+\_choice}${},{}$ \\{cur\_node}${},{}$ \\{best\_itm};\7
+\X4:Process the command line\X;\6
+\X14:Input the item names\X;\6
+\X16:Input the options\X;\6
+\&{if} ${}(\\{vbose}\AND\\{show\_basics}){}$\1\5
+\X23:Report the successful completion of the input phase\X;\2\6
+\&{if} ${}(\\{vbose}\AND\\{show\_tots}){}$\1\5
+\X24:Report the item totals\X;\2\6
+${}\\{imems}\K\\{mems},\39\\{mems}\K\T{0};{}$\6
+\&{if} (\\{baditem})\1\5
+\X22:Report an uncoverable item\X\2\6
+\&{else}\5
+${}\{{}$\1\6
+\&{if} (\\{randomizing})\1\5
+\X25:Randomize the \PB{\\{item}} list\X;\2\6
+\X26:Solve the problem\X;\6
+\4${}\}{}$\2\6
+\4\\{done}:\5
+\&{if} ${}(\\{vbose}\AND\\{show\_profile}){}$\1\5
+\X41:Print the profile\X;\2\6
+\&{if} ${}(\\{vbose}\AND\\{show\_max\_deg}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"The\ maximum\ branchi}\)\.{ng\ degree\ was\ "}%
+\|O\.{"d.\\n"},\39\\{maxdeg});{}$\2\6
+\&{if} ${}(\\{vbose}\AND\\{show\_basics}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Altogether\ "}\|O\.{"llu\ solution"}\|O\.{"s,\
+"}\|O\.{"llu+"}\|O\.{"llu\ mems,"},\39\\{count},\39\\{count}\E\T{1}\?\.{""}:%
+\.{"s"},\39\\{imems},\39\\{mems});{}$\6
+${}\\{bytes}\K(\\{itemlength}+\\{setlength})*\&{sizeof}(\&{int})+\\{last%
+\_node}*{}$\&{sizeof} (\\{node})${}+\T{2}*\\{maxl}*\&{sizeof}(\&{int})+%
+\\{maxsaveptr}*{}$\&{sizeof} (\\{twoints});\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ "}\|O\.{"llu\ updates,\ "}\|O\.{"llu\ bytes,%
+\ "}\|O\.{"llu\ nodes,"},\39\\{updates},\39\\{bytes},\39\\{nodes});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ ccost\ "}\|O\.{"lld\%\%.\\n"},\39\\{mems}\?(%
+\T{200}*\\{cmems}+\\{mems})/(\T{2}*\\{mems}):\T{0});{}$\6
+\4${}\}{}$\2\6
+\&{if} (\\{sanity\_checking})\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"sanity\_checking\ was}\)\.{\ on!\\n"});{}$\2\6
+\X5:Close the files\X;\6
+\4${}\}{}$\2\par
+\fi
+
+\M{3}You can control the amount of output, as well as certain properties
+of the algorithm, by specifying options on the command line:
+\smallskip\item{$\bullet$}
+`\.v$\langle\,$integer$\,\rangle$' enables or disables various kinds of verbose
+output on \PB{\\{stderr}}, given by binary codes such as \PB{\\{show%
+\_choices}};
+\item{$\bullet$}
+`\.m$\langle\,$integer$\,\rangle$' causes every $m$th solution
+to be output (the default is \.{m0}, which merely counts them);
+\item{$\bullet$}
+`\.s$\langle\,$integer$\,\rangle$' causes the algorithm to randomize
+the initial list of items (thus providing some variety, although
+the solutions are by no means uniformly random);
+\item{$\bullet$}
+`\.d$\langle\,$integer$\,\rangle$' sets \PB{\\{delta}}, which causes periodic
+state reports on \PB{\\{stderr}} after the algorithm has performed
+approximately
+\PB{\\{delta}} mems since the previous report (default 10000000000);
+\item{$\bullet$}
+`\.c$\langle\,$positive integer$\,\rangle$' limits the levels on which
+choices are shown during verbose tracing;
+\item{$\bullet$}
+`\.C$\langle\,$positive integer$\,\rangle$' limits the levels on which
+choices are shown in the periodic state reports;
+\item{$\bullet$}
+`\.l$\langle\,$nonnegative integer$\,\rangle$' gives a {\it lower\/} limit,
+relative to the maximum level so far achieved, to the levels on which
+choices are shown during verbose tracing;
+\item{$\bullet$}
+`\.t$\langle\,$positive integer$\,\rangle$' causes the program to
+stop after this many solutions have been found;
+\item{$\bullet$}
+`\.T$\langle\,$integer$\,\rangle$' sets \PB{\\{timeout}} (which causes abrupt
+termination if \PB{$\\{mems}>\\{timeout}$} at the beginning of a level);
+\item{$\bullet$}
+`\.S$\langle\,$filename$\,\rangle$' to output a ``shape file'' that encodes
+the search tree.
+
+\Y\B\4\D\\{show\_basics}\5
+\T{1}\C{ \PB{\\{vbose}} code for basic stats; this is the default }\par
+\B\4\D\\{show\_choices}\5
+\T{2}\C{ \PB{\\{vbose}} code for backtrack logging }\par
+\B\4\D\\{show\_details}\5
+\T{4}\C{ \PB{\\{vbose}} code for further commentary }\par
+\B\4\D\\{show\_profile}\5
+\T{128}\C{ \PB{\\{vbose}} code to show the search tree profile }\par
+\B\4\D\\{show\_full\_state}\5
+\T{256}\C{ \PB{\\{vbose}} code for complete state reports }\par
+\B\4\D\\{show\_tots}\5
+\T{512}\C{ \PB{\\{vbose}} code for reporting item totals at start }\par
+\B\4\D\\{show\_warnings}\5
+\T{1024}\C{ \PB{\\{vbose}} code for reporting options without primaries }\par
+\B\4\D\\{show\_max\_deg}\5
+\T{2048}\C{ \PB{\\{vbose}} code for reporting maximum branching degree }\par
+\Y\B\4\X3:Global variables\X${}\E{}$\6
+\&{int} \\{random\_seed}${}\K\T{0}{}$;\C{ seed for the random words of \PB{%
+\\{gb\_rand}} }\6
+\&{int} \\{randomizing};\C{ has `\.s' been specified? }\6
+\&{int} \\{vbose}${}\K\\{show\_basics}+\\{show\_warnings}{}$;\C{ level of
+verbosity }\6
+\&{int} \\{spacing};\C{ solution $k$ is output if $k$ is a multiple of \PB{%
+\\{spacing}} }\6
+\&{int} \\{show\_choices\_max}${}\K\T{1000000}{}$;\C{ above this level, \PB{%
+\\{show\_choices}} is ignored }\6
+\&{int} \\{show\_choices\_gap}${}\K\T{1000000}{}$;\C{ below level \PB{$%
+\\{maxl}-\\{show\_choices\_gap}$},     \PB{\\{show\_details}} is ignored }\6
+\&{int} \\{show\_levels\_max}${}\K\T{1000000}{}$;\C{ above this level, state
+reports stop }\6
+\&{int} \\{maxl};\C{ maximum level actually reached }\6
+\&{int} \\{maxsaveptr};\C{ maximum size of \PB{\\{savestack}} }\6
+\&{char} \\{buf}[\\{bufsize}];\C{ input buffer }\6
+\&{ullng} \\{count};\C{ solutions found so far }\6
+\&{ullng} \\{options};\C{ options seen so far }\6
+\&{ullng} \\{imems}${},{}$ \\{mems}${},{}$ \\{tmems}${},{}$ \\{cmems};\C{ mem
+counts }\6
+\&{ullng} \\{updates};\C{ update counts }\6
+\&{ullng} \\{bytes};\C{ memory used by main data structures }\6
+\&{ullng} \\{nodes};\C{ total number of branch nodes initiated }\6
+\&{ullng} \\{thresh}${}\K\T{10000000000}{}$;\C{ report when \PB{\\{mems}}
+exceeds this, if \PB{$\\{delta}\I\T{0}$} }\6
+\&{ullng} \\{delta}${}\K\T{10000000000}{}$;\C{ report every \PB{\\{delta}} or
+so mems }\6
+\&{ullng} \\{maxcount}${}\K\T{\^ffffffffffffffff/}{}$;\C{ stop after finding
+this many solutions }\6
+\&{ullng} \\{timeout}${}\K\T{\^1fffffffffffffff/}{}$;\C{ give up after this
+many mems }\6
+\&{FILE} ${}{*}\\{shape\_file}{}$;\C{ file for optional output of search tree
+shape }\6
+\&{char} ${}{*}\\{shape\_name}{}$;\C{ its name }\6
+\&{int} \\{maxdeg};\C{ the largest branching degree seen so far }\par
+\As8\ET27.
+\U2.\fi
+
+\M{4}If an option appears more than once on the command line, the first
+appearance takes precedence.
+
+\Y\B\4\X4:Process the command line\X${}\E{}$\6
+\&{for} ${}(\|j\K\\{argc}-\T{1},\39\|k\K\T{0};{}$ \|j; ${}\|j\MM){}$\1\6
+\&{switch} (\\{argv}[\|j][\T{0}])\5
+${}\{{}$\1\6
+\4\&{case} \.{'v'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"d"},\39{%
+\AND}\\{vbose})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'m'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"d"},\39{%
+\AND}\\{spacing})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'s'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"d"},\39{%
+\AND}\\{random\_seed})-\T{1}),\39\\{randomizing}\K\T{1}{}$;\5
+\&{break};\6
+\4\&{case} \.{'d'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"lld"},\39{%
+\AND}\\{delta})-\T{1}),\39\\{thresh}\K\\{delta}{}$;\5
+\&{break};\6
+\4\&{case} \.{'c'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"d"},\39{%
+\AND}\\{show\_choices\_max})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'C'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"d"},\39{%
+\AND}\\{show\_levels\_max})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'l'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"d"},\39{%
+\AND}\\{show\_choices\_gap})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'t'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"lld"},\39{%
+\AND}\\{maxcount})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'T'}:\5
+${}\|k\MRL{{\OR}{\K}}(\\{sscanf}(\\{argv}[\|j]+\T{1},\39\.{""}\|O\.{"lld"},\39{%
+\AND}\\{timeout})-\T{1}){}$;\5
+\&{break};\6
+\4\&{case} \.{'S'}:\5
+${}\\{shape\_name}\K\\{argv}[\|j]+\T{1},\39\\{shape\_file}\K\\{fopen}(\\{shape%
+\_name},\39\.{"w"});{}$\6
+\&{if} ${}(\R\\{shape\_file}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"Sorry,\ I\ can't\ open}\)\.{\ file\ `"}\|O%
+\.{"s'\ for\ writing!\\n"},\39\\{shape\_name});{}$\2\6
+\&{break};\6
+\4\&{default}:\5
+${}\|k\K\T{1}{}$;\C{ unrecognized command-line option }\6
+\4${}\}{}$\2\2\6
+\&{if} (\|k)\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Usage:\ "}\|O\.{"s\ [v<n>]\ [m<n>]\ [s<}\)%
+\.{n>]\ [d<n>]"}\.{"\ [c<n>]\ [C<n>]\ [l<n}\)\.{>]\ [t<n>]\ [T<n>]\ [S<}\)%
+\.{bar>]\ <\ foo.dlx\\n"},\39\\{argv}[\T{0}]);{}$\6
+${}\\{exit}({-}\T{1});{}$\6
+\4${}\}{}$\2\6
+\&{if} (\\{randomizing})\1\5
+\\{gb\_init\_rand}(\\{random\_seed});\2\par
+\U2.\fi
+
+\M{5}\B\X5:Close the files\X${}\E{}$\6
+\&{if} (\\{shape\_file})\1\5
+\\{fclose}(\\{shape\_file});\2\par
+\U2.\fi
+
+\N{1}{6}Data structures.
+Sparse-set data structures were introduced by Preston Briggs
+and Linda Torczon [{\sl ACM Letters on Programming Languages and Systems\/
+\bf2} (1993), 59--69], who realized that exercise 2.12 in
+Aho, Hopcroft, and Ullman's classic text {\sl The Design and Analysis
+of Computer Algorithms\/} (Addison--Wesley, 1974) was much more than
+just a slick trick to avoid initializing an array.
+(Indeed, {\sl TAOCP\/} exercise 2.2.6--24 calls it the ``sparse array trick.'')
+
+The basic idea is amazingly simple, when specialized to the situations
+that we need to deal with: We can represent a subset~$S$ of the universe
+$U=\{x_0,x_1,\ldots,x_{n-1}\}$ by maintaining two $n$-element arrays
+$p$ and $q$, each of which is a permutation of~$\{0,1,\ldots,n-1\}$,
+together with an integer $s$ in the range $0\le s\le n$. In fact, $p$ is
+the {\it inverse\/} of~$q$; and $s$ is the number of elements of~$S$.
+The current value of the set $S$ is then simply
+$\{x_{p_0},\ldots,x_{p_{s-1}}\}$. (Notice that every $s$-element subset can be
+represented in $s!\,(n-s)!$ ways.)
+
+It's easy to test if $x_k\in S$, because that's true if and only if $q_k<s$.
+It's easy to insert a new element $x_k$ into~$S$: Swap indices
+so that $p_s=k$, $q_k=s$, then increase $s$ by~1.
+It's easy to delete an element $x_k$ that belongs to~$S$: Decrease $s$
+by~1, then swap indices so that $p_s=k$ and $q_k=s$.
+And so on.
+
+Briggs and Torczon were interested in applications where $s$ begins at
+zero and tends to remain small. In such cases, $p$ and $q$ need not
+be permutations: The values of $p_s$, $p_{s+1}$, \dots, $p_{n-1}$ can
+be garbage, and the values of $q_k$ need be defined only when $x_k\in S$.
+(Such situations correspond to the treatment by Aho, Hopcroft, and Ullman,
+who started
+with an array full of garbage and used a sparse-set structure to remember
+the set of nongarbage cells.) Our applications are different: Each set
+begins equal to its intended universe, and gradually shrinks. In such
+cases, we might as well maintain inverse permutations.
+The basic operations go faster when we know in advance that we
+aren't inserting an element that's already present (nor deleting an element
+that isn't).
+
+Many variations are possible. For example, $p$ could be a permutation
+of $\{x_0,x_1,\ldots,x_{n-1}\}$ instead of a permutation of
+$\{0,1,\ldots,n-1\}$. The arrays that play the role of $q$
+in the following routines don't have indices that are consecutive;
+they live inside of other structures.
+
+\fi
+
+\M{7}This program has an
+array called \PB{\\{item}}, with one entry for each item. The value of \PB{%
+\\{item}[\|k]}
+is an index~\PB{\|x} into a much larger array called \PB{\\{set}}. The set of
+all
+options that involve the $k$th item appears in that array beginning
+at \PB{\\{set}[\|x]}; and it continues for $s$ consecutive entries, where \PB{$%
+\|s\K\\{size}(\|x)$}
+is an abbreviation for \PB{$\\{set}[\|x-\T{1}]$}. If \PB{$\\{item}[\|k]\K\|x$},
+we maintain the
+relation \PB{$\\{pos}(\|x)\K\|k$}, where \PB{\\{pos}(\|x)} is an abbreviation
+for
+\PB{$\\{set}[\|x-\T{2}]$}. Thus \PB{\\{item}} plays the role of array~$p$, in a
+sparse-set data structure for the set of all currently active items;
+and \PB{\\{pos}} plays the role of~$q$.
+
+Suppose the \PB{\|k}th item \PB{\|x} currently appears in \PB{\|s} options.
+Those options
+are indices into \PB{\\{nd}}, which is an array of ``nodes.'' Each node
+has three fields: \PB{\\{itm}}, \PB{\\{loc}}, and \PB{\\{clr}}. If \PB{$\|x\Z%
+\|q<\|x+\|s$}, let \PB{$\|y\K\\{set}[\|q]$}.
+This is essentially a pointer to a node, and we have
+\PB{$\\{nd}[\|y].\\{itm}\K\|x$}, \PB{$\\{nd}[\|y].\\{loc}\K\|q$}. In other
+words,
+the sequential list of \PB{\|s} elements that begins at
+\PB{$\|x\K\\{item}[\|k]$} in the \PB{\\{set}} array is the sparse-set
+representation of the
+currently active options that contain the \PB{\|k}th item.
+The \PB{\\{clr}} field \PB{$\\{nd}[\|y].\\{clr}$} contains \PB{\|x}'s color for
+this option.
+The \PB{\\{itm}} and \PB{\\{clr}} fields remain constant,
+once we've initialized everything, but the \PB{\\{loc}} fields will change.
+
+The given options are stored sequentially in the \PB{\\{nd}} array, with one
+node
+per item, separated by ``spacer'' nodes. If \PB{\|y} is the spacer node
+following an option with $t$ items, we have \PB{$\\{nd}[\|y].\\{itm}\K{-}\|t$}.
+If \PB{\|y} is the spacer node {\it preceding\/} an option with $t$ items,
+we have \PB{$\\{nd}[\|y].\\{loc}\K\|t$}.
+
+This probably sounds confusing, until you can see some code.
+Meanwhile, let's take note of the invariant relations that hold
+whenever \PB{\|k}, \PB{\|q}, \PB{\|x}, and \PB{\|y} have appropriate values:
+$$\hbox{\PB{$\\{pos}(\\{item}[\|k])\K\|k$};\quad
+\PB{$\\{nd}[\\{set}[\|q]].\\{loc}\K\|q$};\quad
+\PB{$\\{item}[\\{pos}(\|x)]\K\|x$};\quad
+\PB{$\\{set}[\\{nd}[\|y].\\{loc}]\K\|y$}.}$$
+(These are the analogs of the invariant relations \PB{$\|p[\|q[\|k]]\K\|q[\|p[%
+\|k]]\K\|k$} in
+the simple sparse-set scheme that we started with.)
+
+The \PB{\\{set}} array contains also the item names.
+
+We count one mem for a simultaneous access to the \PB{\\{itm}} and \PB{\\{loc}}
+fields
+of a node. Each node actually has a ``spare'' fourth field, \PB{\\{spr}},
+inserted
+solely to enforce alignment to 16-byte boundaries.
+(Some modification of this program might perhaps have a use for \PB{\\{spr}}?)
+
+\Y\B\4\D\\{size}$(\|x)$\5
+$\\{set}[(\|x)-\T{1}{}$]\C{ number of active options of the \PB{\|k}th item, %
+\PB{\|x} }\par
+\B\4\D\\{pos}$(\|x)$\5
+$\\{set}[(\|x)-\T{2}{}$]\C{ where that item is found in the \PB{\\{item}} array
+}\par
+\B\4\D\\{lname}$(\|x)$\5
+$\\{set}[(\|x)-\T{4}{}$]\C{ the first four bytes of \PB{\|x}'s name }\par
+\B\4\D\\{rname}$(\|x)$\5
+$\\{set}[(\|x)-\T{3}{}$]\C{ the last four bytes of \PB{\|x}'s name }\par
+\Y\B\4\X7:Type definitions\X${}\E{}$\6
+\&{typedef} \&{struct} \&{node\_struct} ${}\{{}$\1\6
+\&{int} \\{itm};\C{ the item \PB{\|x} corresponding to this node }\6
+\&{int} \\{loc};\C{ where this node resides in \PB{\|x}'s active set }\6
+\&{int} \\{clr};\C{ color associated with item \PB{\|x} in this option, if any
+}\6
+\&{int} \\{spr};\C{ a spare field inserted only to maintain 16-byte alignment }%
+\2\6
+${}\}{}$ \&{node};\par
+\A9.
+\U2.\fi
+
+\M{8}\B\X3:Global variables\X${}\mathrel+\E{}$\6
+\&{node} \\{nd}[\\{max\_nodes}];\C{ the master list of nodes }\6
+\&{int} \\{last\_node};\C{ the first node in \PB{\\{nd}} that's not yet used }\6
+\&{int} \\{item}[\\{max\_cols}];\C{ the master list of items }\6
+\&{int} \\{second}${}\K\\{max\_cols}{}$;\C{ boundary between primary and
+secondary items }\6
+\&{int} \\{last\_itm};\C{ items seen so far during input, plus 1 }\6
+\&{int} ${}\\{set}[\\{max\_nodes}+\T{4}*\\{max\_cols}]{}$;\C{ the sets of
+active options for active items }\6
+\&{int} \\{itemlength};\C{ number of elements used in \PB{\\{item}} }\6
+\&{int} \\{setlength};\C{ number of elements used in \PB{\\{set}} }\6
+\&{int} \\{active};\C{ current number of active items }\6
+\&{int} \\{oactive};\C{ value of active before swapping out current-choice
+items }\6
+\&{int} \\{baditem};\C{ an item with no options, plus 1 }\6
+\&{int} \\{osecond};\C{ setting of \PB{\\{second}} just after initial input }%
+\par
+\fi
+
+\M{9}We're going to store string data (an item's name) in the midst of
+the integer array \PB{\\{set}}. So we've got to do some type coercion using
+low-level \CEE/-ness.
+
+\Y\B\4\X7:Type definitions\X${}\mathrel+\E{}$\6
+\&{typedef} \&{struct} ${}\{{}$\1\6
+\&{int} \|l${},{}$ \|r;\2\6
+${}\}{}$ \&{twoints};\6
+\&{typedef} \&{union} ${}\{{}$\1\6
+\&{unsigned} \&{char} \\{str}[\T{8}];\C{ eight one-byte characters }\6
+\&{twoints} \\{lr};\C{ two four-byte integers }\2\6
+${}\}{}$ \&{stringbuf};\6
+\&{stringbuf} \\{namebuf};\par
+\fi
+
+\M{10}\B\X10:Subroutines\X${}\E{}$\6
+\1\1\&{void} \\{print\_item\_name}(\&{int} \|k${},\39{}$\&{FILE} ${}{*}%
+\\{stream})\2\2{}$\6
+${}\{{}$\1\6
+${}\\{namebuf}.\\{lr}.\|l\K\\{lname}(\|k),\39\\{namebuf}.\\{lr}.\|r\K\\{rname}(%
+\|k);{}$\6
+${}\\{fprintf}(\\{stream},\39\.{"\ "}\|O\.{".8s"},\39\\{namebuf}.\\{str});{}$\6
+\4${}\}{}$\2\par
+\As11, 12, 13, 32, 38, 39\ETs40.
+\U2.\fi
+
+\M{11}An option is identified not by name but by the names of the items it
+contains.
+Here is a routine that prints an option, given a pointer to any of its
+nodes. It also prints the position of the option in its item list.
+
+\Y\B\4\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{void} \\{print\_option}(\&{int} \|p${},\39{}$\&{FILE} ${}{*}\\{stream})%
+\2\2{}$\6
+${}\{{}$\1\6
+\&{register} \&{int} \|k${},{}$ \|q${},{}$ \|x;\7
+${}\|x\K\\{nd}[\|p].\\{itm};{}$\6
+\&{if} ${}(\|p\G\\{last\_node}\V\|x\Z\T{0}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Illegal\ option\ "}\|O\.{"d!\\n"},\39\|p);{}$\6
+\&{return};\6
+\4${}\}{}$\2\6
+\&{for} ${}(\|q\K\|p;{}$  ; \,)\5
+${}\{{}$\1\6
+${}\\{print\_item\_name}(\|x,\39\\{stream});{}$\6
+\&{if} ${}(\\{nd}[\|q].\\{clr}){}$\1\5
+${}\\{fprintf}(\\{stream},\39\.{":"}\|O\.{"c"},\39\\{nd}[\|q].\\{clr});{}$\2\6
+${}\|q\PP;{}$\6
+${}\|x\K\\{nd}[\|q].\\{itm};{}$\6
+\&{if} ${}(\|x<\T{0}){}$\1\5
+${}\|q\MRL{+{\K}}\|x,\39\|x\K\\{nd}[\|q].\\{itm};{}$\2\6
+\&{if} ${}(\|q\E\|p){}$\1\5
+\&{break};\2\6
+\4${}\}{}$\2\6
+${}\|k\K\\{nd}[\|q].\\{loc};{}$\6
+${}\\{fprintf}(\\{stream},\39\.{"\ ("}\|O\.{"d\ of\ "}\|O\.{"d)\\n"},\39\|k-%
+\|x+\T{1},\39\\{size}(\|x));{}$\6
+\4${}\}{}$\2\7
+\1\1\&{void} \\{prow}(\&{int} \|p)\2\2\6
+${}\{{}$\1\6
+${}\\{print\_option}(\|p,\39\\{stderr});{}$\6
+\4${}\}{}$\2\par
+\fi
+
+\M{12}When I'm debugging, I might want to look at one of the current item
+lists.
+
+\Y\B\4\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{void} \\{print\_itm}(\&{int} \|c)\2\2\6
+${}\{{}$\1\6
+\&{register} \&{int} \|p;\7
+\&{if} ${}(\|c<\T{4}\V\|c\G\\{setlength}\V\\{pos}(\|c)<\T{0}\V\\{pos}(\|c)\G%
+\\{itemlength}\V\\{item}[\\{pos}(\|c)]\I\|c){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Illegal\ item\ "}\|O\.{"d!\\n"},\39\|c);{}$\6
+\&{return};\6
+\4${}\}{}$\2\6
+${}\\{fprintf}(\\{stderr},\39\.{"Item"});{}$\6
+${}\\{print\_item\_name}(\|c,\39\\{stderr});{}$\6
+\&{if} ${}(\|c<\\{second}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"\ ("}\|O\.{"d\ of\ "}\|O\.{"d),\ length\ "}\|O%
+\.{"d:\\n"},\39\\{pos}(\|c)+\T{1},\39\\{active},\39\\{size}(\|c));{}$\2\6
+\&{else} \&{if} ${}(\\{pos}(\|c)\G\\{active}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"\ (secondary\ "}\|O\.{"d,\ purified),\ lengt}%
+\)\.{h\ "}\|O\.{"d:\\n"},\39\\{pos}(\|c)+\T{1},\39\\{size}(\|c));{}$\2\6
+\&{else}\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"\ (secondary\ "}\|O\.{"d),\ length\ "}\|O%
+\.{"d:\\n"},\39\\{pos}(\|c)+\T{1},\39\\{size}(\|c));{}$\2\6
+\&{for} ${}(\|p\K\|c;{}$ ${}\|p<\|c+\\{size}(\|c);{}$ ${}\|p\PP){}$\1\5
+\\{prow}(\\{set}[\|p]);\2\6
+\4${}\}{}$\2\par
+\fi
+
+\M{13}Speaking of debugging, here's a routine to check if redundant parts of
+our
+data structure have gone awry.
+
+\Y\B\4\D\\{sanity\_checking}\5
+\T{0}\C{ set this to 1 if you suspect a bug }\par
+\Y\B\4\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{void} \\{sanity}(\&{void})\2\2\6
+${}\{{}$\1\6
+\&{register} \&{int} \|k${},{}$ \|x${},{}$ \|i${},{}$ \|l${},{}$ \|r${},{}$ %
+\|q${},{}$ \\{qq};\7
+\&{for} ${}(\|k\K\T{0};{}$ ${}\|k<\\{itemlength};{}$ ${}\|k\PP){}$\5
+${}\{{}$\1\6
+${}\|x\K\\{item}[\|k];{}$\6
+\&{if} ${}(\\{pos}(\|x)\I\|k){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Bad\ pos\ field\ of\ it}\)\.{em"});{}$\6
+${}\\{print\_item\_name}(\|x,\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ ("}\|O\.{"d,"}\|O\.{"d)!\\n"},\39\|k,\39%
+\|x);{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+\&{for} ${}(\|i\K\T{0};{}$ ${}\|i<\\{last\_node};{}$ ${}\|i\PP){}$\5
+${}\{{}$\1\6
+${}\|l\K\\{nd}[\|i].\\{itm},\39\|r\K\\{nd}[\|i].\\{loc};{}$\6
+\&{if} ${}(\|l\Z\T{0}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{nd}[\|i+\|r+\T{1}].\\{itm}\I{-}\|r){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"Bad\ spacer\ in\ nodes}\)\.{\ "}\|O\.{"d,\ "}%
+\|O\.{"d!\\n"},\39\|i,\39\|i+\|r+\T{1});{}$\2\6
+${}\\{qq}\K\T{0};{}$\6
+\4${}\}{}$\5
+\2\&{else}\5
+${}\{{}$\1\6
+\&{if} ${}(\|l>\|r){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"itm>loc\ in\ node\ "}\|O\.{"d!\\n"},\39%
+\|i);{}$\2\6
+\&{else}\5
+${}\{{}$\1\6
+\&{if} ${}(\\{set}[\|r]\I\|i){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Bad\ loc\ field\ for\ o}\)\.{ption\ "}\|O\.{"d%
+\ of\ item"},\39\|r-\|l+\T{1});{}$\6
+${}\\{print\_item\_name}(\|l,\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ in\ node\ "}\|O\.{"d!\\n"},\39\|i);{}$\6
+\4${}\}{}$\2\6
+\&{if} ${}(\\{pos}(\|l)<\\{active}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|r<\|l+\\{size}(\|l)){}$\1\5
+${}\|q\K{+}\T{1}{}$;\5
+\2\&{else}\1\5
+${}\|q\K{-}\T{1}{}$;\C{ in or out? }\2\6
+\&{if} ${}(\|q*\\{qq}<\T{0}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Flipped\ status\ at\ o}\)\.{ption\ "}\|O\.{"d\
+of\ item"},\39\|r-\|l+\T{1});{}$\6
+${}\\{print\_item\_name}(\|l,\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ in\ node\ "}\|O\.{"d!\\n"},\39\|i);{}$\6
+\4${}\}{}$\2\6
+${}\\{qq}\K\|q;{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\par
+\fi
+
+\N{1}{14}Inputting the matrix. Brute force is the rule in this part of the
+code,
+whose goal is to parse and store the input data and to check its validity.
+
+We use only four entries of \PB{\\{set}} per item while reading the item-name
+line.
+
+\Y\B\4\D\\{panic}$(\|m)$\6
+${}\{{}$\5
+\1${}\\{fprintf}(\\{stderr},\39\.{""}\|O\.{"s!\\n"}\|O\.{"d:\ "}\|O\.{".99s%
+\\n"},\39\|m,\39\|p,\39\\{buf}){}$;\5
+${}\\{exit}({-}\T{666}){}$;\5
+${}\}{}$\2\par
+\Y\B\4\X14:Input the item names\X${}\E{}$\6
+\&{while} (\T{1})\5
+${}\{{}$\1\6
+\&{if} ${}(\R\\{fgets}(\\{buf},\39\\{bufsize},\39\\{stdin})){}$\1\5
+\&{break};\2\6
+\&{if} ${}(\|o,\39\\{buf}[\|p\K\\{strlen}(\\{buf})-\T{1}]\I\.{'\\n'}){}$\1\5
+\\{panic}(\.{"Input\ line\ way\ too\ }\)\.{long"});\2\6
+\&{for} ${}(\|p\K\T{0};{}$ \|o${},\39\\{isspace}(\\{buf}[\|p]);{}$ ${}\|p%
+\PP){}$\1\5
+;\2\6
+\&{if} ${}(\\{buf}[\|p]\E\.{'|'}\V\R\\{buf}[\|p]){}$\1\5
+\&{continue};\C{ bypass comment or blank line }\2\6
+${}\\{last\_itm}\K\T{1};{}$\6
+\&{break};\6
+\4${}\}{}$\2\6
+\&{if} ${}(\R\\{last\_itm}){}$\1\5
+\\{panic}(\.{"No\ items"});\2\6
+\&{for} ( ; \|o${},\39\\{buf}[\|p];{}$ \,)\5
+${}\{{}$\1\6
+${}\|o,\39\\{namebuf}.\\{lr}.\|l\K\\{namebuf}.\\{lr}.\|r\K\T{0};{}$\6
+\&{for} ${}(\|j\K\T{0};{}$ ${}\|j<\T{8}\W(\|o,\39\R\\{isspace}(\\{buf}[\|p+%
+\|j]));{}$ ${}\|j\PP){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{buf}[\|p+\|j]\E\.{':'}\V\\{buf}[\|p+\|j]\E\.{'|'}){}$\1\5
+\\{panic}(\.{"Illegal\ character\ i}\)\.{n\ item\ name"});\2\6
+${}\|o,\39\\{namebuf}.\\{str}[\|j]\K\\{buf}[\|p+\|j];{}$\6
+\4${}\}{}$\2\6
+\&{if} ${}(\|j\E\T{8}\W\R\\{isspace}(\\{buf}[\|p+\|j])){}$\1\5
+\\{panic}(\.{"Item\ name\ too\ long"});\2\6
+${}\\{oo},\39\\{lname}(\\{last\_itm}\LL\T{2})\K\\{namebuf}.\\{lr}.\|l,\39%
+\\{rname}(\\{last\_itm}\LL\T{2})\K\\{namebuf}.\\{lr}.\|r;{}$\6
+\X15:Check for duplicate item name\X;\6
+${}\\{last\_itm}\PP;{}$\6
+\&{if} ${}(\\{last\_itm}>\\{max\_cols}){}$\1\5
+\\{panic}(\.{"Too\ many\ items"});\2\6
+\&{for} ${}(\|p\MRL{+{\K}}\|j+\T{1};{}$ \|o${},\39\\{isspace}(\\{buf}[\|p]);{}$
+${}\|p\PP){}$\1\5
+;\2\6
+\&{if} ${}(\\{buf}[\|p]\E\.{'|'}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{second}\I\\{max\_cols}){}$\1\5
+\\{panic}(\.{"Item\ name\ line\ cont}\)\.{ains\ |\ twice"});\2\6
+${}\\{second}\K\\{last\_itm};{}$\6
+\&{for} ${}(\|p\PP;{}$ \|o${},\39\\{isspace}(\\{buf}[\|p]);{}$ ${}\|p\PP){}$\1\5
+;\2\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\par
+\U2.\fi
+
+\M{15}\B\X15:Check for duplicate item name\X${}\E{}$\6
+\&{for} ${}(\|k\K\\{last\_itm}-\T{1};{}$ \|k; ${}\|k\MM){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|o,\39\\{lname}(\|k\LL\T{2})\I\\{namebuf}.\\{lr}.\|l){}$\1\5
+\&{continue};\2\6
+\&{if} ${}(\\{rname}(\|k\LL\T{2})\E\\{namebuf}.\\{lr}.\|r){}$\1\5
+\&{break};\2\6
+\4${}\}{}$\2\6
+\&{if} (\|k)\1\5
+\\{panic}(\.{"Duplicate\ item\ name}\)\.{"});\2\par
+\U14.\fi
+
+\M{16}I'm putting the option number into the \PB{\\{spr}} field of the
+spacer that follows it, as a
+possible debugging aid. But the program doesn't currently use that information.
+
+\Y\B\4\X16:Input the options\X${}\E{}$\6
+\&{while} (\T{1})\5
+${}\{{}$\1\6
+\&{if} ${}(\R\\{fgets}(\\{buf},\39\\{bufsize},\39\\{stdin})){}$\1\5
+\&{break};\2\6
+\&{if} ${}(\|o,\39\\{buf}[\|p\K\\{strlen}(\\{buf})-\T{1}]\I\.{'\\n'}){}$\1\5
+\\{panic}(\.{"Option\ line\ too\ lon}\)\.{g"});\2\6
+\&{for} ${}(\|p\K\T{0};{}$ \|o${},\39\\{isspace}(\\{buf}[\|p]);{}$ ${}\|p%
+\PP){}$\1\5
+;\2\6
+\&{if} ${}(\\{buf}[\|p]\E\.{'|'}\V\R\\{buf}[\|p]){}$\1\5
+\&{continue};\C{ bypass comment or blank line }\2\6
+${}\|i\K\\{last\_node}{}$;\C{ remember the spacer at the left of this option }\6
+\&{for} ${}(\\{pp}\K\T{0};{}$ \\{buf}[\|p]; \,)\5
+${}\{{}$\1\6
+${}\|o,\39\\{namebuf}.\\{lr}.\|l\K\\{namebuf}.\\{lr}.\|r\K\T{0};{}$\6
+\&{for} ${}(\|j\K\T{0};{}$ ${}\|j<\T{8}\W(\|o,\39\R\\{isspace}(\\{buf}[\|p+%
+\|j]))\W\\{buf}[\|p+\|j]\I\.{':'};{}$ ${}\|j\PP){}$\1\5
+${}\|o,\39\\{namebuf}.\\{str}[\|j]\K\\{buf}[\|p+\|j];{}$\2\6
+\&{if} ${}(\R\|j){}$\1\5
+\\{panic}(\.{"Empty\ item\ name"});\2\6
+\&{if} ${}(\|j\E\T{8}\W\R\\{isspace}(\\{buf}[\|p+\|j])\W\\{buf}[\|p+\|j]\I%
+\.{':'}){}$\1\5
+\\{panic}(\.{"Item\ name\ too\ long"});\2\6
+\X17:Create a node for the item named in \PB{\\{buf}[\|p]}\X;\6
+\&{if} ${}(\\{buf}[\|p+\|j]\I\.{':'}){}$\1\5
+${}\|o,\39\\{nd}[\\{last\_node}].\\{clr}\K\T{0};{}$\2\6
+\&{else} \&{if} ${}(\|k\G\\{second}){}$\5
+${}\{{}$\1\6
+\&{if} ${}((\|o,\39\\{isspace}(\\{buf}[\|p+\|j+\T{1}]))\V(\|o,\39\R\\{isspace}(%
+\\{buf}[\|p+\|j+\T{2}]))){}$\1\5
+\\{panic}(\.{"Color\ must\ be\ a\ sin}\)\.{gle\ character"});\2\6
+${}\|o,\39\\{nd}[\\{last\_node}].\\{clr}\K{}$(\&{unsigned} \&{char}) %
+\\{buf}${}[\|p+\|j+\T{1}];{}$\6
+${}\|p\MRL{+{\K}}\T{2};{}$\6
+\4${}\}{}$\5
+\2\&{else}\1\5
+\\{panic}(\.{"Primary\ item\ must\ b}\)\.{e\ uncolored"});\2\6
+\&{for} ${}(\|p\MRL{+{\K}}\|j+\T{1};{}$ \|o${},\39\\{isspace}(\\{buf}[\|p]);{}$
+${}\|p\PP){}$\1\5
+;\2\6
+\4${}\}{}$\2\6
+\&{if} ${}(\R\\{pp}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{vbose}\AND\\{show\_warnings}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"Option\ ignored\ (no\ }\)\.{primary\ items):\
+"}\|O\.{"s"},\39\\{buf});{}$\2\6
+\&{while} ${}(\\{last\_node}>\|i){}$\5
+${}\{{}$\1\6
+\X18:Remove \PB{\\{last\_node}} from its item list\X;\6
+${}\\{last\_node}\MM;{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\5
+\2\&{else}\5
+${}\{{}$\1\6
+${}\|o,\39\\{nd}[\|i].\\{loc}\K\\{last\_node}-\|i{}$;\C{ complete the previous
+spacer }\6
+${}\\{last\_node}\PP{}$;\C{ create the next spacer }\6
+\&{if} ${}(\\{last\_node}\E\\{max\_nodes}){}$\1\5
+\\{panic}(\.{"Too\ many\ nodes"});\2\6
+${}\\{options}\PP;{}$\6
+${}\|o,\39\\{nd}[\\{last\_node}].\\{itm}\K\|i+\T{1}-\\{last\_node};{}$\6
+${}\\{nd}[\\{last\_node}].\\{spr}\K\\{options}{}$;\C{ option number, for
+debugging only }\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+\X19:Initialize \PB{\\{item}}\X;\6
+\X20:Expand \PB{\\{set}}\X;\6
+\X21:Adjust \PB{\\{nd}}\X;\par
+\U2.\fi
+
+\M{17}We temporarily use \PB{\\{pos}} to recognize duplicate items in an
+option.
+
+\Y\B\4\X17:Create a node for the item named in \PB{\\{buf}[\|p]}\X${}\E{}$\6
+\&{for} ${}(\|k\K(\\{last\_itm}-\T{1})\LL\T{2};{}$ \|k; ${}\|k\MRL{-{\K}}%
+\T{4}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|o,\39\\{lname}(\|k)\I\\{namebuf}.\\{lr}.\|l){}$\1\5
+\&{continue};\2\6
+\&{if} ${}(\\{rname}(\|k)\E\\{namebuf}.\\{lr}.\|r){}$\1\5
+\&{break};\2\6
+\4${}\}{}$\2\6
+\&{if} ${}(\R\|k){}$\1\5
+\\{panic}(\.{"Unknown\ item\ name"});\2\6
+\&{if} ${}(\|o,\39\\{pos}(\|k)>\|i){}$\1\5
+\\{panic}(\.{"Duplicate\ item\ name}\)\.{\ in\ this\ option"});\2\6
+${}\\{last\_node}\PP;{}$\6
+\&{if} ${}(\\{last\_node}\E\\{max\_nodes}){}$\1\5
+\\{panic}(\.{"Too\ many\ nodes"});\2\6
+${}\|o,\39\|t\K\\{size}(\|k){}$;\C{ how many previous options have used this
+item? }\6
+${}\|o,\39\\{nd}[\\{last\_node}].\\{itm}\K\|k\GG\T{2},\39\\{nd}[\\{last%
+\_node}].\\{loc}\K\|t;{}$\6
+\&{if} ${}((\|k\GG\T{2})<\\{second}){}$\1\5
+${}\\{pp}\K\T{1};{}$\2\6
+${}\|o,\39\\{size}(\|k)\K\|t+\T{1},\39\\{pos}(\|k)\K\\{last\_node}{}$;\par
+\U16.\fi
+
+\M{18}\B\X18:Remove \PB{\\{last\_node}} from its item list\X${}\E{}$\6
+$\|o,\39\|k\K\\{nd}[\\{last\_node}].\\{itm}\LL\T{2};{}$\6
+${}\\{oo},\39\\{size}(\|k)\MM,\39\\{pos}(\|k)\K\|i-\T{1}{}$;\par
+\U16.\fi
+
+\M{19}\B\X19:Initialize \PB{\\{item}}\X${}\E{}$\6
+$\\{active}\K\\{itemlength}\K\\{last\_itm}-\T{1};{}$\6
+\&{for} ${}(\|k\K\T{0},\39\|j\K\T{4};{}$ ${}\|k<\\{itemlength};{}$ ${}\|k%
+\PP){}$\1\5
+${}\\{oo},\39\\{item}[\|k]\K\|j,\39\|j\MRL{+{\K}}\T{4}+\\{size}((\|k+\T{1})\LL%
+\T{2});{}$\2\6
+${}\\{setlength}\K\|j-\T{4};{}$\6
+\&{if} ${}(\\{second}\E\\{max\_cols}){}$\1\5
+${}\\{osecond}\K\\{active},\39\\{second}\K\|j;{}$\2\6
+\&{else}\1\5
+${}\\{osecond}\K\\{second}-\T{1}{}$;\2\par
+\U16.\fi
+
+\M{20}Going from high to low, we now move the item names and sizes
+to their final positions (leaving room for the pointers into \PB{\\{nb}}).
+
+\Y\B\4\X20:Expand \PB{\\{set}}\X${}\E{}$\6
+\&{for} ( ; \|k; ${}\|k\MM){}$\5
+${}\{{}$\1\6
+${}\|o,\39\|j\K\\{item}[\|k-\T{1}];{}$\6
+\&{if} ${}(\|k\E\\{second}){}$\1\5
+${}\\{second}\K\|j{}$;\C{ \PB{\\{second}} is now an index into \PB{\\{set}} }\2%
+\6
+${}\\{oo},\39\\{size}(\|j)\K\\{size}(\|k\LL\T{2});{}$\6
+\&{if} ${}(\\{size}(\|j)\E\T{0}\W\|k\Z\\{osecond}){}$\1\5
+${}\\{baditem}\K\|k;{}$\2\6
+${}\|o,\39\\{pos}(\|j)\K\|k-\T{1};{}$\6
+${}\\{oo},\39\\{rname}(\|j)\K\\{rname}(\|k\LL\T{2}),\39\\{lname}(\|j)\K%
+\\{lname}(\|k\LL\T{2});{}$\6
+\4${}\}{}$\2\par
+\U16.\fi
+
+\M{21}\B\X21:Adjust \PB{\\{nd}}\X${}\E{}$\6
+\&{for} ${}(\|k\K\T{1};{}$ ${}\|k<\\{last\_node};{}$ ${}\|k\PP){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|o,\39\\{nd}[\|k].\\{itm}<\T{0}){}$\1\5
+\&{continue};\C{ skip over a spacer }\2\6
+${}\|o,\39\|j\K\\{item}[\\{nd}[\|k].\\{itm}-\T{1}];{}$\6
+${}\|i\K\|j+\\{nd}[\|k].\\{loc}{}$;\C{ no mem charged because we just read %
+\PB{$\\{nd}[\|k].\\{itm}$} }\6
+${}\|o,\39\\{nd}[\|k].\\{itm}\K\|j,\39\\{nd}[\|k].\\{loc}\K\|i;{}$\6
+${}\|o,\39\\{set}[\|i]\K\|k;{}$\6
+\4${}\}{}$\2\par
+\U16.\fi
+
+\M{22}\B\X22:Report an uncoverable item\X${}\E{}$\6
+${}\{{}$\1\6
+\&{if} ${}(\\{vbose}\AND\\{show\_choices}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Item"});{}$\6
+${}\\{print\_item\_name}(\\{item}[\\{baditem}-\T{1}],\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ has\ no\ options!\\n"});{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\par
+\U2.\fi
+
+\M{23}The ``number of entries'' includes spacers (because {\mc DLX2}
+includes spacers in its reports). If you want to know the
+sum of the option lengths, just subtract the number of options.
+
+\Y\B\4\X23:Report the successful completion of the input phase\X${}\E{}$\6
+$\\{fprintf}(\\{stderr},\39\.{"("}\|O\.{"lld\ options,\ "}\|O\.{"d+"}\|O\.{"d\
+items,\ "}\|O\.{"d\ entries\ successfu}\)\.{lly\ read)\\n"},\39\\{options},\39%
+\\{osecond},\39\\{itemlength}-\\{osecond},\39\\{last\_node}){}$;\par
+\U2.\fi
+
+\M{24}The item lengths after input are shown (on request).
+But there's little use trying to show them after the process is done,
+since they are restored somewhat blindly.
+(Failures of the linked-list implementation in {\mc DLX2} could sometimes be
+detected by showing the final lengths; but that reasoning no longer applies.)
+
+\Y\B\4\X24:Report the item totals\X${}\E{}$\6
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Item\ totals:"});{}$\6
+\&{for} ${}(\|k\K\T{0};{}$ ${}\|k<\\{itemlength};{}$ ${}\|k\PP){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|k\E\\{second}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"\ |"});{}$\2\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ "}\|O\.{"d"},\39\\{size}(\\{item}[\|k]));{}$%
+\6
+\4${}\}{}$\2\6
+${}\\{fprintf}(\\{stderr},\39\.{"\\n"});{}$\6
+\4${}\}{}$\2\par
+\U2.\fi
+
+\M{25}\B\X25:Randomize the \PB{\\{item}} list\X${}\E{}$\6
+\&{for} ${}(\|k\K\\{active};{}$ ${}\|k>\T{1};{}$ \,)\5
+${}\{{}$\1\6
+${}\\{mems}\MRL{+{\K}}\T{4},\39\|j\K\\{gb\_unif\_rand}(\|k);{}$\6
+${}\|k\MM;{}$\6
+${}\\{oo},\39\\{oo},\39\|t\K\\{item}[\|j],\39\\{item}[\|j]\K\\{item}[\|k],\39%
+\\{item}[\|k]\K\|t;{}$\6
+${}\\{oo},\39\\{pos}(\|t)\K\|k,\39\\{pos}(\\{item}[\|j])\K\|j;{}$\6
+\4${}\}{}$\2\par
+\U2.\fi
+
+\N{1}{26}The dancing.
+Our strategy for generating all exact covers will be to repeatedly
+choose an item that appears to be hardest to cover, namely an item whose set
+is currently smallest, among all items that still need to be covered.
+And we explore all possibilities via depth-first search.
+
+The neat part of this algorithm is the way the sets are maintained.
+Depth-first search means last-in-first-out maintenance of data structures;
+and the sparse-set representations make it particularly easy to undo
+what we've done at deeper levels.
+
+The basic operation is ``covering an item.'' That means removing it
+from the set of items needing to be covered, and ``hiding'' its
+options: removing them from the sets of the other items they contain.
+
+\Y\B\4\X26:Solve the problem\X${}\E{}$\6
+${}\{{}$\1\6
+${}\\{level}\K\T{0};{}$\6
+\4\\{forward}:\5
+${}\\{nodes}\PP;{}$\6
+\&{if} ${}(\\{vbose}\AND\\{show\_profile}){}$\1\5
+${}\\{profile}[\\{level}]\PP;{}$\2\6
+\&{if} (\\{sanity\_checking})\1\5
+\\{sanity}(\,);\2\6
+\X28:Do special things if enough \PB{\\{mems}} have accumulated\X;\6
+\X34:Set \PB{\\{best\_itm}} to the best item for branching\X;\6
+\&{if} ${}(\|t\E\\{max\_nodes}){}$\1\5
+\X35:Visit a solution and \PB{\&{goto} \\{backup}}\X;\2\6
+\X29:Swap \PB{\\{best\_itm}} out of the active list\X;\6
+${}\\{oactive}\K\\{active},\39\\{hide}(\\{best\_itm},\39\T{0},\39\T{0}){}$;\C{
+hide its options }\6
+${}\\{cur\_choice}\K\\{best\_itm};{}$\6
+\X36:Save the currently active sizes\X;\6
+\4\\{advance}:\5
+${}\\{oo},\39\\{cur\_node}\K\\{choice}[\\{level}]\K\\{set}[\\{cur\_choice}];{}$%
+\6
+\4\\{tryit}:\5
+\&{if} ${}((\\{vbose}\AND\\{show\_choices})\W\\{level}<\\{show\_choices%
+\_max}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"L"}\|O\.{"d:"},\39\\{level});{}$\6
+${}\\{print\_option}(\\{cur\_node},\39\\{stderr});{}$\6
+\4${}\}{}$\2\6
+\X30:Swap out all other items of \PB{\\{cur\_node}}\X;\6
+\X31:Hide the other options of those items, or \PB{\&{goto} \\{abort}}\X;\6
+\&{if} ${}(\PP\\{level}>\\{maxl}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{level}\G\\{max\_level}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Too\ many\ levels!\\n"});{}$\6
+${}\\{exit}({-}\T{4});{}$\6
+\4${}\}{}$\2\6
+${}\\{maxl}\K\\{level};{}$\6
+\4${}\}{}$\2\6
+\&{goto} \\{forward};\6
+\4\\{backup}:\5
+\&{if} ${}(\\{level}\E\T{0}){}$\1\5
+\&{goto} \\{done};\2\6
+${}\\{level}\MM;{}$\6
+${}\\{oo},\39\\{cur\_node}\K\\{choice}[\\{level}],\39\\{best\_itm}\K\\{nd}[%
+\\{cur\_node}].\\{itm},\39\\{cur\_choice}\K\\{nd}[\\{cur\_node}].\\{loc};{}$\6
+\4\\{abort}:\5
+\&{if} ${}(\|o,\39\\{cur\_choice}+\T{1}\G\\{best\_itm}+\\{size}(\\{best%
+\_itm})){}$\1\5
+\&{goto} \\{backup};\2\6
+\X37:Restore the currently active sizes\X;\6
+${}\\{cur\_choice}\PP{}$;\5
+\&{goto} \\{advance};\6
+\4${}\}{}$\2\par
+\U2.\fi
+
+\M{27}We save the sizes of active items on \PB{\\{savestack}}, whose entries
+have two fields \PB{\|l} and \PB{\|r}, for an item and its size. This stack
+makes it easy to undo all deletions, by simply restoring the former sizes.
+
+\Y\B\4\X3:Global variables\X${}\mathrel+\E{}$\6
+\&{int} \\{level};\C{ number of choices in current partial solution }\6
+\&{int} \\{choice}[\\{max\_level}];\C{ the node chosen on each level }\6
+\&{int} ${}\\{saved}[\\{max\_level}+\T{1}]{}$;\C{ size of \PB{\\{savestack}} on
+each level }\6
+\&{ullng} \\{profile}[\\{max\_level}];\C{ number of search tree nodes on each
+level }\6
+\&{twoints} \\{savestack}[\\{savesize}];\6
+\&{int} \\{saveptr};\C{ current size of \PB{\\{savestack}} }\par
+\fi
+
+\M{28}\B\X28:Do special things if enough \PB{\\{mems}} have accumulated\X${}%
+\E{}$\6
+\&{if} ${}(\\{delta}\W(\\{mems}\G\\{thresh})){}$\5
+${}\{{}$\1\6
+${}\\{thresh}\MRL{+{\K}}\\{delta};{}$\6
+\&{if} ${}(\\{vbose}\AND\\{show\_full\_state}){}$\1\5
+\\{print\_state}(\,);\2\6
+\&{else}\1\5
+\\{print\_progress}(\,);\2\6
+\4${}\}{}$\2\6
+\&{if} ${}(\\{mems}\G\\{timeout}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"TIMEOUT!\\n"}){}$;\5
+\&{goto} \\{done};\6
+\4${}\}{}$\2\par
+\U26.\fi
+
+\M{29}\B\X29:Swap \PB{\\{best\_itm}} out of the active list\X${}\E{}$\6
+$\|p\K\\{active}-\T{1},\39\\{active}\K\|p;{}$\6
+${}\|o,\39\\{pp}\K\\{pos}(\\{best\_itm});{}$\6
+${}\|o,\39\\{cc}\K\\{item}[\|p];{}$\6
+${}\\{oo},\39\\{item}[\|p]\K\\{best\_itm},\39\\{item}[\\{pp}]\K\\{cc};{}$\6
+${}\\{oo},\39\\{pos}(\\{cc})\K\\{pp},\39\\{pos}(\\{best\_itm})\K\|p;{}$\6
+${}\\{updates}\PP{}$;\par
+\U26.\fi
+
+\M{30}Note that a colored secondary item might have already been purified,
+in which case it has already been swapped out. We don't want to
+tamper with any of the inactive items.
+
+\Y\B\4\X30:Swap out all other items of \PB{\\{cur\_node}}\X${}\E{}$\6
+$\|p\K\\{oactive}\K\\{active};{}$\6
+\&{for} ${}(\|q\K\\{cur\_node}+\T{1};{}$ ${}\|q\I\\{cur\_node};{}$ \,)\5
+${}\{{}$\1\6
+${}\|o,\39\|c\K\\{nd}[\|q].\\{itm};{}$\6
+\&{if} ${}(\|c<\T{0}){}$\1\5
+${}\|q\MRL{+{\K}}\|c;{}$\2\6
+\&{else}\5
+${}\{{}$\1\6
+${}\|o,\39\\{pp}\K\\{pos}(\|c);{}$\6
+\&{if} ${}(\\{pp}<\|p){}$\5
+${}\{{}$\1\6
+${}\|o,\39\\{cc}\K\\{item}[\MM\|p];{}$\6
+${}\\{oo},\39\\{item}[\|p]\K\|c,\39\\{item}[\\{pp}]\K\\{cc};{}$\6
+${}\\{oo},\39\\{pos}(\\{cc})\K\\{pp},\39\\{pos}(\|c)\K\|p;{}$\6
+${}\\{updates}\PP;{}$\6
+\4${}\}{}$\2\6
+${}\|q\PP;{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+${}\\{active}\K\|p{}$;\par
+\U26.\fi
+
+\M{31}A secondary item was purified at lower levels if and only if
+its position is \PB{$\G$ \\{oactive}}.
+
+\Y\B\4\X31:Hide the other options of those items, or \PB{\&{goto} \\{abort}}%
+\X${}\E{}$\6
+\&{for} ${}(\|q\K\\{cur\_node}+\T{1};{}$ ${}\|q\I\\{cur\_node};{}$ \,)\5
+${}\{{}$\1\6
+${}\|o,\39\\{cc}\K\\{nd}[\|q].\\{itm};{}$\6
+\&{if} ${}(\\{cc}<\T{0}){}$\1\5
+${}\|q\MRL{+{\K}}\\{cc};{}$\2\6
+\&{else}\5
+${}\{{}$\1\6
+\&{if} ${}(\\{cc}<\\{second}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{hide}(\\{cc},\39\T{0},\39\T{1})\E\T{0}){}$\1\5
+\&{goto} \\{abort};\2\6
+\4${}\}{}$\5
+\2\&{else}\5
+${}\{{}$\C{ do nothing if \PB{\\{cc}} already purified }\1\6
+${}\|o,\39\\{pp}\K\\{pos}(\\{cc});{}$\6
+\&{if} ${}(\\{pp}<\\{oactive}\W(\|o,\39\\{hide}(\\{cc},\39\\{nd}[\|q].\\{clr},%
+\39\T{1})\E\T{0})){}$\1\5
+\&{goto} \\{abort};\2\6
+\4${}\}{}$\2\6
+${}\|q\PP;{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\par
+\U26.\fi
+
+\M{32}The \PB{\\{hide}} routine hides all of the incompatible options remaining
+in the
+set of a given item. If \PB{\\{check}} is nonzero, it
+returns zero if that would cause a primary item to be uncoverable.
+
+If the \PB{\\{color}} parameter is zero, all options are incompatible.
+Otherwise, however, the given item is secondary, and we retain options
+for which that item has a \PB{\\{color}} match.
+
+When an option is hidden, it leaves all sets except the set of that
+given item. And the given item is inactive.
+Thus a node is never removed from a set twice.
+
+\Y\B\4\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{int} \\{hide}(\&{int} \|c${},\39{}$\&{int} \\{color}${},\39{}$\&{int} %
+\\{check})\2\2\6
+${}\{{}$\1\6
+\&{register} \&{int} \\{cc}${},{}$ \|s${},{}$ \\{rr}${},{}$ \\{ss}${},{}$ %
+\\{nn}${},{}$ \\{tt}${},{}$ \\{uu}${},{}$ \\{vv}${},{}$ \\{nnp};\7
+\&{for} ${}(\|o,\39\\{rr}\K\|c,\39\|s\K\|c+\\{size}(\|c);{}$ ${}\\{rr}<\|s;{}$
+${}\\{rr}\PP){}$\5
+${}\{{}$\1\6
+${}\|o,\39\\{tt}\K\\{set}[\\{rr}];{}$\6
+\&{if} ${}(\R\\{color}\V(\|o,\39\\{nd}[\\{tt}].\\{clr}\I\\{color})){}$\1\5
+\X33:Remove option \PB{\\{tt}} from the other sets it's in\X;\2\6
+\4${}\}{}$\2\6
+\&{return} \T{1};\6
+\4${}\}{}$\2\par
+\fi
+
+\M{33}\B\X33:Remove option \PB{\\{tt}} from the other sets it's in\X${}\E{}$\6
+${}\{{}$\1\6
+\&{for} ${}(\\{nn}\K\\{tt}+\T{1};{}$ ${}\\{nn}\I\\{tt};{}$ \,)\5
+${}\{{}$\1\6
+${}\|o,\39\\{uu}\K\\{nd}[\\{nn}].\\{itm},\39\\{vv}\K\\{nd}[\\{nn}].\\{loc};{}$\6
+\&{if} ${}(\\{uu}<\T{0}){}$\5
+${}\{{}$\5
+\1${}\\{nn}\MRL{+{\K}}\\{uu}{}$;\5
+\&{continue};\5
+${}\}{}$\2\6
+\&{if} ${}(\|o,\39\\{pos}(\\{uu})<\\{oactive}){}$\5
+${}\{{}$\1\6
+${}\|o,\39\\{ss}\K\\{size}(\\{uu})-\T{1};{}$\6
+\&{if} ${}(\\{ss}\E\T{0}\W\\{check}\W\\{uu}<\\{second}\W\\{pos}(\\{uu})<%
+\\{active}){}$\5
+${}\{{}$\1\6
+\&{if} ${}((\\{vbose}\AND\\{show\_choices})\W\\{level}<\\{show\_choices%
+\_max}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ can't\ cover"});{}$\6
+${}\\{print\_item\_name}(\\{uu},\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"\\n"});{}$\6
+\4${}\}{}$\2\6
+\&{return} \T{0};\6
+\4${}\}{}$\2\6
+${}\|o,\39\\{nnp}\K\\{set}[\\{uu}+\\{ss}];{}$\6
+${}\|o,\39\\{size}(\\{uu})\K\\{ss};{}$\6
+${}\\{oo},\39\\{set}[\\{uu}+\\{ss}]\K\\{nn},\39\\{set}[\\{vv}]\K\\{nnp};{}$\6
+${}\\{oo},\39\\{nd}[\\{nn}].\\{loc}\K\\{uu}+\\{ss},\39\\{nd}[\\{nnp}].\\{loc}\K%
+\\{vv};{}$\6
+${}\\{updates}\PP;{}$\6
+\4${}\}{}$\2\6
+${}\\{nn}\PP;{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\par
+\U32.\fi
+
+\M{34}The ``best item'' is considered to be an item that minimizes the
+number of remaining choices. If there are several candidates, we
+choose the leftmost.
+
+Notice that a secondary item is active if and only if it has not
+been purified (that is, if and only if it hasn't yet appeared in
+a chosen option).
+
+(This program explores the search space in a slightly different order
+from {\mc DLX2}, because the ordering of items in the active list
+is no longer fixed. Thus ties are broken in a different way when $s=1$.)
+
+\Y\B\4\X34:Set \PB{\\{best\_itm}} to the best item for branching\X${}\E{}$\6
+$\|t\K\\{max\_nodes},\39\\{tmems}\K\\{mems};{}$\6
+\&{if} ${}((\\{vbose}\AND\\{show\_details})\W\\{level}<\\{show\_choices\_max}\W%
+\\{level}\G\\{maxl}-\\{show\_choices\_gap}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"Level\ "}\|O\.{"d:"},\39\\{level});{}$\2\6
+\&{for} ${}(\|k\K\T{0};{}$ ${}\|t>\T{1}\W\|k<\\{active};{}$ ${}\|k\PP){}$\1\6
+\&{if} ${}(\|o,\39\\{item}[\|k]<\\{second}){}$\5
+${}\{{}$\1\6
+${}\|o,\39\|s\K\\{size}(\\{item}[\|k]);{}$\6
+\&{if} ${}((\\{vbose}\AND\\{show\_details})\W\\{level}<\\{show\_choices\_max}\W%
+\\{level}\G\\{maxl}-\\{show\_choices\_gap}){}$\5
+${}\{{}$\1\6
+${}\\{print\_item\_name}(\\{item}[\|k],\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"("}\|O\.{"d)"},\39\|s);{}$\6
+\4${}\}{}$\2\6
+\&{if} ${}(\|s\Z\|t){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|s<\|t){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|s\E\T{0}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"I'm\ confused.\\n"}){}$;\C{ \PB{\\{hide}}
+missed this }\2\6
+${}\\{best\_itm}\K\\{item}[\|k],\39\|t\K\|s;{}$\6
+\4${}\}{}$\2\6
+\&{else} \&{if} ${}(\\{item}[\|k]<\\{best\_itm}){}$\1\5
+${}\\{best\_itm}\K\\{item}[\|k]{}$;\C{ suggested by P. Weigel }\2\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\2\6
+\&{if} ${}((\\{vbose}\AND\\{show\_details})\W\\{level}<\\{show\_choices\_max}\W%
+\\{level}\G\\{maxl}-\\{show\_choices\_gap}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\|t\E\\{max\_nodes}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"\ solution\\n"});{}$\2\6
+\&{else}\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ branching\ on"});{}$\6
+${}\\{print\_item\_name}(\\{best\_itm},\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"("}\|O\.{"d)\\n"},\39\|t);{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+\&{if} ${}(\|t>\\{maxdeg}\W\|t<\\{max\_nodes}){}$\1\5
+${}\\{maxdeg}\K\|t;{}$\2\6
+\&{if} (\\{shape\_file})\5
+${}\{{}$\1\6
+\&{if} ${}(\|t\E\\{max\_nodes}){}$\1\5
+${}\\{fprintf}(\\{shape\_file},\39\.{"sol\\n"});{}$\2\6
+\&{else}\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{shape\_file},\39\.{""}\|O\.{"d"},\39\|t);{}$\6
+${}\\{print\_item\_name}(\\{best\_itm},\39\\{shape\_file});{}$\6
+${}\\{fprintf}(\\{shape\_file},\39\.{"\\n"});{}$\6
+\4${}\}{}$\2\6
+\\{fflush}(\\{shape\_file});\6
+\4${}\}{}$\2\6
+${}\\{cmems}\MRL{+{\K}}\\{mems}-\\{tmems}{}$;\par
+\U26.\fi
+
+\M{35}\B\X35:Visit a solution and \PB{\&{goto} \\{backup}}\X${}\E{}$\6
+${}\{{}$\1\6
+${}\\{count}\PP;{}$\6
+\&{if} ${}(\\{spacing}\W(\\{count}\\{mod}\\{spacing}\E\T{0})){}$\5
+${}\{{}$\1\6
+${}\\{printf}(\.{""}\|O\.{"lld:\\n"},\39\\{count});{}$\6
+\&{for} ${}(\|k\K\T{0};{}$ ${}\|k<\\{level};{}$ ${}\|k\PP){}$\1\5
+${}\\{print\_option}(\\{choice}[\|k],\39\\{stdout});{}$\2\6
+\\{fflush}(\\{stdout});\6
+\4${}\}{}$\2\6
+\&{if} ${}(\\{count}\G\\{maxcount}){}$\1\5
+\&{goto} \\{done};\2\6
+\&{goto} \\{backup};\6
+\4${}\}{}$\2\par
+\U26.\fi
+
+\M{36}\B\X36:Save the currently active sizes\X${}\E{}$\6
+\&{if} ${}(\\{saveptr}+\\{active}>\\{maxsaveptr}){}$\5
+${}\{{}$\1\6
+\&{if} ${}(\\{saveptr}+\\{active}\G\\{savesize}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Stack\ overflow\ (sav}\)\.{esize="}\|O\.{"d)!%
+\\n"},\39\\{savesize});{}$\6
+${}\\{exit}({-}\T{5});{}$\6
+\4${}\}{}$\2\6
+${}\\{maxsaveptr}\K\\{saveptr}+\\{active};{}$\6
+\4${}\}{}$\2\6
+\&{for} ${}(\|p\K\T{0};{}$ ${}\|p<\\{active};{}$ ${}\|p\PP){}$\1\5
+${}\\{ooo},\39\\{savestack}[\\{saveptr}+\|p].\|l\K\\{item}[\|p],\39%
+\\{savestack}[\\{saveptr}+\|p].\|r\K\\{size}(\\{item}[\|p]);{}$\2\6
+${}\|o,\39\\{saved}[\\{level}+\T{1}]\K\\{saveptr}\K\\{saveptr}+\\{active}{}$;%
+\par
+\U26.\fi
+
+\M{37}\B\X37:Restore the currently active sizes\X${}\E{}$\6
+$\|o,\39\\{saveptr}\K\\{saved}[\\{level}+\T{1}];{}$\6
+${}\|o,\39\\{active}\K\\{saveptr}-\\{saved}[\\{level}];{}$\6
+\&{for} ${}(\|p\K{-}\\{active};{}$ ${}\|p<\T{0};{}$ ${}\|p\PP){}$\1\5
+${}\\{oo},\39\\{size}(\\{savestack}[\\{saveptr}+\|p].\|l)\K\\{savestack}[%
+\\{saveptr}+\|p].\|r{}$;\2\par
+\U26.\fi
+
+\M{38}\B\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{void} \\{print\_savestack}(\&{int} \\{start}${},\39{}$\&{int} \\{stop})%
+\2\2\6
+${}\{{}$\1\6
+\&{register} \|k;\7
+\&{for} ${}(\|k\K\\{start};{}$ ${}\|k\Z\\{stop};{}$ ${}\|k\PP){}$\5
+${}\{{}$\1\6
+${}\\{print\_item\_name}(\\{savestack}[\|k].\|l,\39\\{stderr});{}$\6
+${}\\{fprintf}(\\{stderr},\39\.{"("}\|O\.{"d),\ "}\|O\.{"d\\n"},\39%
+\\{savestack}[\|k].\|l,\39\\{savestack}[\|k].\|r);{}$\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\par
+\fi
+
+\M{39}\B\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{void} \\{print\_state}(\&{void})\2\2\6
+${}\{{}$\1\6
+\&{register} \&{int} \|l;\7
+${}\\{fprintf}(\\{stderr},\39\.{"Current\ state\ (leve}\)\.{l\ "}\|O\.{"d):%
+\\n"},\39\\{level});{}$\6
+\&{for} ${}(\|l\K\T{0};{}$ ${}\|l<\\{level};{}$ ${}\|l\PP){}$\5
+${}\{{}$\1\6
+${}\\{print\_option}(\\{choice}[\|l],\39\\{stderr});{}$\6
+\&{if} ${}(\|l\G\\{show\_levels\_max}){}$\5
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ ...\\n"});{}$\6
+\&{break};\6
+\4${}\}{}$\2\6
+\4${}\}{}$\2\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ "}\|O\.{"lld\ solutions,\ "}\|O\.{"lld\
+mems,\ and\ max\ l}\)\.{evel\ "}\|O\.{"d\ so\ far.\\n"},\39\\{count},\39%
+\\{mems},\39\\{maxl});{}$\6
+\4${}\}{}$\2\par
+\fi
+
+\M{40}During a long run, it's helpful to have some way to measure progress.
+The following routine prints a string that indicates roughly where we
+are in the search tree. The string consists of character pairs, separated
+by blanks, where each character pair represents a branch of the search
+tree. When a node has $d$ descendants and we are working on the $k$th,
+the two characters respectively represent $k$ and~$d$ in a simple code;
+namely, the values 0, 1, \dots, 61 are denoted by
+$$\.0,\ \.1,\ \dots,\ \.9,\ \.a,\ \.b,\ \dots,\ \.z,\ \.A,\ \.B,\ \dots,\.Z.$$
+All values greater than 61 are shown as `\.*'. Notice that as computation
+proceeds, this string will increase lexicographically.
+
+Following that string, a fractional estimate of total progress is computed,
+based on the na{\"\i}ve assumption that the search tree has a uniform
+branching structure. If the tree consists
+of a single node, this estimate is~.5; otherwise, if the first choice
+is `$k$ of~$d$', the estimate is $(k-1)/d$ plus $1/d$ times the
+recursively evaluated estimate for the $k$th subtree. (This estimate
+might obviously be very misleading, in some cases, but at least it
+tends to grow monotonically.)
+
+\Y\B\4\X10:Subroutines\X${}\mathrel+\E{}$\6
+\1\1\&{void} \\{print\_progress}(\&{void})\2\2\6
+${}\{{}$\1\6
+\&{register} \&{int} \|l${},{}$ \|k${},{}$ \|d${},{}$ \|c${},{}$ \|p${},{}$ %
+\\{ds}${}\K\T{0};{}$\6
+\&{register} \&{double} \|f${},{}$ \\{fd};\7
+${}\\{fprintf}(\\{stderr},\39\.{"\ after\ "}\|O\.{"lld\ mems:\ "}\|O\.{"lld\
+sols,"},\39\\{mems},\39\\{count});{}$\6
+\&{for} ${}(\|f\K\T{0.0},\39\\{fd}\K\T{1.0},\39\|l\K\T{0};{}$ ${}\|l<%
+\\{level};{}$ ${}\|l\PP){}$\5
+${}\{{}$\1\6
+${}\|c\K\\{nd}[\\{choice}[\|l]].\\{itm},\39\|d\K\\{size}(\|c),\39\|k\K\\{nd}[%
+\\{choice}[\|l]].\\{loc}-\|c+\T{1};{}$\6
+${}\\{fd}\MRL{*{\K}}\|d,\39\|f\MRL{+{\K}}(\|k-\T{1})/\\{fd}{}$;\C{ choice \PB{%
+\|l} is \PB{\|k} of \PB{\|d} }\6
+\&{if} ${}(\|l<\\{show\_levels\_max}){}$\1\5
+${}\\{fprintf}(\\{stderr},\39\.{"\ "}\|O\.{"c"}\|O\.{"c"},\39\|k<\T{10}\?%
+\.{'0'}+\|k:\|k<\T{36}\?\.{'a'}+\|k-\T{10}:\|k<\T{62}\?\.{'A'}+\|k-\T{36}:%
+\.{'*'},\39\|d<\T{10}\?\.{'0'}+\|d:\|d<\T{36}\?\.{'a'}+\|d-\T{10}:\|d<\T{62}\?%
+\.{'A'}+\|d-\T{36}:\.{'*'});{}$\2\6
+\&{else} \&{if} ${}(\R\\{ds}){}$\1\5
+${}\\{ds}\K\T{1},\39\\{fprintf}(\\{stderr},\39\.{"..."});{}$\2\6
+\4${}\}{}$\2\6
+${}\\{fprintf}(\\{stderr},\39\.{"\ "}\|O\.{".5f\\n"},\39\|f+\T{0.5}/\\{fd});{}$%
+\6
+\4${}\}{}$\2\par
+\fi
+
+\M{41}\B\X41:Print the profile\X${}\E{}$\6
+${}\{{}$\1\6
+${}\\{fprintf}(\\{stderr},\39\.{"Profile:\\n"});{}$\6
+\&{for} ${}(\\{level}\K\T{0};{}$ ${}\\{level}\Z\\{maxl};{}$ ${}\\{level}\PP){}$%
+\1\5
+${}\\{fprintf}(\\{stderr},\39\.{""}\|O\.{"3d:\ "}\|O\.{"lld\\n"},\39\\{level},%
+\39\\{profile}[\\{level}]);{}$\2\6
+\4${}\}{}$\2\par
+\U2.\fi
+
+\N{1}{42}Index.
+\fi
+
+\inx
+\fin
+\con

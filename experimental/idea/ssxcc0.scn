@@ -1,0 +1,56 @@
+\I\X21:Adjust \PB{\\{nd}}\X
+\U16.
+\I\X15:Check for duplicate item name\X
+\U14.
+\I\X5:Close the files\X
+\U2.
+\I\X17:Create a node for the item named in \PB{\\{buf}[\|p]}\X
+\U16.
+\I\X28:Do special things if enough \PB{\\{mems}} have accumulated\X
+\U26.
+\I\X20:Expand \PB{\\{set}}\X
+\U16.
+\I\X3, 8, 27:Global variables\X
+\U2.
+\I\X31:Hide the other options of those items, or \PB{\&{goto} \\{abort}}\X
+\U26.
+\I\X19:Initialize \PB{\\{item}}\X
+\U16.
+\I\X14:Input the item names\X
+\U2.
+\I\X16:Input the options\X
+\U2.
+\I\X41:Print the profile\X
+\U2.
+\I\X4:Process the command line\X
+\U2.
+\I\X25:Randomize the \PB{\\{item}} list\X
+\U2.
+\I\X33:Remove option \PB{\\{tt}} from the other sets it's in\X
+\U32.
+\I\X18:Remove \PB{\\{last\_node}} from its item list\X
+\U16.
+\I\X22:Report an uncoverable item\X
+\U2.
+\I\X24:Report the item totals\X
+\U2.
+\I\X23:Report the successful completion of the input phase\X
+\U2.
+\I\X37:Restore the currently active sizes\X
+\U26.
+\I\X36:Save the currently active sizes\X
+\U26.
+\I\X34:Set \PB{\\{best\_itm}} to the best item for branching\X
+\U26.
+\I\X26:Solve the problem\X
+\U2.
+\I\X10, 11, 12, 13, 32, 38, 39, 40:Subroutines\X
+\U2.
+\I\X30:Swap out all other items of \PB{\\{cur\_node}}\X
+\U26.
+\I\X29:Swap \PB{\\{best\_itm}} out of the active list\X
+\U26.
+\I\X7, 9:Type definitions\X
+\U2.
+\I\X35:Visit a solution and \PB{\&{goto} \\{backup}}\X
+\U26.
