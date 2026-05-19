@@ -53,18 +53,12 @@ do { _mls_set_error(code, __func__); return sentinel; } while(0)
 
 **Test:** Create `experimental/ex_fuzzy/test_error_api.c` that provokes each error path and verifies return values + `mls_errno`.
 
-### Phase 3 — `MLS_NO_EXIT` mode
-**Files:** `mls.h`, `mls.c`, possibly `m_tool.c`, `m_table.c`
+### Phase 3 — `MLS_NO_EXIT` mode (SKIPPED)
 
-When `#define MLS_NO_EXIT` before `#include "mls.h"`:
-- `ERR()` macro is redefined to set `mls_errno` + `longjmp` to a per-call recovery point, OR
-- `ERR()` calls a non-exiting `deb_err_safe` that sets `mls_errno` and triggers a `return` via macro magic
-
-This is the riskiest phase. Approach:
-1. In mls.c, when `MLS_NO_EXIT` is defined, functions check `mls_errno` after calling any MLS sub-operation
-2. Or more practically: `ERR()` uses a hidden label via `do { _mls_set_error(...); goto _mls_error_exit; } while(0)`, and each non-void function has an `_mls_error_exit:` label returning the sentinel value.
-
-**Test:** Full test suite with `-DMLS_NO_EXIT` — all tests must pass without any process termination.
+Skipped as too risky. MLS_NO_EXIT would require every `ERR()` call site
+(150+ locations) to have an error return path. The `_safe` function
+variants already provide error-recoverable access. Developers who need
+error recovery should use the `_safe` API.
 
 ---
 

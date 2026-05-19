@@ -6,39 +6,23 @@ by default to prevent buffer overflow bugs.
 
 ---
 
-## 1. Error Handling — Don't `exit()`, Return Error Codes
+## 1. Error Handling — Return Error Codes (DONE)
 
-**Current:** Every error calls `ERR()` which prints a message and
-calls `exit(1)`. This makes MLS unusable in libraries, long-running
-servers, and any program that needs to recover from a mistake.
+**Completed:** `_safe` API variants added in `mls.c`.
 
-**Required:** Return error codes. Let the caller decide to abort
-or recover.
-
-```c
-// Current (kills the process):
-int h = m_alloc(100, sizeof(int), MFREE);
-INT(h, 999) = 42;  // out of bounds -> exit(1)
-
-// Required (recoverable):
-int h = m_alloc(100, sizeof(int), MFREE);
-int *p = (int*)mls_safe(h, 999);  // returns NULL, sets errno
-if (!p) { /* handle error */ }
-```
-
-**Specific changes:**
-
-| Current function | New function | Behavior |
+| Function | Returns | Sets `mls_errno` |
 |---|---|---|
-| `mls(h,i)` exits on OOB | `mls_safe(h,i)` | Returns NULL on invalid index/handle, sets `mls_errno` |
-| `m_put(h,d)` exits on OOM | `m_put_safe(h,d)` | Returns -1 on failure |
-| `m_free(h)` exits on UAF | `m_free_safe(h)` | Returns -1, does not abort |
-| `m_write/m_read` exit | `m_write_safe/m_read_safe` | Returns error code |
+| `mls_safe(h,i)` | NULL | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EUAF` |
+| `m_put_safe(h,d)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
+| `m_free_safe(h)` | -1 | `MLS_EINVAL` / `MLS_EUAF` |
+| `m_write_safe(m,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EOVERFLOW` / `MLS_ENOMEM` |
+| `m_read_safe(h,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EOVERFLOW` / `MLS_ENOMEM` |
+| `m_setlen_safe(m,len)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
+| `m_del_safe(m,p)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` |
 
-Enable both modes via compile flag:
-```c
-#define MLS_NO_EXIT  // replaces ERR with return -1 + mls_errno
-```
+The `MLS_NO_EXIT` compile flag was considered but **skipped** — it
+would require error-labels at every `ERR()` call site (150+). The
+`_safe` variants are the recommended approach for error recovery.
 
 ---
 
@@ -174,24 +158,18 @@ requires manual type tracking.
 
 ---
 
-## 9. Error Information API
+## 9. Error Information API (DONE)
 
-**Current:** Errors are printed to stderr. There's no programmatic
-way to retrieve error details.
+**Completed:** `mls_errno`, `mls_errmsg()`, and error code enum added.
 
-**Required:**
 ```c
-extern int mls_errno;                    // last error code
-extern const char *mls_errmsg(int code); // error description
-extern const char *mls_errfunc;          // function that failed
-
-enum {
+enum mls_error {
     MLS_OK = 0,
-    MLS_EINVAL,   // invalid handle
-    MLS_EBOUNDS,  // index out of bounds
-    MLS_ENOMEM,   // out of memory
-    MLS_EUAF,     // use-after-free detected
-    MLS_EOVERFLOW // integer overflow
+    MLS_EINVAL,    // invalid handle
+    MLS_EBOUNDS,   // index out of bounds
+    MLS_ENOMEM,    // out of memory
+    MLS_EUAF,      // use-after-free detected
+    MLS_EOVERFLOW, // integer overflow
 };
 ```
 
