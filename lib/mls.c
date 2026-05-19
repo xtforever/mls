@@ -217,6 +217,44 @@ static int lst_put_safe (lst_t lp, const void *d)
 	return p;
 }
 
+/* Like lst_write but returns -1 on error instead of calling ERR. */
+static int lst_write_safe (lst_t lp, size_t p, const void *data, size_t n)
+{
+	if (data == NULL) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	if (p + n > lp->max && lst_resize_safe (lp, p + n) != 0)
+		return -1;
+	if (p + n > lp->l)
+		lp->l = p + n;
+	memcpy (lst (lp, p), data, n * lp->w);
+	return 0;
+}
+
+/* Like lst_read but returns -1 on error instead of calling ERR. */
+static int lst_read_safe (lst_t l, size_t p, void **data, size_t n)
+{
+	if (p + n > l->l || data == NULL) {
+		mls_errno = MLS_EBOUNDS;
+		return -1;
+	}
+	if (*data == 0) {
+		size_t alloc_size = l->w * n;
+		if (n > 0 && alloc_size / n != l->w) {
+			mls_errno = MLS_EOVERFLOW;
+			return -1;
+		}
+		*data = malloc (alloc_size);
+		if (!*data) {
+			mls_errno = MLS_ENOMEM;
+			return -1;
+		}
+	}
+	memcpy (*data, lst (l, p), n * l->w);
+	return 0;
+}
+
 /**
  * Prints an error message with file and line information and terminates the program.
  * Sets the error_occurred flag for post-mortem analysis.
@@ -1563,6 +1601,33 @@ int m_write (int m, size_t p, const void *data, size_t n)
 }
 
 /**
+ * Non-aborting version of m_write(). Returns -1 on error and sets mls_errno.
+ *
+ * @param m The handle.
+ * @param p The starting index.
+ * @param data Pointer to the source data.
+ * @param n The number of elements to write.
+ * @return 0 on success, -1 on error.
+ */
+int m_write_safe (int m, size_t p, const void *data, size_t n)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	if (p + n < p) {
+		mls_errno = MLS_EOVERFLOW;
+		return -1;
+	}
+	lst_t lp = lock_handle_safe (m, 1);
+	if (!lp)
+		return -1;
+	int ret = lst_write_safe (lp, p, data, n);
+	unlock_handle (lp);
+	return ret;
+}
+
+/**
  * Reads data from a handle's list into a buffer.
  *
  * @param h The handle.
@@ -1581,6 +1646,33 @@ int m_read (int h, size_t p, void **data, size_t n)
 	if (p + n < p) ERR("Overflow in read index");
 
 	int ret = lst_read (lp, p, data, n);
+	unlock_handle (lp);
+	return ret;
+}
+
+/**
+ * Non-aborting version of m_read(). Returns -1 on error and sets mls_errno.
+ *
+ * @param h The handle.
+ * @param p The starting index.
+ * @param data Pointer to the destination buffer pointer.
+ * @param n The number of elements to read.
+ * @return 0 on success, -1 on error.
+ */
+int m_read_safe (int h, size_t p, void **data, size_t n)
+{
+	if (h <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	if (p + n < p) {
+		mls_errno = MLS_EOVERFLOW;
+		return -1;
+	}
+	lst_t lp = lock_handle_safe (h, 0);
+	if (!lp)
+		return -1;
+	int ret = lst_read_safe (lp, p, data, n);
 	unlock_handle (lp);
 	return ret;
 }
