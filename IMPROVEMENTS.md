@@ -129,22 +129,33 @@ Add typed macros for common types: `FLOAT(h,i)`, `DOUBLE(h,i)`,
 
 ---
 
-## 7. String Functions Need Completion
+## 7. String Functions — Interface Consistency
 
-**Current:** String API is scattered and incomplete. Essential
-operations are missing or have surprising semantics.
+**Current:** The string API is rich but spread across modules with
+inconsistent naming conventions (`s_replace_c` vs `s_replace`,
+`m_str_from_file` vs `s_read_file`, etc.). There is no general
+numeric-to-string converter.
 
-**Missing or needed:**
-| Function | Purpose |
-|---|---|
-| `s_cmp(a,b)` | Compare two string handles (currently requires `m_cmp`) |
-| `s_contains(h, needle)` | Check if string contains substring |
-| `s_starts_with / s_ends_with` | Prefix/suffix checks |
-| `s_replace(h, from, to)` | Replace all occurrences |
-| `s_tostr(h)` | Convert int/float handle to string |
-| `s_read_file(filename)` | Read entire file into string handle |
-| `s_strip(h)` | Trim whitespace from both ends |
-| `s_tokenize(h, delim)` | Tokenize into list of string handles |
+**Already available:**
+
+| Function | Location | Purpose |
+|---|---|---|
+| `s_cmp(a,b)` | `m_tool.h:24` | Compare two string handles |
+| `s_has_prefix(h, prefix)` | `m_tool.h:19` | Prefix check |
+| `s_has_suffix(h, suffix)` | `m_tool.h:20` | Suffix check |
+| `s_find(h, sub)` | `m_tool.h:28` | Find substring (returns index, -1 if not found) |
+| `s_replace_c(h, old, rep)` | `m_tool.h:36` | Replace all C-string occurrences |
+| `s_replace(d, src, p, r, cnt)` | `m_tool.h:70` | Replace using handles |
+| `s_from_long(val)` | `m_tool.h:21` | Convert long to string handle |
+| `m_str_from_file(name)` | `m_tool.h:53` | Read file into MLS string |
+| `s_trim(m)` | `m_tool.h:79` | Trim whitespace in-place |
+| `s_trim_c(h, chars)` | `m_tool.h:37` | Trim specific characters |
+| `s_split(m, s, c, rw)` | `m_tool.h:128` | Split into `char*` list |
+| `s_msplit(dest, src, pat)` | `m_tool.h:82` | Split into handle list |
+| `s_trim_left_c / s_trim_right_c` | `m_extra.h:15-16` | Directional trim |
+
+**Still missing:**
+- Generic numeric-to-string (double, int → handle) beyond `s_from_long`
 
 ---
 
