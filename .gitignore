@@ -5,3 +5,4 @@ tests/error-handler
 *.exe
 *.exed
 *.swp
+*.bak
