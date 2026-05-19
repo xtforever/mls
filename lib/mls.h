@@ -136,6 +136,12 @@ void *m_add (int m);
 int m_next (int m, int *p, void *d);
 int m_init ();
 void m_destruct ();
+
+size_t m_count_allocated (void);
+size_t m_total_bytes (void);
+size_t m_peak_handles (void);
+void   m_debug_print (FILE *fp);
+
 int m_create (size_t max, size_t w);
 int m_set_data (int m, size_t len, size_t w, const void *data);
 int m_put (int m, const void *data);

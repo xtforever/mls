@@ -33,6 +33,7 @@ static int freeing_handle = 0;
 static int CS_MAP  = 0;
 static int CS_ZERO = 0;
 static int FH      = 0;
+static size_t peak_slots = 0;
 
 
 /* prototypes */
@@ -924,6 +925,8 @@ static int get_free_hdl(void)
 		lp->l--;
 	} else {
 		last_created_hdl = lst_new (&ML, 1);
+		if ((size_t)(last_created_hdl + 1) > peak_slots)
+			peak_slots = (size_t)(last_created_hdl + 1);
 	}
 
 	return last_created_hdl;
@@ -2009,6 +2012,95 @@ int m_bsearch_int (int buf, int key)
 	return m_bsearch (&key, buf, cmp_int);
 }
 
+/**
+ * Returns the number of currently active (allocated, unfreed) handles.
+ * Excludes slot 0 (the internal free list).
+ *
+ * @return The count of active handles.
+ */
+size_t m_count_allocated (void)
+{
+	size_t count = 0;
+	MLS_MASTER_LOCK ();
+	if (!ML.data) {
+		MLS_MASTER_UNLOCK ();
+		return 0;
+	}
+	for (int idx = 1; idx < ML.l; idx++) {
+		lst_t l = lst (&ML, idx);
+		if (l->data && l->free_hdl != 255)
+			count++;
+	}
+	MLS_MASTER_UNLOCK ();
+	return count;
+}
+
+/**
+ * Returns the total number of bytes allocated across all active handles.
+ * Sums (capacity x width) for handles that own their memory (no MFREE_NOALLOC).
+ *
+ * @return The total allocated bytes.
+ */
+size_t m_total_bytes (void)
+{
+	size_t total = 0;
+	MLS_MASTER_LOCK ();
+	if (!ML.data) {
+		MLS_MASTER_UNLOCK ();
+		return 0;
+	}
+	for (int idx = 1; idx < ML.l; idx++) {
+		lst_t l = lst (&ML, idx);
+		if (l->data && l->free_hdl != 255
+		    && !(l->free_hdl & MFREE_NOALLOC))
+			total += l->max * l->w;
+	}
+	MLS_MASTER_UNLOCK ();
+	return total;
+}
+
+/**
+ * Returns the peak number of handle slots ever created.
+ * This is the maximum value of the master list length.
+ *
+ * @return The peak slot count.
+ */
+size_t m_peak_handles (void)
+{
+	return peak_slots;
+}
+
+/**
+ * Prints a tabular dump of all active handles to the given stream.
+ * Useful for debugging leaks and understanding handle state.
+ *
+ * @param fp The output FILE stream (stderr if NULL).
+ */
+void m_debug_print (FILE *fp)
+{
+	if (!fp)
+		fp = stderr;
+	MLS_MASTER_LOCK ();
+	if (!ML.data) {
+		fprintf (fp, "[mls] not initialized\n");
+		MLS_MASTER_UNLOCK ();
+		return;
+	}
+	fprintf (fp, "[mls] slots=%zu peak=%zu\n", (size_t)ML.l, peak_slots);
+	fprintf (fp, "%-6s  %-10s  %-5s %-8s %-8s %s\n",
+		 "Idx", "Handle", "Type", "Len", "Cap", "Data");
+	for (int idx = 0; idx < ML.l; idx++) {
+		lst_t l = lst (&ML, idx);
+		if (l->data && l->free_hdl != 255) {
+			int h = (int)((unsigned int)idx)
+				| ((int)(l->uaf_protection) << 24);
+			fprintf (fp, "%-6d  0x%08X  0x%02X %-8zu %-8zu %p\n",
+				 idx, h, l->free_hdl, l->l, l->max,
+				 (void *)l->data);
+		}
+	}
+	MLS_MASTER_UNLOCK ();
+}
 
 /* Debug implementations */
 #ifdef MLS_DEBUG
