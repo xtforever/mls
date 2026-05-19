@@ -70,14 +70,17 @@ compilers other than GCC/Clang.
 
 ---
 
-## 4. Public Header Cleanup
+## 4. Public Header Cleanup (DONE)
 
-**Current:** `mls.h` exposes internal implementation details
-(`struct ls_st`, `lst_t`, macros like `REAL_HDL`) to every includer.
+**Completed:** Internal types split into `mls_internal.h`.
 
-**Required:** Split into two headers:
-- `mls.h` — public API only (type-safe accessors, clean prototypes)
-- `mls_internal.h` — for library implementation files
+- `mls.h` now exposes only the public API (core `m_*` functions,
+  macros like `INT`/`STR`, debug wrappers, `MFREE` constants,
+  `free_fn_t`)
+- `mls_internal.h` holds `struct ls_st`, `lst_t`, `lst_*` functions,
+  `mls_rwlock_t`, `exported_get_list`, and `increase_by_percent`
+- External includers no longer see implementation internals
+- `mls.c` and `m_tool.c` include `mls_internal.h` as needed
 
 ---
 
