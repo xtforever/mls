@@ -7,25 +7,65 @@
 - **Handle-based Memory Management:** Data structures are referenced by integer handles, reducing pointer errors and simplifying API calls.
 - **Dynamic Arrays:** Automatically resizing arrays that can store any data type.
 - **Nested List Support:** Built-in support for lists containing other lists, with safe recursive freeing (`MFREE_EACH`).
-- **UAF Protection:** Basic Use-After-Free detection using protection patterns in handles.
-- **Debug Toolset:** Integrated tracing and allocation tracking.
-- **No Dependencies:** Standard C library only.
+- **UAF Protection:** Use-After-Free detection using protection patterns in handles.
+- **Thread Safety:** Per-handle read/write locks, enabled by default on Unix (`-DMLS_THREAD_SAFE`).
+- **Error Information API:** `mls_errno`, `mls_errmsg()`, and `_safe` API variants that return error codes instead of aborting.
+- **Statistics & Introspection:** `m_count_allocated()`, `m_total_bytes()`, `m_peak_handles()`, `m_debug_print()`.
+- **Typed Accessors:** `INT(h,i)`, `FLOAT(h,i)`, `DOUBLE(h,i)`, `PTR(h,i)`, `U32(h,i)`, `U64(h,i)`, `STR(h,i)`, `CHAR(h,i)`.
+- **Debug Toolset:** Integrated tracing, allocation tracking, and post-mortem analysis under `-DMLS_DEBUG`.
+- **CMake Support:** Build with CMake, optional `pkg-config` integration.
+- **No Dependencies:** Standard C library + optional pthreads.
 
 ## Installation
 
-Simply include `lib/mls.h` in your project and link against `lib/mls.c` or the compiled object file.
+### CMake (recommended)
 
 ```bash
-# Typical compilation
-gcc -I./lib your_program.c lib/mls.c -o your_program
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+cmake --install build --prefix /usr/local   # installs to /usr/local/lib/libmlsd.a
+```
+
+Options:
+
+| Flag | Default | Description |
+|---|---|---|
+| `-DCMAKE_BUILD_TYPE=Release` | Debug | Production build (`-O3`) |
+| `-DMLS_THREAD_SAFE=OFF` | ON | Disable thread-safety |
+| `-DMLS_WERROR=ON` | OFF | Treat warnings as errors |
+
+### Makefile (classic)
+
+```bash
+# Debug build (with MLS_DEBUG and trace support)
+make
+
+# Production build (optimized)
+make production=1
+
+# Disable threading (if not needed)
+make thread_safe=0
+```
+
+### Manual (single file)
+
+```bash
+gcc -I./lib your_program.c lib/mls.c lib/m_tool.c lib/m_table.c -o your_program -lpthread -lm -ldl
 ```
 
 ## Key Modules (all in `lib/`)
 - **`mls.h/c`**: The core `mls` library and handle management.
 - **`m_tool.h/c`**: Comprehensive string handling (`s_printf`, `s_app`, `s_split`, `s_join`), variables, and the `se_string` expansion system.
-- **`m_extra.h/c`**: Extended string utilities (case-insensitive comparison, padding, reversal, classification).
+- **`m_extra.h/c`**: Extended string utilities (case-insensitive comparison, padding, reversal, classification, `s_from_double`, `s_from_int`).
 - **`m_table.h/c`**: A dictionary-like data structure for storing MLS handles, accessible by name or integer, with introspection.
 - **`m_http.h/c`, `m_hdf.h/c`, `m_flask.h/c`**: Web and data format extensions.
+
+## Documentation
+
+- **API Reference (Doxygen):** Open `docs/html/index.html` in a browser.
+- **Quick Reference for LLMs:** See `QUICKREF.md`.
+- **String Documentation:** `docs/strings.md`
+- **String Expansion:** `docs/string_expansion.md`
 
 ## Usage
 
@@ -39,8 +79,6 @@ Beyond simple arrays, `mls` provides a powerful suite of string utilities:
 - **`s_printf(h, p, fmt, ...)`**: Build strings with automatic resizing.
 - **`se_string(vl, fmt)`**: Modern string interpolation with variable expansion (`$var`, `$var[index]`, `$var[*]`).
 - **`m_extra`**: Case-insensitive comparisons, directional trimming, padding, and more.
-
-[Read the String Documentation](docs/strings.md) and [Expansion Documentation](docs/string_expansion.md).
 
 #### Handles
 A handle is a 32-bit integer. The lower 24 bits represent the index in the global list of arrays, while the upper 8 bits are used for UAF (Use-After-Free) protection.
@@ -118,9 +156,18 @@ While `mls()` returns a generic `void*`, `mls` provides several macros for type-
 
 | Macro | Type | Description |
 |---|---|---|
-| `STR(m, i)` | `char*` | Access a string pointer at index `i`. |
-| `INT(m, i)` | `int` | Access an integer value at index `i`. |
-| `CHAR(m, i)` | `char` | Access a single character at index `i`. |
+| `INT(m, i)` | `int` | Integer at index `i` |
+| `UINT(m, i)` | `unsigned int` | Unsigned integer at index `i` |
+| `FLOAT(m, i)` | `float` | Float at index `i` |
+| `DOUBLE(m, i)` | `double` | Double at index `i` |
+| `PTR(m, i)` | `void*` | Pointer at index `i` |
+| `U32(m, i)` | `uint32_t` | 32-bit unsigned at index `i` |
+| `U64(m, i)` | `uint64_t` | 64-bit unsigned at index `i` |
+| `STR(m, i)` | `char*` | String pointer at index `i` |
+| `CHAR(m, i)` | `char` | Single character at index `i` |
+| `UCHAR(m, i)` | `unsigned char` | Unsigned char at index `i` |
+| `CHARP(m)` | `char*` | Raw string buffer of handle `m` |
+| `MSTR(x)` | `char*` | Element 0 as string |
 
 #### Structure Examples
 
@@ -153,6 +200,48 @@ m_free(root);
 - **Unified API:** Use the same `m_put`, `mls`, and `m_free` functions regardless of structural complexity.
 - **Robust Code:** No more dangling pointers or complex pointer arithmetic.
 - **Reduced Error Rate:** Automated recursive freeing eliminates manual tracking of every child node, significantly reducing memory leak potential.
+
+### Error Handling
+
+The library provides two error-handling modes:
+
+**1. Fatal** (default): On error, `ERR()` prints the message and calls `exit(1)`.
+
+```c
+int *p = (int *)mls(h, 999);  // out of bounds → exit(1)
+```
+
+**2. Safe API** (recoverable): `*_safe` variants return error codes and set `mls_errno`.
+
+```c
+int *p = (int *)mls_safe(h, 999);
+if (!p) {
+    printf("Error: %s\n", mls_errmsg(mls_errno));  // "Index out of bounds"
+    // recover ...
+}
+```
+
+Error codes:
+
+| Code | Meaning |
+|---|---|
+| `MLS_EINVAL` | Invalid handle |
+| `MLS_EBOUNDS` | Index out of bounds |
+| `MLS_ENOMEM` | Out of memory |
+| `MLS_EUAF` | Use-after-free detected |
+| `MLS_EOVERFLOW` | Integer overflow |
+
+**Safe functions available:**
+
+| Function | Returns | Sets `mls_errno` |
+|---|---|---|
+| `mls_safe(h,i)` | NULL | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EUAF` |
+| `m_put_safe(h,d)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
+| `m_free_safe(h)` | -1 | `MLS_EINVAL` / `MLS_EUAF` |
+| `m_write_safe(m,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EOVERFLOW` / `MLS_ENOMEM` |
+| `m_read_safe(h,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EOVERFLOW` |
+| `m_setlen_safe(m,len)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
+| `m_del_safe(m,p)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` |
 
 ### API Reference
 
@@ -214,7 +303,25 @@ m_free(h);
 
 ## Building
 
-The project uses a hierarchical Makefile system.
+### CMake (recommended)
+
+```bash
+# Debug build (thread-safe, with sanitizers)
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+
+# Production build (optimised, thread-safe)
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+
+# Install to system
+cmake --install build --prefix /usr/local
+
+# pkg-config support
+pkg-config --cflags --libs mls
+```
+
+### Makefile (classic)
 
 ```bash
 # Debug build (with MLS_DEBUG and trace support)
@@ -222,6 +329,9 @@ make
 
 # Production build (optimized)
 make production=1
+
+# Disable threading
+make thread_safe=0
 ```
 
 ## Testing
@@ -233,14 +343,26 @@ cd tests
 make
 ```
 
-This will execute various tests including `test_autofree`, `test_ssplit`, and `test_nested_lists`.
+Key tests include `test_mls_core`, `test_autofree`, `test_ssplit`, `test_slice`,
+`test_nested_lists`, `test_table`, and `test_extra`.
+
+For thread-safety tests:
+
+```bash
+cd experimental/ex_fuzzy
+make
+./test_thread_safe_fuzzy.exed
+./test_thread_safe_strings.exed
+./test_error_api.exed
+```
 
 ## Contributing
 
 Contributions are welcome! To contribute:
 1. **Report Bugs:** Use the issue tracker to report bugs or request features.
 2. **Submit PRs:** Ensure your code follows existing patterns and includes tests for any new functionality.
-3. **Run Tests:** Always run `make test` before submitting changes.
+3. **Run Tests:** Always run `cd tests && make && make run` before submitting changes.
+4. **Documentation:** Regenerate Doxygen docs with `doxygen Doxyfile` and fix any new warnings.
 
 ## License
 
