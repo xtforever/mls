@@ -1544,6 +1544,31 @@ int m_setlen (int m, size_t len)
 }
 
 /**
+ * Non-aborting version of m_setlen(). Returns -1 on error and sets mls_errno.
+ *
+ * @param m The handle.
+ * @param len The new length.
+ * @return 0 on success, -1 on error.
+ */
+int m_setlen_safe (int m, size_t len)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	lst_t lp = lock_handle_safe (m, 1);
+	if (!lp)
+		return -1;
+	if (len > lp->max && lst_resize_safe (lp, len) != 0) {
+		unlock_handle (lp);
+		return -1;
+	}
+	lp->l = len;
+	unlock_handle (lp);
+	return 0;
+}
+
+/**
  * Returns the currently allocated capacity (buffer size) of a handle's list.
  *
  * @param m The handle.
@@ -1705,6 +1730,36 @@ void m_del (int m, size_t p)
 	lst_t lp = lock_handle (m, 1);
 	lst_del (lp, p);
 	unlock_handle (lp);
+}
+
+/**
+ * Non-aborting version of m_del(). Returns -1 on error and sets mls_errno.
+ *
+ * @param m The handle.
+ * @param p The index of the element to delete.
+ * @return 0 on success, -1 on error.
+ */
+int m_del_safe (int m, size_t p)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	lst_t lp = lock_handle_safe (m, 1);
+	if (!lp)
+		return -1;
+	if (p >= lp->l) {
+		mls_errno = MLS_EBOUNDS;
+		unlock_handle (lp);
+		return -1;
+	}
+	size_t w = lp->w;
+	size_t n = lp->l - p - 1;
+	if (n > 0)
+		memmove (lst (lp, p), lst (lp, p + 1), n * w);
+	lp->l--;
+	unlock_handle (lp);
+	return 0;
 }
 
 /**
