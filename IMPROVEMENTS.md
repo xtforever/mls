@@ -26,34 +26,27 @@ would require error-labels at every `ERR()` call site (150+). The
 
 ---
 
-## 2. Thread Safety — Make It Default, Not Optional
+## 2. Thread Safety — Make It Default, Not Optional (DONE)
 
-**Current:** Thread safety requires `-DMLS_THREAD_SAFE` and linking
-`-lpthread`. Without it, behavior in multi-threaded programs is
-undefined.
+**Completed:** `MLS_THREAD_SAFE` is now auto-defined to 1 on Unix
+platforms and `thread_safe=1` is the default in both makefiles and
+CMake.
 
-**Required:** Thread safety should be the default. If the platform
-has no pthreads, fall back to no-ops at compile time.
+- `mls_internal.h` auto-detects Unix (`__unix__`, `__linux__`,
+  `__APPLE__`, `__FreeBSD__`) and defines `MLS_THREAD_SAFE` to 1
+- `rules.mk` uses `thread_safe ?= 1` so `-DMLS_THREAD_SAFE`
+  and `-lpthread` are linked by default
+- `CMakeLists.txt` default `MLS_THREAD_SAFE=ON`
+- Users can override with `-DMLS_THREAD_SAFE=0` or `thread_safe=0`
+  on platforms without pthreads
 
-**Specific issues found:**
+**Remaining open issues** (thread-safety bugs not yet fixed):
 - `trace_level` is an unprotected global int (data race)
 - `conststr_lookup_c` has a 64-bit pointer-truncation race in `m_binsert`
-- `m_table_create()` has a double-checked locking init bug
-- `MFREE_TABLE_ENTRIES_HDLR` initialization is racy
 - Ring buffer functions (`ring_put`/`ring_get`) bypass all per-handle locks
 - `m_slice` uses source pointer after releasing source lock
-- `vas_printf` (fixed) had a dangling-pointer race
 - `m_binsert` is not atomic (read/write across multiple function calls)
-
-**Proposed fix:**
-```c
-// Autodetect threading support at compile time
-#if defined(__STDC_NO_THREADS__)
-  #define MLS_THREAD_SAFE 0
-#else
-  #define MLS_THREAD_SAFE 1
-#endif
-```
+- `m_foreach` iteration releases lock between elements
 
 ---
 
