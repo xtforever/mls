@@ -14,13 +14,6 @@ extern "C" {
 #include <string.h>
 #include <unistd.h>
 
-#ifdef MLS_THREAD_SAFE
-#include <pthread.h>
-typedef pthread_rwlock_t mls_rwlock_t;
-#else
-typedef void mls_rwlock_t;
-#endif
-
 #ifndef is_empty
 #define is_empty(s) (!((s) && *(s)))
 #endif
@@ -40,9 +33,6 @@ typedef void mls_rwlock_t;
 #ifndef BIT
 #define BIT(x) (1 << (x))
 #endif
-
-#define increase_by_percent(a, p) calc_percent (a, p + 100)
-#define calc_percent(a, p) (((p) > 0) ? (a) * (p) / 100 : 0)
 
 #define ASERR(n, f, a...)                                                      \
 	do {                                                                   \
@@ -74,27 +64,6 @@ void deb_trace (int l, int line, const char *file, const char *function,
 	__attribute__ ((format (printf, 5, 6)));
 
 extern int trace_level;
-
-typedef struct ls_st {
-	size_t w, l, max;
-	char uaf_protection;
-	uint8_t free_hdl;
-	mls_rwlock_t *lock;
-	char *data;
-} *lst_t;
-
-void *lst (lst_t l, size_t i) __attribute__ ((pure));
-void lst_create (lst_t l, size_t max, size_t w);
-int lst_new (lst_t LP, size_t n);
-int lst_put (lst_t LP, const void *d);
-int lst_next (lst_t l, int *p, void *data);
-int lst_read (lst_t l, size_t p, void **data, size_t n);
-int lst_write (lst_t lp, size_t p, const void *data, size_t n);
-void *lst_peek (lst_t l, size_t i);
-void lst_del (lst_t l, size_t p);
-void lst_remove (lst_t lp, size_t p, size_t n);
-void *lst_ins (lst_t lp, size_t p, size_t n);
-void lst_resize (lst_t LP, size_t new_size);
 
 enum predefined_free_handler {
 	MFREE = 0,
@@ -219,8 +188,6 @@ void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),
 		       void *ctx);
 int m_binsert_int (int buf, int key);
 int m_bsearch_int (int buf, int key);
-
-lst_t exported_get_list (int r);
 
 	/* handle immuteable zero copy array */ 
 	int s_ccstr(const char *s);

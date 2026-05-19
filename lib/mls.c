@@ -2,6 +2,7 @@
 /* disable macros to override m_alloc, ... */
 #define MLS_DEBUG_DISABLE
 #include "mls.h"
+#include "mls_internal.h"
 
 
 #include <errno.h>

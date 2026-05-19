@@ -1,6 +1,7 @@
 
 #include "m_tool.h"
 #include "mls.h"
+#include "mls_internal.h"
 #include "m_table.h"
 #include <errno.h>
 #include <fcntl.h>
