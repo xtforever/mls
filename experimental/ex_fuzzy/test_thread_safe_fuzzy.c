@@ -1,4 +1,4 @@
-#include "../lib/mls.h"
+#include "mls.h"
 
 #include <assert.h>
 #include <pthread.h>
