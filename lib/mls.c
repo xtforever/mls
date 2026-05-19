@@ -1884,11 +1884,12 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		size_t nbytes = cnt * width;
 		if (cnt > 0 && nbytes / cnt != width)
 			ERR ("Integer overflow in slice");
-		lst_t lp = lock_handle (m, 0);
-		char buf[nbytes];
-		memcpy (buf, lst (lp, (size_t)a), nbytes);
-		unlock_handle (lp);
-		m_write (dest, offs, buf, cnt);
+		lst_t src_lp = lock_handle (m, 0);
+		void *src_ptr = lst (src_lp, (size_t)a);
+		lst_t dst_lp = lock_handle (dest, 1);
+		lst_write (dst_lp, offs, src_ptr, cnt);
+		unlock_handle (dst_lp);
+		unlock_handle (src_lp);
 	}
 	return dest;
 }
