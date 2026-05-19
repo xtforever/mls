@@ -65,6 +65,21 @@ void deb_trace (int l, int line, const char *file, const char *function,
 
 extern int trace_level;
 
+enum mls_error {
+	MLS_OK = 0,
+	MLS_EINVAL,
+	MLS_EBOUNDS,
+	MLS_ENOMEM,
+	MLS_EUAF,
+	MLS_EOVERFLOW,
+};
+
+extern int mls_errno;
+extern const char *mls_errfunc;
+extern const char *mls_errfile;
+extern int mls_errline;
+const char *mls_errmsg (int code);
+
 enum predefined_free_handler {
 	MFREE = 0,
 	MFREE_STR = 1,		/* iterate each element and call free() */

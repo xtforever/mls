@@ -15,6 +15,10 @@
 
 /* Debug globals */
 int trace_level = 0;
+int mls_errno = 0;
+const char *mls_errfunc = "";
+const char *mls_errfile = "";
+int mls_errline = 0;
 static int error_occurred = 0;
 /* this could be a define but that is not easy to debug */
 static inline int REAL_HDL( int m ) { return (m &  0xffffff); }
@@ -138,6 +142,10 @@ void deb_err (int line, const char *file, const char *function,
 	      const char *format, ...)
 {
 	error_occurred = 1;
+	mls_errno = MLS_EINVAL;
+	mls_errfunc = function;
+	mls_errfile = file;
+	mls_errline = line;
 	va_list ap;
 	char buf[1024];
 	int err = errno;
@@ -189,6 +197,25 @@ void deb_trace (int l, int line, const char *file, const char *function,
 	vsnprintf (buf, sizeof (buf), format, ap);
 	va_end (ap);
 	fprintf (stderr, "[mls trace %d] %s(): %s\n", l, function, buf);
+}
+
+const char *mls_errmsg (int code)
+{
+	switch (code) {
+	case MLS_OK:		return "Success";
+	case MLS_EINVAL:	return "Invalid handle";
+	case MLS_EBOUNDS:	return "Index out of bounds";
+	case MLS_ENOMEM:	return "Out of memory";
+	case MLS_EUAF:		return "Use-after-free detected";
+	case MLS_EOVERFLOW:	return "Integer overflow";
+	default:		return "Unknown error";
+	}
+}
+
+static void _mls_set_error (int code, const char *func)
+{
+	mls_errno = code;
+	mls_errfunc = func;
 }
 
 // ********************************************
