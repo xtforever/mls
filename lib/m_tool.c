@@ -1760,15 +1760,15 @@ int s_strcmp_c (int mstr, const char *s)
  */
 int m_strncpy (int dst, int src, int max)
 {
-	if (dst <= 0)
-		dst = m_create (max + 1, 1);
 	int len = m_len (src);
 	if (len > max)
 		len = max;
-	m_slice (dst, 0, src, 0, len - 1);
-	m_putc (dst, 0);
-	m_setlen (dst, len);
+	dst = s_slice (dst, 0, src, 0, len - 1);
 	return dst;
+}
+int s_strncpy (int dst, int src, int max)
+{
+	return m_strncpy(dst,src,max);
 }
 
 /**
