@@ -6,31 +6,26 @@ overflow bugs.
 
 ---
 
-## 3. C99 Standard Compliance — Remove GNU Extensions
+## 3. C99 Standard Compliance — Remove GNU Extensions (DONE)
 
-**Current:** The code uses `__thread` (GNU extension), `alloca`, and
-binary integer literals `0b00011111`. This prevents compilation on
-compilers other than GCC/Clang.
+**Completed:**
+- Binary literals (`0b00011111` etc.) replaced with hex equivalents
+  in `UTF8GET` macro.
+- VLA in `vas_printf` replaced with `malloc`/`free`.
+- `__thread` replaced with `_Thread_local` via `MLS_THREAD_LOCAL`
+  portability macro in `mls_internal.h`.
+- CMake C standard bumped from 99 to 11.
 
-**Required:** Replace with C99/C11 standard equivalents:
-- `__thread int` → `_Thread_local int` (C11) or `thread_local int` (C23)
-- `0b00011111` → `0x1F` (hex equivalent)
-- Avoid `alloca` / VLAs in favor of `malloc`/`free` or fixed buffers
+## 6. Type-Safe Accessor Macros (DONE)
 
----
+**Completed:** `_SAFE` and `_UNCHECKED` variants added for all 10
+typed macros (`INT`, `UINT`, `FLOAT`, `DOUBLE`, `PTR`, `U32`, `U64`,
+`CHAR`, `UCHAR`, `STR`).
 
-## 6. Type-Safe Accessor Macros
-
-**Current:** `INT(h,i)`, `CHAR(h,i)`, `STR(h,i)` macros perform
-unchecked access through `mls()` and `exit()` on errors. `FLOAT`,
-`DOUBLE`, `PTR`, `U32`, `U64` macros have been added but no
-`_SAFE`/`_UNCHECKED` variants exist.
-
-**Required:** Provide checked and unchecked variants:
-```c
-#define INT_SAFE(h,i) (*(int*)mls_safe(h,i))       // returns NULL on error
-#define INT_UNCHECKED(h,i) (*(int*)m_peek(h,i))    // no bounds check
-```
+- `_UNCHECKED` variants use `m_peek` (no bounds check, fast).
+- `_SAFE` variants use `mls_safe` (return 0/NULL on error instead
+  of aborting). Uses GNU statement expression `({...})` to avoid
+  double-calling `mls_safe`.
 
 ---
 
