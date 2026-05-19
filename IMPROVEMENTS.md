@@ -81,18 +81,31 @@ compilers other than GCC/Clang.
 
 ---
 
-## 5. Build System — Standardize for Distribution
+## 5. Build System — Standardize for Distribution (DONE)
 
-**Current:** Hand-written makefiles with project-specific patterns.
-No `pkg-config` support, no CMake integration, no install target.
+**Completed:** CMake build system with `CMakeLists.txt` and `mls.pc.in`.
 
-**Required:**
-- Remove `rules.mk` dependency from project makefiles
-- Add `make install` that puts headers in `$(PREFIX)/include/mls/`
-  and library in `$(PREFIX)/lib/libmls.a`
-- Provide `mls.pc` for `pkg-config`
-- Optional: CMakeLists.txt for wider IDE support
-- Single-header distribution option (`mls_amalgamated.h`)
+```bash
+# Debug build:
+cmake -B build/debug -DCMAKE_BUILD_TYPE=Debug
+
+# Release with thread-safety:
+cmake -B build/release -DCMAKE_BUILD_TYPE=Release -DMLS_THREAD_SAFE=ON
+
+# Install to prefix:
+cmake --install build/release --prefix /usr/local
+```
+
+| Feature | Status |
+|---|---|
+| CMakeLists.txt with Debug/Release | Done |
+| `-DMLS_THREAD_SAFE` option | Done |
+| `m_flaskMT.c` conditional compilation | Done |
+| Headers installed to `include/mls/` | Done |
+| `pkg-config` support (`mls.pc`) | Done |
+| `make install` target | Done |
+| Remove `rules.mk` dependency | Not done (makefile still needed internally) |
+| Single-header distribution | Not done |
 
 ---
 
