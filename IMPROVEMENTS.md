@@ -137,24 +137,23 @@ numeric-to-string converter.
 | `s_split(m, s, c, rw)` | `m_tool.h:128` | Split into `char*` list |
 | `s_msplit(dest, src, pat)` | `m_tool.h:82` | Split into handle list |
 | `s_trim_left_c / s_trim_right_c` | `m_extra.h:15-16` | Directional trim |
-
-**Still missing:**
-- Generic numeric-to-string (double, int → handle) beyond `s_from_long`
+| `s_from_double(val)` | `m_extra.c` | Convert double to string handle (`%g`) |
+| `s_from_int(val)` | `m_extra.c` | Convert int to string handle (`%d`) |
 
 ---
 
-## 8. Table/Dictionary Improvements
+## 8. Table/Dictionary Improvements (DONE)
 
-**Current:** `m_table` has thread-safety bugs (init race) and
-requires manual type tracking.
+**Completed:**
+- Fix `MFREE_TABLE_ENTRIES_HDLR` double-checked locking init:
+  `__sync_bool_compare_and_swap` under `MLS_THREAD_SAFE`
+- `mt_get_str(t, key)` — returns `const char*` for STRING/CONST_STRING
+- `mt_get_handle(t, key)` — returns raw `int` handle value
+- `mt_foreach(t, iter_fn, ctx)` — callback-based iteration over entries
+- `mt_remove(t, key)` — first-class C-string key removal
 
-**Required:**
-- Fix `MFREE_TABLE_ENTRIES_HDLR` double-checked locking init
-- Add `mt_get_str(t, key)` that returns `const char*` directly
-- Add `mt_get_handle(t, key)` that returns the raw handle
-- Add `mt_foreach(t, iter_fn)` for iteration without raw access
-- Add `mt_remove(t, key)` as first-class function
-- Support string-table interop: `mt_from_json(h)`, `mt_to_json(h)`
+**Deferred:** JSON interop (`mt_from_json`, `mt_to_json`) — needs a
+JSON parser, out of scope for the table module.
 
 ---
 
