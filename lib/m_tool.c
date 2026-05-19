@@ -1765,7 +1765,10 @@ int m_strncpy (int dst, int src, int max)
 	int len = m_len (src);
 	if (len > max)
 		len = max;
-	m_write (dst, 0, mls (src, 0), len);
+	char buf[len + 1];
+	memcpy (buf, mls (src, 0), (size_t)len);
+	buf[len] = 0;
+	m_write (dst, 0, buf, len);
 	m_putc (dst, 0);
 	m_setlen (dst, len);
 	return dst;

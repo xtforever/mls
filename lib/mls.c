@@ -1881,7 +1881,14 @@ int m_slice (int dest, int offs, int m, int a, int b)
 	}
 	m_setlen (dest, offs);
 	if ( m && cnt > 0) {
-		m_write (dest, offs, mls (m, (size_t)a), cnt);
+		size_t nbytes = cnt * width;
+		if (cnt > 0 && nbytes / cnt != width)
+			ERR ("Integer overflow in slice");
+		lst_t lp = lock_handle (m, 0);
+		char buf[nbytes];
+		memcpy (buf, lst (lp, (size_t)a), nbytes);
+		unlock_handle (lp);
+		m_write (dest, offs, buf, cnt);
 	}
 	return dest;
 }
