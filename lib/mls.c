@@ -27,7 +27,7 @@ static int UAF_PROTECTION = 0;
 static struct ls_st ML = { 0 }; // stack allocated vars
 #ifdef MLS_THREAD_SAFE
 static pthread_mutex_t ml_lock = PTHREAD_MUTEX_INITIALIZER;
-static __thread int freeing_handle = 0;
+static MLS_THREAD_LOCAL int freeing_handle = 0;
 #define MLS_MASTER_LOCK() pthread_mutex_lock (&ml_lock)
 #define MLS_MASTER_UNLOCK() pthread_mutex_unlock (&ml_lock)
 #else
@@ -2097,27 +2097,27 @@ int m_puti (int m, int c)
 		return 0xFFFD;                                                 \
 	if ((c & 0x20) == 0) {                                                 \
 		len = 1;                                                       \
-		c &= 0b00011111;                                               \
+		c &= 0x1F;                                                       \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x10) == 0) {                                                 \
 		len = 2;                                                       \
-		c &= 0b00001111;                                               \
+		c &= 0x0F;                                                       \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x08) == 0) {                                                 \
 		len = 3;                                                       \
-		c &= 0b00000111;                                               \
+		c &= 0x07;                                                       \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x04) == 0) {                                                 \
 		len = 4;                                                       \
-		c &= 0b00000011;                                               \
+		c &= 0x03;                                                       \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x02) == 0) {                                                 \
 		len = 5;                                                       \
-		c &= 0b00000001;                                               \
+		c &= 0x01;                                                       \
 		goto read;                                                     \
 	}                                                                      \
 	return 0xFFFD;                                                         \

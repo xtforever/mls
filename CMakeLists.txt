@@ -3,7 +3,7 @@ project(mls VERSION 0.2.0 LANGUAGES C)
 
 # ==== Project configuration ====
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Debug postfix: "mlsd.a" in debug, "mls.a" in release

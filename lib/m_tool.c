@@ -227,9 +227,12 @@ int vas_printf (int m, int p, const char *format, va_list ap)
 	}
 	if (p < 0 || p > m_len (m))
 		p = s_strlen (m);
-	char tmp[len];
-	vsnprintf (tmp, len, format, ap);
+	char *tmp = malloc ((size_t)len);
+	if (!tmp)
+		return -1;
+	vsnprintf (tmp, (size_t)len, format, ap);
 	m_write (m, (size_t)p, tmp, (size_t)len);
+	free (tmp);
 	return m;
 }
 
