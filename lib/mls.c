@@ -580,9 +580,9 @@ void lst_resize (lst_t lp, size_t new_size)
 /**
  * Creates a new list structure.
  *
+ * @param l The list structure to initialize.
  * @param max The initial maximum number of elements.
  * @param w The width of each element in bytes.
- * @return The newly created list structure.
  */
 void lst_create (lst_t l, size_t max, size_t w)
 {
@@ -812,7 +812,7 @@ extern void m_free_strings (int list, int CLEAR_ONLY);
 /**
  * same as m_free_strings to be used as a custom free handler.
  *
- * @param l The list structure being freed.
+ * @param h The handle being freed.
  */
 static void free_strings_wrap (int h)
 {
@@ -828,7 +828,7 @@ static void free_strings_wrap (int h)
 /**
  * Custom free handler that recursively frees MLS handles stored in a list.
  *
- * @param l The list structure being freed.
+ * @param h The handle being freed.
  */
 static void free_list_wrap (int h)
 {
@@ -898,6 +898,7 @@ static int new_list(const char *buf, size_t len, size_t max, size_t w, int hdl )
  * Looks up or creates a constant string from a C-style string.
  *
  * @param s The C-style string.
+ * @param copy_string If non-zero, duplicates the string; if zero, uses zero-copy interning.
  * @return The handle of the constant string.
  */
 int conststr_lookup_c (const char *s, int copy_string )

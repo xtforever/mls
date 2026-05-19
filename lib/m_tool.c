@@ -1004,7 +1004,7 @@ int s_msplit (int dest, int src, int pattern)
  *
  * @param dest Destination handle. If 0, a new one is allocated.
  * @param srcs Handle of the m-array of string handles.
- * @param separator Handle of the separator string buffer.
+ * @param seperator Handle of the separator string buffer.
  * @return The handle of the destination string buffer.
  */
 int s_implode (int dest, int srcs, int seperator)
