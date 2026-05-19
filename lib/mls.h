@@ -192,6 +192,32 @@ int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w,
 #define U64(x, i) (*(uint64_t *)mls ((x), (i)))
 #define CHAR(x, i) (*(char *)mls ((x), (i)))
 #define UCHAR(x, i) (*(unsigned char *)mls ((x), (i)))
+
+/* Unchecked variants — no bounds check, uses m_peek. Fast but unsafe. */
+#define INT_UNCHECKED(x, i) (*(int *)m_peek ((x), (i)))
+#define UINT_UNCHECKED(x, i) (*(unsigned int *)m_peek ((x), (i)))
+#define FLOAT_UNCHECKED(x, i) (*(float *)m_peek ((x), (i)))
+#define DOUBLE_UNCHECKED(x, i) (*(double *)m_peek ((x), (i)))
+#define PTR_UNCHECKED(x, i) (*(void **)m_peek ((x), (i)))
+#define U32_UNCHECKED(x, i) (*(uint32_t *)m_peek ((x), (i)))
+#define U64_UNCHECKED(x, i) (*(uint64_t *)m_peek ((x), (i)))
+#define CHAR_UNCHECKED(x, i) (*(char *)m_peek ((x), (i)))
+#define UCHAR_UNCHECKED(x, i) (*(unsigned char *)m_peek ((x), (i)))
+#define STR_UNCHECKED(x, i) (*(char **)m_peek ((x), (i)))
+
+/* Safe variants — return 0/NULL on error instead of aborting.
+   Check mls_errno after calling to distinguish success from error. */
+#define INT_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(int *)_p : 0; })
+#define UINT_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(unsigned int *)_p : 0; })
+#define FLOAT_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(float *)_p : 0.0f; })
+#define DOUBLE_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(double *)_p : 0.0; })
+#define PTR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(void **)_p : NULL; })
+#define U32_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(uint32_t *)_p : 0; })
+#define U64_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(uint64_t *)_p : 0; })
+#define CHAR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(char *)_p : 0; })
+#define UCHAR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(unsigned char *)_p : 0; })
+#define STR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(char **)_p : NULL; })
+
 #define m_cat(h, s) m_write (h, m_len (h), (s), strlen ((s)))
 #define MSTR(x) ((char *)mls (x, 0))
 
