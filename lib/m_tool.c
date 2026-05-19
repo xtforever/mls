@@ -1765,14 +1765,7 @@ int m_strncpy (int dst, int src, int max)
 	int len = m_len (src);
 	if (len > max)
 		len = max;
-	if (len > 0) {
-		char *buf = malloc ((size_t)len + 1);
-		void *tmp = buf;
-		m_read (src, 0, &tmp, (size_t)len);
-		buf[len] = 0;
-		m_write (dst, 0, buf, (size_t)len);
-		free (buf);
-	}
+	m_slice (dst, 0, src, 0, len - 1);
 	m_putc (dst, 0);
 	m_setlen (dst, len);
 	return dst;
