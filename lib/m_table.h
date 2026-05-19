@@ -151,6 +151,27 @@ void mt_seth (int table_h, const char *key, uint64_t handle, mls_table_type_t ty
 // Gets a value (raw int or handle) by C-string key.
 uint64_t mt_get (int table_h, const char *key);
 
+// Gets the const char* value for a string-type key. Returns NULL if key not
+// found or value is not a string/const_string type.
+const char *mt_get_str(int table_h, const char *key);
+
+// Gets the raw integer handle value for a key (cast the return to int).
+// Returns 0 if key not found.
+int mt_get_handle(int table_h, const char *key);
+
+// Removes an entry from the table by C-string key.
+void mt_remove(int table_h, const char *key);
+
+// Callback signature for mt_foreach.
+// key_handle_or_int:  if m_table_is_str_key(key_type) this is the string handle,
+//                     otherwise the literal int key value.
+typedef void (*mt_iter_fn)(int key_handle_or_int, mls_table_type_t key_type,
+                           uint64_t value, mls_table_type_t value_type,
+                           void *ctx);
+
+// Iterates over all entries in the table, calling iter for each.
+void mt_foreach(int table_h, mt_iter_fn iter, void *ctx);
+
 // Pointer handling
 void mt_setp(int table_h, const char *key, void *ptr);
 void *mt_getp(int table_h, const char *key);

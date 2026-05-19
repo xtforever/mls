@@ -97,7 +97,14 @@ static int MFREE_TABLE_ENTRIES_HDLR = 0;
 int m_table_create ()
 {
 	if (!MFREE_TABLE_ENTRIES_HDLR) {
-		MFREE_TABLE_ENTRIES_HDLR = m_reg_freefn ( m_table_free_handler );
+		int handler = m_reg_freefn (m_table_free_handler);
+#ifdef MLS_THREAD_SAFE
+		__sync_bool_compare_and_swap(&MFREE_TABLE_ENTRIES_HDLR, 0, handler);
+		// If CAS failed another thread already set it; we use the
+		// global value (their handler) for all subsequent allocs.
+#else
+		MFREE_TABLE_ENTRIES_HDLR = handler;
+#endif
 	}
 
 	return m_alloc (0, sizeof (m_table_entry_t), MFREE_TABLE_ENTRIES_HDLR);
@@ -365,6 +372,44 @@ void mt_setp(int table_h, const char *key, void *ptr)
 void *mt_getp(int table_h, const char *key)
 {
 	return (void *)(uintptr_t)m_table_get_cstr(table_h, key);
+}
+
+const char *mt_get_str(int table_h, const char *key)
+{
+	if (table_h <= 0 || !key)
+		return NULL;
+	m_table_entry_t *entry = m_table_find_cstr_key_entry(table_h, key);
+	if (!entry)
+		return NULL;
+	if (m_table_type(entry->type) == m_table_type(MLS_TABLE_TYPE_STRING)
+	    || m_table_type(entry->type) == m_table_type(MLS_TABLE_TYPE_CONST_STRING))
+		return m_str((int)entry->value);
+	return NULL;
+}
+
+int mt_get_handle(int table_h, const char *key)
+{
+	return (int)m_table_get_cstr(table_h, key);
+}
+
+void mt_foreach(int table_h, mt_iter_fn iter, void *ctx)
+{
+	if (table_h <= 0 || !iter)
+		return;
+	m_table_entry_t *entry;
+	int p;
+	m_foreach(table_h, p, entry)
+		iter(entry->key, (mls_table_type_t)entry->key_type,
+		     entry->value, (mls_table_type_t)entry->type, ctx);
+}
+
+void mt_remove(int table_h, const char *key)
+{
+	if (table_h <= 0 || !key)
+		return;
+	int tmp = s_strdup_c(key);
+	m_table_remove_by_str(table_h, tmp);
+	m_free(tmp);
 }
 
 // --- Old API Forwarding ---
