@@ -33,7 +33,6 @@ static int freeing_handle = 0;
 static int CS_MAP  = 0;
 static int CS_ZERO = 0;
 static int FH      = 0;
-static size_t peak_slots = 0;
 
 
 /* prototypes */
@@ -925,8 +924,6 @@ static int get_free_hdl(void)
 		lp->l--;
 	} else {
 		last_created_hdl = lst_new (&ML, 1);
-		if ((size_t)(last_created_hdl + 1) > peak_slots)
-			peak_slots = (size_t)(last_created_hdl + 1);
 	}
 
 	return last_created_hdl;
@@ -2060,14 +2057,17 @@ size_t m_total_bytes (void)
 }
 
 /**
- * Returns the peak number of handle slots ever created.
- * This is the maximum value of the master list length.
+ * Returns the total number of handle slots in the master list.
+ * Since slots are never removed, this equals the peak slot count.
  *
- * @return The peak slot count.
+ * @return The slot count.
  */
 size_t m_peak_handles (void)
 {
-	return peak_slots;
+	MLS_MASTER_LOCK ();
+	size_t slots = (size_t)ML.l;
+	MLS_MASTER_UNLOCK ();
+	return slots;
 }
 
 /**
@@ -2086,7 +2086,7 @@ void m_debug_print (FILE *fp)
 		MLS_MASTER_UNLOCK ();
 		return;
 	}
-	fprintf (fp, "[mls] slots=%zu peak=%zu\n", (size_t)ML.l, peak_slots);
+	fprintf (fp, "[mls] slots=%zu\n", (size_t)ML.l);
 	fprintf (fp, "%-6s  %-10s  %-5s %-8s %-8s %s\n",
 		 "Idx", "Handle", "Type", "Len", "Cap", "Data");
 	for (int idx = 0; idx < ML.l; idx++) {
