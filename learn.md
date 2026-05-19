@@ -123,6 +123,8 @@
 ### Testing and Debugging
 - **Mandatory Initialization**: Every test or server must include `m_init()` and set `trace_level = 1` for effective debugging and handle tracking. `conststr_init()` is no longer required.
 - **ASAN Integration**: The debug flags include `-fsanitize=address`, which is critical for catching the heap-buffer-overflows encountered during `m_table` key comparisons and Base64 decoding.
+- **Post-Mortem Limitations**: The post-mortem report (`exit_error`) reads the last debug wrapper state (`debi`), NOT the operation that actually crashed. When `MLS_DEBUG_DISABLE` is defined (inside `mls.c`), internal functions like `mls()` call `ERR()` directly without updating `debi`. Always read the **first error line** (`[mls error] file:line function(): message`) — that is the real crash site. The post-mortem context only shows what the last debug wrapper recorded and can be misleading.
+- **Thread-Safe String Pitfall**: `vas_printf` (and therefore `s_printf`) is **not thread-safe** on shared handles. It calls `mls(m, p)` which returns a raw pointer under a read lock, then immediately releases the lock. The subsequent `vsnprintf()` writes into that pointer with no lock held, creating a dangling-pointer race if another thread resizes the handle (`realloc`) concurrently. Fix: use a temporary buffer + `m_write`, or serialize access externally.
 
 ### LRU & Memory Management
 - **Trace Noise Bottleneck**: High `trace_level` settings (e.g., 1 or higher) generate massive amounts of I/O during repetitive operations like HTTP parsing or large table evictions. This can slow the application enough to trigger client-side timeouts. Always use `trace_level = 0` for high-volume tests.
