@@ -22,6 +22,8 @@ endif
 CFLAGS+=-D_GNU_SOURCE -I../lib -DCOMP_TAG=$(TAG)
 LDLIBS+=-ldl -lm
 
+thread_safe ?= 1
+
 ifeq ($(thread_safe),1)
 CFLAGS+=-DMLS_THREAD_SAFE
 LDLIBS+=-lpthread

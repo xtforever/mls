@@ -9,7 +9,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Debug postfix: "mlsd.a" in debug, "mls.a" in release
 set(CMAKE_DEBUG_POSTFIX "d")
 
-option(MLS_THREAD_SAFE "Build with thread-safe locking" OFF)
+option(MLS_THREAD_SAFE "Build with thread-safe locking" ON)
 option(MLS_WERROR "Treat compiler warnings as errors" OFF)
 
 # ==== Source files ====
