@@ -4,3 +4,4 @@ tests/error-handler
 *.od
 *.exe
 *.exed
+*.swp
