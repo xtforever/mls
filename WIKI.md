@@ -307,13 +307,43 @@ m_free(my_points);
 
 ## Build Configuration
 
-### Makefile (`rules.mk`)
+### Central Rules (`rules.mk`)
 - **Debug/Production modes**: Controlled via `OBJ` variable.
   - **Debug** (default): `OBJ=d` → `.od` object files, `.exed` executables.
-  - **Production** (`production=1`): `OBJ` is empty → `.o` and `.exe`.
-- All targets in `tests/makefile` must use `${OBJ}` suffix (e.g., `memcached_server.exe${OBJ}`).
-- Library dependencies in `DEPS` point to `../lib/` and must use `${OBJ}` suffix.
-- Debug flags include `-DMLS_DEBUG` and `-fsanitize=address` for ASan.
+  - **Production** (`production=1`): `OBJ` empty → `.o` and `.exe`.
+- Flags include `-DMLS_DEBUG` and `-fsanitize=address` for ASan.
+- Set `thread_safe=1` before including `rules.mk` to enable threading support.
+
+### Simple Project Makefile Pattern
+
+For a project in `experimental/foo/` that uses the MLS library:
+
+```makefile
+production=0
+thread_safe=0
+
+include ../../rules.mk
+VPATH=../../lib
+CFLAGS+=-I../../lib
+
+DEPS=mls.od m_tool.od m_table.od
+TARGET=foo.exed
+
+$(TARGET): $(DEPS)
+ALL: $(TARGET)
+
+clean:
+	-${RM} -f $(TARGET) $(DEPS)
+```
+
+Key points:
+- **`include ../../rules.mk`** imports the central build rules (compiler flags, suffix rules).
+- **`VPATH=../../lib`** lets `make` find MLS source files in the shared library directory.
+- **`CFLAGS+=-I../../lib`** adds the library headers to the include path.
+- **`DEPS`** lists the required library objects using the `${OBJ}` suffix (`.od` for debug, `.o` for production).
+- **`TARGET`** must also use the `${OBJ}` suffix (`.exed` or `.exe`).
+- **`ALL:`** rule ensures the target is built by default.
+- **`clean`** removes both the target and all dependency objects.
 
 ### Guidelines
 - Every test or server must include `m_init()` and `trace_level = 1` for effective debugging.
