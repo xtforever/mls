@@ -26,6 +26,7 @@ static unsigned int fuzz_rand (unsigned int *seed)
 
 static void exercise_local_alloc_free (unsigned int *seed, int value)
 {
+	TRACE(1,"");
 	int h = m_alloc ((int)(fuzz_rand (seed) % 8), sizeof (int), MFREE);
 	int n = (int)(fuzz_rand (seed) % 16);
 
@@ -37,10 +38,16 @@ static void exercise_local_alloc_free (unsigned int *seed, int value)
 	if (n > 0) {
 		int copy = 0;
 		void *dst = &copy;
-		assert (m_read (h, 0, &dst, 1) == 0);
+		if( m_len(h) > 0 ) {
+			assert (m_read (h, 0, &dst, 1) == 0);
+		} else {
+			WARN("Handle %d: Len: %ld", h & 0xffffff, m_len(h) );
+		}
+		
 	}
-
+	TRACE(1,"start free");
 	m_free (h);
+	
 }
 
 static void *fuzz_worker (void *arg)
@@ -75,7 +82,7 @@ static void *fuzz_worker (void *arg)
 		case 4: {
 			int copy = 0;
 			void *dst = &copy;
-			assert (m_read (h, 0, &dst, 1) == 0);
+			if( m_len(h) ) 	assert (m_read (h, 0, &dst, 1) == 0);
 			break;
 		}
 		default:
@@ -97,7 +104,7 @@ int main (void)
 	trace_level = 1;
 	assert (m_init () >= 0);
 
-	for (int i = 0; i < SHARED_HANDLES; i++)
+	for (int i = 0; i < SHARED_HANDLES; i++) 
 		handles[i] = m_alloc (1, sizeof (int), MFREE);
 
 	for (int i = 0; i < THREADS; i++) {

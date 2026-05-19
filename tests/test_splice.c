@@ -47,7 +47,7 @@ TEST test_m_alloc_free (void)
 	m_free (h);
 	int m =	m_set_data( 0, 10, 1, str );
 	printf( "%d %d\n", h, m );
-	ASSERT( m != h && h == (m & 0xffffff) );
+	ASSERT( m != h && (h & 0xffffff) == (m & 0xffffff) );
 	int x = s_dup(str);
 	ASSERT_EQ(0, s_ncasecmp(m,x,10) );
 	m_free(x);

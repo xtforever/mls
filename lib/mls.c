@@ -591,8 +591,10 @@ int lst_next (lst_t l, int *p, void *data)
  */
 int lst_read (lst_t l, size_t p, void **data, size_t n)
 {
-	if (p + n > l->l || data == NULL)
-		ERR ("Wrong arguments");
+	if (p + n > l->l || data == NULL) {
+		ERR ("Wrong arguments: Len: %d", l->l );
+	}
+	
 	if (*data == 0) {
 		size_t alloc_size = l->w * n;
 		if (n > 0 && alloc_size / n != l->w) ERR("Overflow");
