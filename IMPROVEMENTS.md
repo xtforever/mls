@@ -1,52 +1,8 @@
 # MLS: Improvements for Everyday Use
 
-This document outlines what needs to change for MLS to become a
-foundational C library — like libc — that every C program includes
-by default to prevent buffer overflow bugs.
-
----
-
-## 1. Error Handling — Return Error Codes (DONE)
-
-**Completed:** `_safe` API variants added in `mls.c`.
-
-| Function | Returns | Sets `mls_errno` |
-|---|---|---|
-| `mls_safe(h,i)` | NULL | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EUAF` |
-| `m_put_safe(h,d)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
-| `m_free_safe(h)` | -1 | `MLS_EINVAL` / `MLS_EUAF` |
-| `m_write_safe(m,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EOVERFLOW` / `MLS_ENOMEM` |
-| `m_read_safe(h,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EOVERFLOW` / `MLS_ENOMEM` |
-| `m_setlen_safe(m,len)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
-| `m_del_safe(m,p)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` |
-
-The `MLS_NO_EXIT` compile flag was considered but **skipped** — it
-would require error-labels at every `ERR()` call site (150+). The
-`_safe` variants are the recommended approach for error recovery.
-
----
-
-## 2. Thread Safety — Make It Default, Not Optional (DONE)
-
-**Completed:** `MLS_THREAD_SAFE` is now auto-defined to 1 on Unix
-platforms and `thread_safe=1` is the default in both makefiles and
-CMake.
-
-- `mls_internal.h` auto-detects Unix (`__unix__`, `__linux__`,
-  `__APPLE__`, `__FreeBSD__`) and defines `MLS_THREAD_SAFE` to 1
-- `rules.mk` uses `thread_safe ?= 1` so `-DMLS_THREAD_SAFE`
-  and `-lpthread` are linked by default
-- `CMakeLists.txt` default `MLS_THREAD_SAFE=ON`
-- Users can override with `-DMLS_THREAD_SAFE=0` or `thread_safe=0`
-  on platforms without pthreads
-
-**Remaining open issues** (thread-safety bugs not yet fixed):
-- `trace_level` is an unprotected global int (data race)
-- `conststr_lookup_c` has a 64-bit pointer-truncation race in `m_binsert`
-- Ring buffer functions (`ring_put`/`ring_get`) bypass all per-handle locks
-- `m_slice` uses source pointer after releasing source lock
-- `m_binsert` is not atomic (read/write across multiple function calls)
-- `m_foreach` iteration releases lock between elements
+This document outlines remaining work to make MLS a foundational C
+library that every C program includes by default to prevent buffer
+overflow bugs.
 
 ---
 
@@ -63,122 +19,17 @@ compilers other than GCC/Clang.
 
 ---
 
-## 4. Public Header Cleanup (DONE)
-
-**Completed:** Internal types split into `mls_internal.h`.
-
-- `mls.h` now exposes only the public API (core `m_*` functions,
-  macros like `INT`/`STR`, debug wrappers, `MFREE` constants,
-  `free_fn_t`)
-- `mls_internal.h` holds `struct ls_st`, `lst_t`, `lst_*` functions,
-  `mls_rwlock_t`, `exported_get_list`, and `increase_by_percent`
-- External includers no longer see implementation internals
-- `mls.c` and `m_tool.c` include `mls_internal.h` as needed
-
----
-
-## 5. Build System — Standardize for Distribution (DONE)
-
-**Completed:** CMake build system with `CMakeLists.txt` and `mls.pc.in`.
-
-```bash
-# Debug build:
-cmake -B build/debug -DCMAKE_BUILD_TYPE=Debug
-
-# Release with thread-safety:
-cmake -B build/release -DCMAKE_BUILD_TYPE=Release -DMLS_THREAD_SAFE=ON
-
-# Install to prefix:
-cmake --install build/release --prefix /usr/local
-```
-
-| Feature | Status |
-|---|---|
-| CMakeLists.txt with Debug/Release | Done |
-| `-DMLS_THREAD_SAFE` option | Done |
-| `m_flaskMT.c` conditional compilation | Done |
-| Headers installed to `include/mls/` | Done |
-| `pkg-config` support (`mls.pc`) | Done |
-| `make install` target | Done |
-| Remove `rules.mk` dependency | Not done (makefile still needed internally) |
-| Single-header distribution | Not done |
-
----
-
 ## 6. Type-Safe Accessor Macros
 
 **Current:** `INT(h,i)`, `CHAR(h,i)`, `STR(h,i)` macros perform
-unchecked access through `mls()` and `exit()` on errors.
+unchecked access through `mls()` and `exit()` on errors. `FLOAT`,
+`DOUBLE`, `PTR`, `U32`, `U64` macros have been added but no
+`_SAFE`/`_UNCHECKED` variants exist.
 
 **Required:** Provide checked and unchecked variants:
 ```c
-#define INT(h,i)     (*(int*)mls(h,i))            // checked, exits on error
-#define INT_SAFE(h,i) (*(int*)mls_safe(h,i))       // checked, returns NULL
+#define INT_SAFE(h,i) (*(int*)mls_safe(h,i))       // returns NULL on error
 #define INT_UNCHECKED(h,i) (*(int*)m_peek(h,i))    // no bounds check
-```
-
-Add typed macros for common types: `FLOAT(h,i)`, `DOUBLE(h,i)`,
-`PTR(h,i)`, `U32(h,i)`, `U64(h,i)`.
-
----
-
-## 7. String Functions — Interface Consistency
-
-**Current:** The string API is rich but spread across modules with
-inconsistent naming conventions (`s_replace_c` vs `s_replace`,
-`m_str_from_file` vs `s_read_file`, etc.). There is no general
-numeric-to-string converter.
-
-**Already available:**
-
-| Function | Location | Purpose |
-|---|---|---|
-| `s_cmp(a,b)` | `m_tool.h:24` | Compare two string handles |
-| `s_has_prefix(h, prefix)` | `m_tool.h:19` | Prefix check |
-| `s_has_suffix(h, suffix)` | `m_tool.h:20` | Suffix check |
-| `s_find(h, sub)` | `m_tool.h:28` | Find substring (returns index, -1 if not found) |
-| `s_replace_c(h, old, rep)` | `m_tool.h:36` | Replace all C-string occurrences |
-| `s_replace(d, src, p, r, cnt)` | `m_tool.h:70` | Replace using handles |
-| `s_from_long(val)` | `m_tool.h:21` | Convert long to string handle |
-| `m_str_from_file(name)` | `m_tool.h:53` | Read file into MLS string |
-| `s_trim(m)` | `m_tool.h:79` | Trim whitespace in-place |
-| `s_trim_c(h, chars)` | `m_tool.h:37` | Trim specific characters |
-| `s_split(m, s, c, rw)` | `m_tool.h:128` | Split into `char*` list |
-| `s_msplit(dest, src, pat)` | `m_tool.h:82` | Split into handle list |
-| `s_trim_left_c / s_trim_right_c` | `m_extra.h:15-16` | Directional trim |
-| `s_from_double(val)` | `m_extra.c` | Convert double to string handle (`%g`) |
-| `s_from_int(val)` | `m_extra.c` | Convert int to string handle (`%d`) |
-
----
-
-## 8. Table/Dictionary Improvements (DONE)
-
-**Completed:**
-- Fix `MFREE_TABLE_ENTRIES_HDLR` double-checked locking init:
-  `__sync_bool_compare_and_swap` under `MLS_THREAD_SAFE`
-- `mt_get_str(t, key)` — returns `const char*` for STRING/CONST_STRING
-- `mt_get_handle(t, key)` — returns raw `int` handle value
-- `mt_foreach(t, iter_fn, ctx)` — callback-based iteration over entries
-- `mt_remove(t, key)` — first-class C-string key removal
-
-**Deferred:** JSON interop (`mt_from_json`, `mt_to_json`) — needs a
-JSON parser, out of scope for the table module.
-
----
-
-## 9. Error Information API (DONE)
-
-**Completed:** `mls_errno`, `mls_errmsg()`, and error code enum added.
-
-```c
-enum mls_error {
-    MLS_OK = 0,
-    MLS_EINVAL,    // invalid handle
-    MLS_EBOUNDS,   // index out of bounds
-    MLS_ENOMEM,    // out of memory
-    MLS_EUAF,      // use-after-free detected
-    MLS_EOVERFLOW, // integer overflow
-};
 ```
 
 ---
@@ -202,12 +53,14 @@ single-threaded mode (lazy allocation via `init_handle_lock`).
 **Current:** Wiki, README, learn.md, thread-safe-porting.md, and
 source comments exist but are inconsistent and spread across files.
 
-**Required:**
+**Completed:**
+- Doxygen HTML API docs (zero warnings)
+- Quick reference for LLMs (`QUICKREF.md`)
+- Updated README with CMake, safe API, typed macros
+
+**Remaining:**
 - Single `mls.3` man page for core API
-- Single `mls_guide.md` covering all modules end-to-end
 - `mls_faq.md` for common pitfalls (UAF, handle reuse, const strings)
-- Remove documentation from WIKI.md (it's an LLM reference, not user docs)
-- Every public function must have a `@return` doc describing error conditions
 
 ---
 
@@ -254,18 +107,6 @@ const void  *cmls(int h, size_t i);  // read-only access
 
 ---
 
-## 15. Statistics / Introspection
-
-Add runtime visibility for debugging and monitoring:
-```c
-size_t m_count_allocated(void);      // total active handles
-size_t m_total_bytes(void);          // total allocated memory
-size_t m_peak_handles(void);         // peak handle count
-void   m_debug_print(FILE *fp);      // dump all handles to stream
-```
-
----
-
 ## 16. Atomicity for Compound Operations
 
 **Current:** Operations like `m_binsert` (search + insert), `m_slice`
@@ -280,19 +121,33 @@ released between sub-operations.
 
 ---
 
+## Completed Work
+
+The following chapters from the original plan have been implemented:
+
+| Chapter | Summary |
+|---|---|
+| **1. Error Handling** | `mls_errno`, `mls_errmsg()`, `_safe` API variants |
+| **2. Thread Safety** | `MLS_THREAD_SAFE` auto-default on Unix |
+| **4. Public Header** | Internal types split into `mls_internal.h` |
+| **5. Build System** | CMakeLists.txt, pkg-config, install target |
+| **7. String Functions** | Verified existing, added `s_from_double`/`s_from_int` |
+| **8. Table/Dict** | Locking fix, `mt_get_str`, `mt_foreach`, `mt_remove` |
+| **9. Error API** | Error code enum, `mls_errmsg()` |
+| **15. Statistics** | `m_count_allocated`, `m_total_bytes`, `m_peak_handles`, `m_debug_print` |
+
+---
+
 ## Priority Summary
 
 | Priority | Category | Impact |
 |---|---|---|
-| **P0** | Error handling (no exit) | Blocks library adoption |
-| **P0** | Thread safety defaults | Blocks multi-threaded use |
 | **P1** | C99 compliance | Blocks non-GCC compilers |
-| **P1** | Public header cleanup | Blocks clean integration |
-| **P1** | Build system / install | Blocks packaging |
-| **P1** | String function completion | API gap closure |
-| **P2** | Type-safe accessors | API ergonomics |
+| **P2** | Type-safe accessor variants | API ergonomics |
 | **P2** | Error information API | Debugging UX |
 | **P2** | Compound operation atomicity | Correctness |
-| **P3** | Statistics / introspection | Operational visibility |
+| **P2** | Documentation (man page, FAQ) | Developer experience |
+| **P3** | Memory usage / footprint | Embedded / resource-constrained |
 | **P3** | Performance tuning | Hot-path optimization |
 | **P3** | Platform support | Portability |
+| **P3** | Const correctness | API quality |
