@@ -101,7 +101,7 @@ int main (void)
 	int handles[SHARED_HANDLES];
 	int total_len = 0;
 
-	trace_level = 1;
+	trace_level = 0;
 	assert (m_init () >= 0);
 
 	for (int i = 0; i < SHARED_HANDLES; i++) 
