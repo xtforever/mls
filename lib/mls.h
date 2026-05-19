@@ -115,6 +115,7 @@ void *m_buf (int m);
 #define CHARP(m) ((char *)m_buf (m))
 
 void *mls (int m, size_t i);
+void *mls_safe (int m, size_t i);
 int m_new (int m, size_t n);
 void *m_add (int m);
 int m_next (int m, int *p, void *d);

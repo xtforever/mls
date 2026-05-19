@@ -129,6 +129,44 @@ static void unlock_handle (lst_t lp)
 #endif
 }
 
+/* Like lock_handle but returns NULL instead of calling ERR on failure.
+   Sets mls_errno so the caller can inspect the error reason. */
+static lst_t lock_handle_safe (int m, int write)
+{
+	lst_t lp;
+	int idx = REAL_HDL (m);
+	int uaf = REAL_UAF (m);
+
+	MLS_MASTER_LOCK ();
+	if (idx < 0 || idx >= ML.l) {
+		MLS_MASTER_UNLOCK ();
+		mls_errno = MLS_EINVAL;
+		return NULL;
+	}
+	lp = lst (&ML, idx);
+	if (!lp->data || lp->free_hdl == 255) {
+		MLS_MASTER_UNLOCK ();
+		mls_errno = MLS_EUAF;
+		return NULL;
+	}
+	if (lp->uaf_protection != uaf) {
+		MLS_MASTER_UNLOCK ();
+		mls_errno = MLS_EUAF;
+		return NULL;
+	}
+	init_handle_lock (lp);
+#ifdef MLS_THREAD_SAFE
+	if (write)
+		pthread_rwlock_wrlock (lp->lock);
+	else
+		pthread_rwlock_rdlock (lp->lock);
+#else
+	(void)write;
+#endif
+	MLS_MASTER_UNLOCK ();
+	return lp;
+}
+
 /**
  * Prints an error message with file and line information and terminates the program.
  * Sets the error_occurred flag for post-mortem analysis.
@@ -1238,6 +1276,32 @@ void *mls (int m, size_t i)
 	if( i >= lp->l ) {
 		ERR ("Index %zu out of bounds for handle %d (len %zu)", i, m,
 		     lp->l);
+	}
+	void *ret = lst (lp, i);
+	unlock_handle (lp);
+	return ret;
+}
+
+/**
+ * Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.
+ *
+ * @param m The handle.
+ * @param i The index.
+ * @return A pointer to the element, or NULL on error.
+ */
+void *mls_safe (int m, size_t i)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return NULL;
+	}
+	lst_t lp = lock_handle_safe (m, 0);
+	if (!lp)
+		return NULL;
+	if (i >= lp->l) {
+		mls_errno = MLS_EBOUNDS;
+		unlock_handle (lp);
+		return NULL;
 	}
 	void *ret = lst (lp, i);
 	unlock_handle (lp);
