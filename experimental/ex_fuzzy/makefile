@@ -6,11 +6,12 @@ VPATH=../../lib
 CFLAGS+=-I../../lib
 
 DEPS=mls.od m_tool.od m_table.od
-TARGET=test_thread_safe_fuzzy.exed
+TARGETS=test_thread_safe_fuzzy.exed test_thread_safe_strings.exed
 
+ALL: $(TARGETS)
 
-$(TARGET): $(DEPS)
-ALL: $(TARGET)
+test_thread_safe_fuzzy.exed: test_thread_safe_fuzzy.od $(DEPS)
+test_thread_safe_strings.exed: test_thread_safe_strings.od $(DEPS)
 
 clean:
-	-${RM} -f $(TARGET) $(DEPS)
+	-${RM} -f *.exed *.od
