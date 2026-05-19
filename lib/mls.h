@@ -99,6 +99,7 @@ typedef void (*free_fn_t) ( int m );
 int m_reg_freefn ( free_fn_t free_fn );
 int m_alloc (size_t max, size_t w, uint8_t hfree);
 int m_free (int m);
+int m_free_safe (int m);
 	
 int m_is_freed (int h);
 int m_is_valid (int h);
@@ -130,6 +131,7 @@ void   m_debug_print (FILE *fp);
 int m_create (size_t max, size_t w);
 int m_set_data (int m, size_t len, size_t w, const void *data);
 int m_put (int m, const void *data);
+int m_put_safe (int m, const void *data);
 int m_setlen (int m, size_t len);
 size_t m_bufsize (int m);
 void *m_peek (int m, size_t i);

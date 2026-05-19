@@ -167,6 +167,56 @@ static lst_t lock_handle_safe (int m, int write)
 	return lp;
 }
 
+/* Like lst_resize but returns -1 instead of calling ERR. */
+static int lst_resize_safe (lst_t lp, size_t new_size)
+{
+	if (lp->free_hdl & MFREE_NOALLOC) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	size_t newSize = new_size * lp->w;
+	size_t oldSize = lp->max * lp->w;
+	if (new_size > 0 && newSize / new_size != lp->w) {
+		mls_errno = MLS_EOVERFLOW;
+		return -1;
+	}
+	char *newData = realloc (lp->data, newSize);
+	if (!newData) {
+		mls_errno = MLS_ENOMEM;
+		return -1;
+	}
+	lp->data = newData;
+	if (newSize > oldSize)
+		memset (lp->data + oldSize, 0, newSize - oldSize);
+	lp->max = new_size;
+	return 0;
+}
+
+/* Like lst_new but returns -1 on error instead of calling ERR. */
+static int lst_new_safe (lst_t lp, size_t n)
+{
+	size_t p = lp->l;
+	size_t max = lp->max;
+	if (p + n > max) {
+		size_t newsiz = max + n;
+		newsiz = increase_by_percent (newsiz, 50);
+		if (lst_resize_safe (lp, newsiz) != 0)
+			return -1;
+	}
+	lp->l += n;
+	return (int)p;
+}
+
+/* Like lst_put but returns -1 on error instead of calling ERR. */
+static int lst_put_safe (lst_t lp, const void *d)
+{
+	int p = lst_new_safe (lp, 1);
+	if (p < 0)
+		return -1;
+	memcpy (lst (lp, p), d, lp->w);
+	return p;
+}
+
 /**
  * Prints an error message with file and line information and terminates the program.
  * Sets the error_occurred flag for post-mortem analysis.
@@ -1117,6 +1167,44 @@ simple_free:
 }
 
 /**
+ * Non-aborting version of m_free(). Returns -1 on error and sets mls_errno.
+ * For simplicity, skips custom free handlers (MFREE_STR, MFREE_EACH)
+ * and frees the data directly.
+ *
+ * @param m The handle to free.
+ * @return 0 on success, -1 on error.
+ */
+int m_free_safe (int m)
+{
+	int realh = REAL_HDL (m);
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	lst_t lp = lock_handle_safe (m, 1);
+	if (!lp)
+		return -1;
+	int freehdl = lp->free_hdl;
+	if (freehdl == 255 || (freehdl & MFREE_NODESTRUCT)) {
+		unlock_handle (lp);
+		return 0;
+	}
+	if (!(freehdl & MFREE_NOALLOC)) {
+		if (lp->data && lp->max > 0)
+			memset (lp->data, 0, lp->max * lp->w);
+		free (lp->data);
+	}
+	lp->data = NULL;
+	lp->free_hdl = 255;
+	unlock_handle (lp);
+	MLS_MASTER_LOCK ();
+	lst_put ((lst_t)ML.data, &realh);
+	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
+	MLS_MASTER_UNLOCK ();
+	return 0;
+}
+
+/**
  * @brief Registers a  a cleanup callback for managed arrays 
  * The @p free_fn is triggered automatically when m_free() is called.
  * This allows for custom iteration and deallocation of array elements
@@ -1373,6 +1461,27 @@ int m_put (int m, const void *data)
 		return -1;
 	lst_t lp = lock_handle (m, 1);
 	int p = lst_put (lp, data);
+	unlock_handle (lp);
+	return p;
+}
+
+/**
+ * Non-aborting version of m_put(). Returns -1 on error and sets mls_errno.
+ *
+ * @param m The handle.
+ * @param data Pointer to the element data to append.
+ * @return The index of the appended element, or -1 on error.
+ */
+int m_put_safe (int m, const void *data)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	lst_t lp = lock_handle_safe (m, 1);
+	if (!lp)
+		return -1;
+	int p = lst_put_safe (lp, data);
 	unlock_handle (lp);
 	return p;
 }
