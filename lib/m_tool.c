@@ -215,9 +215,8 @@ int s_app (int m, ...)
 int vas_printf (int m, int p, const char *format, va_list ap)
 {
 	int len;
-	va_list copy1, copy2;
+	va_list copy1;
 	va_copy (copy1, ap);
-	va_copy (copy2, ap);
 	len = vsnprintf (0, 0, format, copy1);
 	va_end (copy1);
 	len++;
@@ -227,10 +226,9 @@ int vas_printf (int m, int p, const char *format, va_list ap)
 	}
 	if (p < 0 || p > m_len (m))
 		p = s_strlen (m);
-	m_setlen (m, p + len);
-	void *buf = mls (m, p);
-	vsnprintf (buf, len, format, copy2);
-	va_end (copy2);
+	char tmp[len];
+	vsnprintf (tmp, len, format, ap);
+	m_write (m, (size_t)p, tmp, (size_t)len);
 	return m;
 }
 
