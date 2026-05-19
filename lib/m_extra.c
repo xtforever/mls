@@ -316,3 +316,30 @@ int s_secure_cmp (int a, int b)
 
 	return (result != 0);
 }
+
+/**
+ * Converts a double value to a string handle.
+ * Uses %g format which removes trailing zeros.
+ *
+ * @param val The double value.
+ * @return A new string handle.
+ */
+int s_from_double (double val)
+{
+	int h = s_new ();
+	s_printf (h, 0, "%g", val);
+	return h;
+}
+
+/**
+ * Converts an int value to a string handle.
+ *
+ * @param val The int value.
+ * @return A new string handle.
+ */
+int s_from_int (int val)
+{
+	int h = s_new ();
+	s_printf (h, 0, "%d", val);
+	return h;
+}

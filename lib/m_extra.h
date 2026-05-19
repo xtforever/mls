@@ -27,6 +27,10 @@ int s_is_alpha (int h);
 /* Security */
 int s_secure_cmp (int a, int b); /* Constant-time comparison */
 
+/* Numeric-to-string conversion */
+int s_from_double (double val);
+int s_from_int (int val);
+
 /* Encoding/Decoding */
 int s_base64_decode (int h);
 
