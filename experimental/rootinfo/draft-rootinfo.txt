@@ -1,0 +1,53 @@
+rootinfo - what machine do have, is there anything i very much need to know before making changes? 
+ZFS ------------------------------------------------------------         show my storage layout, what do i have
+pool     1    tank
+datasets 234  tank/us... tank/back... 
+LVM ------------------------------------------------------------
+PV         VG         LV       Size   Free    Mount    Free
+/dev/vda   vg0        home     250G   5G      /home    #___________
+/dev/vdb5  app101-vg  root     250G   11G     /        ##__________
+     "          "     swap     0.4G 
+OS/CPU/MEM ------------------------------------------------------------     what hardware i'm on
+Virtual Machine AMD EPYC 7302P 16-Core Processor
+debian 12 kernel 6.1.0-44-amd64 (2026-03-09) up 26 days 
+16 GB MEM   ( 0.9G Used )
+NIC1 10.10.1.5
+NIC2 10.3.1.12
+CRON ---------------------------------------------------------------         shortend if too long
+weekly        daily            
+man-db        apt-compat
+              dpkg
+	      man-db
+	      logrotate
+crontab	      
+* 3 * * * root /root/script1.sh
+* 3 * * * root /root/cleanup2.sh
+root crontab									
+10 23 * * * rsync -az --delete ...
+10 23 * * * rsync -az --delete -e "ssh ...
+ps aux ---------------------------------------------------------------		TOP 5 processes
+apache/php/postfix/vsftpd/memcached
+ss -tlp ---------------------------------------------------------------         open ports Max 5 (ipv4 only)
+10.20.3.96    9000            python
+0.0.0.0       ssh
+0.0.0.0       ftp
+0.0.0.0       smtp
+*:6556        cmk-agent-ctl
+*:http        apache2
+iptables ENABLED -------------------------------------------------------         is there a firewall?
+software stacks: python/php --------------------------------------------         only python,php are necc.
+Python 3.12
+php 8.4 / php-fpm 7.4 / php-fpm 8.4
+
+
+datatypes for formated output
+Type         Example/Comments
+Table        LVM, ZFS, open ports, crontab
+	     - to wide columns need to be shortened 
+Text         cpu type, message of the day
+List         installed software (comma seperated list)
+.. to be continued
+
+section      header,footer,entries of type (table,text,list)
+
+The output function should call the output function for all sections, the section output should call the contained datatype output funnctions
