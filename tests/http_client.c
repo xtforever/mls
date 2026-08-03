@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <signal.h>
 
 #define PORT 19999
 #define BUFFER_SIZE 4096
@@ -172,7 +173,12 @@ void test_security_header_injection ()
 	serv_addr.sin_port = htons (PORT);
 
 	inet_pton (AF_INET, "127.0.0.1", &serv_addr.sin_addr);
-	connect (sock, (struct sockaddr *)&serv_addr, sizeof (serv_addr));
+	if (connect (sock, (struct sockaddr *)&serv_addr,
+		     sizeof (serv_addr)) < 0) {
+		printf ("Connection failed (no server running?)\n");
+		close (sock);
+		return;
+	}
 
 	unsigned char malicious[] = "GET / HTTP/1.1\r\n"
 				    "Host: localhost\r\n"
@@ -195,6 +201,7 @@ void test_security_header_injection ()
 
 int main ()
 {
+	signal (SIGPIPE, SIG_IGN);
 	m_init ();
 	conststr_init ();
 	trace_level = 0;

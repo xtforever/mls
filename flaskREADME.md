@@ -14,7 +14,27 @@ make -C tests test_flask_advanced.exed
 ./tests/test_flask_advanced.exed
 ```
 
-## 2. Building a Simple API Tool
+## 2. Threading Model
+
+Flask supports both single-threaded and multi-threaded modes.
+
+| Function | Mode | Thread-safety |
+|---|---|---|
+| `flask_run(config)` | Single-threaded, blocking | Handlers run sequentially |
+| `flask_run_mt(config)` | Multi-threaded, one thread per request | Handlers run concurrently |
+
+Thread support requires `MLS_THREAD_SAFE` (enabled by default in `rules.mk` and CMake). In single-threaded mode all locking compiles away to zero overhead.
+
+### Multi-threaded Example
+
+```c
+flask_init();
+flask_register("handler", my_handler);
+// serve with one thread per request:
+flask_run_mt("config.hdf");
+```
+
+## 3. Building a Simple API Tool
 
 The following example demonstrates how to implement a date conversion service using idiomatic MLS style. It uses `s_printf` to build the response and `flask_json_h` to send it.
 
@@ -80,7 +100,7 @@ int main() {
 }
 ```
 
-## 3. How it works
+## 4. How it works
 
 1.  **Initialization**: `flask_init()` sets up the internal handler registry.
 2.  **Registration**: `flask_register` maps a C function to a string identifier.
@@ -91,7 +111,7 @@ int main() {
     *   `flask_json_h(res, status, handle)`: Sets the Content-Type to JSON and takes an MLS handle for the body.
     *   `flask_printf(res, "fmt", ...)`: Appends formatted text to the response body.
 
-## 4. Testing the Tool
+## 5. Testing the Tool
 
 Once running, you can interact with it via `curl`:
 

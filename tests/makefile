@@ -3,11 +3,11 @@ include ../rules.mk
 TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_table_pointers test_splice
 ifeq ($(thread_safe),1)
 TARGETS+=test_thread_safe_fuzzy
+TARGETS+=test_thread_safety
+TARGETS+=test_tsan_races
 endif
 DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
-ifeq ($(thread_safe),1)
-DEPS+=../lib/m_flaskMT.o${OBJ}
-endif
+
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
 ALL: $(EXE_TARGETS) error-handler
@@ -35,6 +35,12 @@ test_mls_core.exe${OBJ}: test_mls_core.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_thread_safe_fuzzy.exe${OBJ}: test_thread_safe_fuzzy.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_thread_safety.exe${OBJ}: test_thread_safety.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_tsan_races.exe${OBJ}: test_tsan_races.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)
@@ -98,7 +104,7 @@ test_flask_advanced.exe${OBJ}: test_flask_advanced.o${OBJ} $(DEPS)
 ../lib/%.od: ../lib/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-RUN_TARGETS := $(filter-out http_server.exe${OBJ} hdf_http_server.exe${OBJ} test_flask.exe${OBJ}, $(EXE_TARGETS))
+RUN_TARGETS := $(filter-out http_server.exe${OBJ} hdf_http_server.exe${OBJ} test_flask.exe${OBJ} memcached_server.exe${OBJ}, $(EXE_TARGETS))
 
 run: $(EXE_TARGETS)
 	@for exe in $(RUN_TARGETS); do \
@@ -111,6 +117,20 @@ check-leaks: $(EXE_TARGETS)
 		echo "Checking leaks in $$exe..."; \
 		ASAN_OPTIONS=detect_leaks=1 ./$$exe || exit 1; \
 	done
+
+# ThreadSanitizer build — catches data races
+check-tsan:
+	$(MAKE) thread_safe=1 CFLAGS="-g -fsanitize=thread -DMLS_THREAD_SAFE -D_GNU_SOURCE -I../lib" \
+		LDLIBS="-lpthread -fsanitize=thread -ldl -lm" \
+		clean ALL run
+
+# Stress test — high-iteration fuzzy test (override ITERS via FUZZ_ITERS)
+check-stress:
+	@echo "Running fuzzy stress test with FUZZ_ITERS=500000 ..."
+	FUZZ_ITERS=500000 ./test_thread_safe_fuzzy.exe${OBJ}
+	@echo "Running thread safety stress test (high iterations) ..."
+	@echo "(increase via 'make check-stress STRESS_ITERS=100000')"
+	@./test_thread_safety.exe${OBJ}
 
 clean:
 	-${RM} $(EXE_TARGETS) *.o *.od *~ *.lex.* *.tab.* ../lib/*.od ../lib/*.o error-handler

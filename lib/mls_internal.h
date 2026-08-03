@@ -4,16 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Portable thread-local storage.
-   Prefer C11 _Thread_local; fall back to GCC __thread for older compilers. */
-#if __STDC_VERSION__ >= 201112L
-#define MLS_THREAD_LOCAL _Thread_local
-#elif defined(__GNUC__)
-#define MLS_THREAD_LOCAL __thread
-#else
-#error "MLS requires thread-local storage support (C11 _Thread_local or GCC __thread)"
-#endif
-
 /* Default MLS_THREAD_SAFE to 1 on Unix/POSIX platforms where
    pthreads is universally available. Users can override with
    -DMLS_THREAD_SAFE=0 on platforms without pthreads. */
@@ -58,5 +48,7 @@ void  *lst_ins   (lst_t lp, size_t p, size_t n);
 void   lst_resize(lst_t LP, size_t new_size);
 
 lst_t exported_get_list(int r);
+lst_t mls_lock_handle(int m, int write);
+void  mls_unlock_handle(lst_t lp);
 
 #endif

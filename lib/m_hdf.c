@@ -335,3 +335,126 @@ int hdf_get_bool (int h, const char *key, int default_val)
 		return 0;
 	return default_val;
 }
+
+int hdf_put_property (int h, const char *key, const char *value)
+{
+	if (h <= 0 || !key || !value)
+		return -1;
+	int node = hdf_find_node (h, key);
+	if (node > 0) {
+		int children = hdf_get_children (node);
+		if (m_len (children) >= 2) {
+			int old_val = INT (children, 1);
+			INT (children, 1) = create_node (HDF_TYPE_STRING, s_strdup_c (value));
+			hdf_free (old_val);
+			return 0;
+		}
+	}
+	int children = hdf_get_children (h);
+	if (children <= 0)
+		return -1;
+	int key_h = s_strdup_c (key);
+	int val_h = s_strdup_c (value);
+	int key_node = create_node (HDF_TYPE_STRING, key_h);
+	int val_node = create_node (HDF_TYPE_STRING, val_h);
+	int prop_children = m_alloc (2, sizeof (int), MFREE);
+	m_puti (prop_children, key_node);
+	m_puti (prop_children, val_node);
+	int prop = create_node (HDF_TYPE_LIST, prop_children);
+	m_puti (children, prop);
+	return 1;
+}
+
+static void hdf_write_node (int h, FILE *fp, int indent)
+{
+	hdf_node_type_t type = hdf_get_type (h);
+	if (type == HDF_TYPE_LIST) {
+		int children = hdf_get_children (h);
+		fprintf (fp, "(");
+		for (int i = 0; i < m_len (children); i++) {
+			int child = INT (children, i);
+			if (i > 0)
+				fprintf (fp, "\n%*s", indent + 2, "");
+			hdf_write_node (child, fp, indent + 2);
+		}
+		fprintf (fp, ")");
+	} else {
+		const char *val = hdf_get_value (h);
+		if (!val) {
+			fprintf (fp, "null");
+			return;
+		}
+		switch (type) {
+		case HDF_TYPE_NUMBER:
+		case HDF_TYPE_BOOLEAN:
+			fprintf (fp, "%s", val);
+			break;
+		case HDF_TYPE_STRING: {
+			int needs_quotes = 0;
+			if (!*val || !is_keyword_char (*val, 1))
+				needs_quotes = 1;
+			else for (const char *p = val + 1; *p; p++) {
+				if (!is_keyword_char (*p, 0)) {
+					needs_quotes = 1;
+					break;
+				}
+			}
+			if (needs_quotes) {
+				fprintf (fp, "\"");
+				for (const char *p = val; *p; p++) {
+					switch (*p) {
+					case '\n':
+						fprintf (fp, "\\n");
+						break;
+					case '\r':
+						fprintf (fp, "\\r");
+						break;
+					case '\t':
+						fprintf (fp, "\\t");
+						break;
+					case '\\':
+						fprintf (fp, "\\\\");
+						break;
+					case '"':
+						fprintf (fp, "\\\"");
+						break;
+					default:
+						fputc (*p, fp);
+						break;
+					}
+				}
+				fprintf (fp, "\"");
+			} else {
+				fprintf (fp, "%s", val);
+			}
+			break;
+		}
+		default:
+			fprintf (fp, "null");
+			break;
+		}
+	}
+}
+
+int hdf_write_file (int h, const char *path)
+{
+	if (h <= 0 || !path)
+		return -1;
+	FILE *fp = fopen (path, "w");
+	if (!fp)
+		return -1;
+	if (hdf_get_type (h) == HDF_TYPE_LIST) {
+		int children = hdf_get_children (h);
+		for (int i = 0; i < m_len (children); i++) {
+			if (i > 0)
+				fputc ('\n', fp);
+			hdf_write_node (INT (children, i), fp, 0);
+		}
+		fputc ('\n', fp);
+	} else {
+		hdf_write_node (h, fp, 0);
+		fputc ('\n', fp);
+	}
+	fclose (fp);
+	return 0;
+}

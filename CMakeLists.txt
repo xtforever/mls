@@ -25,10 +25,6 @@ set(MLS_SOURCES
     lib/m_flask.c
 )
 
-if(MLS_THREAD_SAFE)
-    list(APPEND MLS_SOURCES lib/m_flaskMT.c)
-endif()
-
 set(MLS_PUBLIC_HEADERS
     lib/mls.h
     lib/m_tool.h

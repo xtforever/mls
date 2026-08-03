@@ -10,6 +10,9 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/socket.h>
+#ifdef MLS_THREAD_SAFE
+#include <pthread.h>
+#endif
 
 typedef struct {
 	int parser_h, method, uri, body, headers, args;
@@ -20,16 +23,33 @@ typedef struct {
 
 static int handler_registry = 0, flask_config_root = 0, route_table = 0;
 
+#ifdef MLS_THREAD_SAFE
+static pthread_mutex_t flask_lock = PTHREAD_MUTEX_INITIALIZER;
+#define FLASK_LOCK() pthread_mutex_lock(&flask_lock)
+#define FLASK_UNLOCK() pthread_mutex_unlock(&flask_lock)
+#else
+#define FLASK_LOCK() ((void)0)
+#define FLASK_UNLOCK() ((void)0)
+#endif
+
 int flask_init ()
 {
+	FLASK_LOCK ();
 	if (!handler_registry)
 		handler_registry = m_table_create ();
 	if (!route_table)
 		route_table = m_table_create ();
+	FLASK_UNLOCK ();
 	return 0;
 }
 
-int flask_get_config () { return flask_config_root; }
+int flask_get_config ()
+{
+	FLASK_LOCK ();
+	int ret = flask_config_root;
+	FLASK_UNLOCK ();
+	return ret;
+}
 void flask_status (int res_h, int status)
 {
 	((flask_res_t *)m_buf (res_h))->status = status;
@@ -42,10 +62,12 @@ void flask_set_header (int res_h, const char *key, const char *val)
 
 void flask_register (const char *name, flask_handler_t handler)
 {
+	FLASK_LOCK ();
 	int h_ptr = m_alloc (sizeof (flask_handler_t), 1, MFREE);
 	*(flask_handler_t *)m_buf (h_ptr) = handler;
 	m_table_set_handle_by_cstr (handler_registry, name, h_ptr,
 				    MLS_TABLE_TYPE_CUSTOM_HANDLE);
+	FLASK_UNLOCK ();
 }
 
 static void parse_args (int args_table, const char *uri)
@@ -129,7 +151,9 @@ void flask_process_client (int client_fd)
 		char *q = strchr (path, '?');
 		if (q)
 			*q = 0;
+		FLASK_LOCK ();
 		int h_ptr = m_table_get_cstr (route_table, path);
+		FLASK_UNLOCK ();
 		if (h_ptr > 0) {
 			int req_h = m_alloc (sizeof (flask_req_t), 1, MFREE);
 			flask_req_t *req = m_buf (req_h);
@@ -167,11 +191,13 @@ int flask_prepare_run (const char *hdf_path)
 	int root = hdf_parse_file (hdf_path);
 	if (root <= 0)
 		return 0;
+	FLASK_LOCK ();
 	flask_config_root = root;
 	int server_node = hdf_find_node (root, "server");
 	if (server_node <= 0)
 		server_node = root;
 	compile_routes (server_node);
+	FLASK_UNLOCK ();
 	return server_node;
 }
 
@@ -263,3 +289,85 @@ void flask_json (int res_h, int status, const char *json)
 	flask_json_h (res_h, status, h);
 	m_free (h);
 }
+
+#ifdef MLS_THREAD_SAFE
+
+typedef struct {
+	int client_fd;
+} flask_mt_client_t;
+
+static void *flask_mt_worker (void *arg)
+{
+	flask_mt_client_t *client = arg;
+	int client_fd = client->client_fd;
+	free (client);
+
+	flask_process_client (client_fd);
+	return NULL;
+}
+
+static void flask_mt_dispatch_client (int client_fd)
+{
+	pthread_t thread;
+	flask_mt_client_t *client = malloc (sizeof (*client));
+
+	if (!client) {
+		close (client_fd);
+		return;
+	}
+	client->client_fd = client_fd;
+
+	if (pthread_create (&thread, NULL, flask_mt_worker, client) != 0) {
+		free (client);
+		flask_process_client (client_fd);
+		return;
+	}
+	pthread_detach (thread);
+}
+
+void flask_run_mt (const char *hdf_path)
+{
+	int server_node = flask_prepare_run (hdf_path);
+	if (server_node <= 0)
+		return;
+
+	int port = hdf_get_int (server_node, "port", 8080);
+	int server_fd = socket (AF_INET, SOCK_STREAM, 0);
+	if (server_fd < 0) {
+		WARN ("socket: %s", strerror (errno));
+		return;
+	}
+
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = inet_addr (
+			hdf_get_property (server_node, "host") ?: "0.0.0.0"),
+		.sin_port = htons (port)};
+
+	setsockopt (server_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1},
+		    sizeof (int));
+	if (bind (server_fd, (struct sockaddr *)&addr, sizeof (addr)) < 0) {
+		WARN ("bind: %s", strerror (errno));
+		close (server_fd);
+		return;
+	}
+	if (listen (server_fd, 128) < 0) {
+		WARN ("listen: %s", strerror (errno));
+		close (server_fd);
+		return;
+	}
+
+	TRACE (TRACE_FLASK, "Flask MT running on %d", port);
+	while (1) {
+		int client_fd = accept (server_fd, NULL, NULL);
+		if (client_fd < 0) {
+			if (errno == EINTR)
+				continue;
+			WARN ("accept: %s", strerror (errno));
+			continue;
+		}
+		flask_mt_dispatch_client (client_fd);
+	}
+}
+
+#endif /* MLS_THREAD_SAFE */

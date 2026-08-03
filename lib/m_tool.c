@@ -1880,8 +1880,18 @@ int s_readln (int buf, FILE *fp)
 }
 
 
+/* Ring buffer lock — protects concurrent put/get on shared ring buffers */
+#ifdef MLS_THREAD_SAFE
+static pthread_mutex_t ring_lock = PTHREAD_MUTEX_INITIALIZER;
+#define RING_LOCK() pthread_mutex_lock(&ring_lock)
+#define RING_UNLOCK() pthread_mutex_unlock(&ring_lock)
+#else
+#define RING_LOCK() ((void)0)
+#define RING_UNLOCK() ((void)0)
+#endif
+
 /**
- * Creates a ring buffer (circular buffer) of integers.
+ * Creates a new ring buffer.
  *
  * @param size The capacity of the ring buffer.
  * @return The handle of the new ring buffer.
@@ -1889,11 +1899,14 @@ int s_readln (int buf, FILE *fp)
 int ring_create (int size)
 {
 	int r = m_create (size + 1, sizeof (int));
-	lst_t lp = exported_get_list (r);
+	RING_LOCK ();
+	lst_t lp = mls_lock_handle (r, 1);
 	int *rd = lst_peek (lp, 0);
 	size_t *wr = &(lp)->l;
 	*rd = -1;
 	*wr = 1;
+	mls_unlock_handle (lp);
+	RING_UNLOCK ();
 	return r;
 }
 
@@ -1905,9 +1918,13 @@ int ring_create (int size)
  */
 int ring_empty (int r)
 {
-	lst_t lp = exported_get_list (r);
+	RING_LOCK ();
+	lst_t lp = mls_lock_handle (r, 0);
 	int *rd = lst_peek (lp, 0);
-	return (*rd < 0);
+	int ret = (*rd < 0);
+	mls_unlock_handle (lp);
+	RING_UNLOCK ();
+	return ret;
 }
 
 /**
@@ -1918,10 +1935,14 @@ int ring_empty (int r)
  */
 int ring_full (int r)
 {
-	lst_t lp = exported_get_list (r);
+	RING_LOCK ();
+	lst_t lp = mls_lock_handle (r, 0);
 	int *rd = lst_peek (lp, 0);
 	size_t *wr = &lp->l;
-	return (*rd == *wr);
+	int ret = (*rd == *wr);
+	mls_unlock_handle (lp);
+	RING_UNLOCK ();
+	return ret;
 }
 
 /**
@@ -1933,19 +1954,25 @@ int ring_full (int r)
  */
 int ring_put (int r, int data)
 {
-	lst_t lp = exported_get_list (r);
+	RING_LOCK ();
+	lst_t lp = mls_lock_handle (r, 1);
 	int *rd = lst_peek (lp, 0);
 	size_t *wr = &lp->l;
 	int max = lp->max;
 	int *d = lst_peek (lp, *wr);
-	if (*rd == *wr)
+	if (*rd == *wr) {
+		mls_unlock_handle (lp);
+		RING_UNLOCK ();
 		return -1;
+	}
 	*d = data;
 	if (*rd < 0)
 		*rd = *wr;
 	(*wr)++;
 	if (*wr >= max)
 		*wr = 1;
+	mls_unlock_handle (lp);
+	RING_UNLOCK ();
 	return 0;
 }
 
@@ -1957,19 +1984,26 @@ int ring_put (int r, int data)
  */
 int ring_get (int r)
 {
-	lst_t lp = exported_get_list (r);
+	RING_LOCK ();
+	lst_t lp = mls_lock_handle (r, 1);
 	int *rd = lst_peek (lp, 0);
 	size_t *wr = &lp->l;
 	int max = lp->max;
-	if (*rd < 0)
+	if (*rd < 0) {
+		mls_unlock_handle (lp);
+		RING_UNLOCK ();
 		return -1;
+	}
 	int *d = lst_peek (lp, *rd);
+	int val = *d;
 	(*rd)++;
 	if (*rd >= max)
 		*rd = 1;
 	if (*rd == *wr)
 		*rd = -1;
-	return *d;
+	mls_unlock_handle (lp);
+	RING_UNLOCK ();
+	return val;
 }
 
 /**

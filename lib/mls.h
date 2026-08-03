@@ -4,9 +4,21 @@
 #ifdef __plusplus
 extern "C" {
 #endif
-	#ifndef _GNU_SOURCE
-           #define _GNU_SOURCE
-	#endif
+
+/* Portable thread-local storage */
+#ifndef MLS_THREAD_LOCAL
+#if __STDC_VERSION__ >= 201112L
+#define MLS_THREAD_LOCAL _Thread_local
+#elif defined(__GNUC__)
+#define MLS_THREAD_LOCAL __thread
+#else
+#define MLS_THREAD_LOCAL
+#endif
+#endif
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -74,10 +86,10 @@ enum mls_error {
 	MLS_EOVERFLOW,
 };
 
-extern int mls_errno;
-extern const char *mls_errfunc;
-extern const char *mls_errfile;
-extern int mls_errline;
+extern MLS_THREAD_LOCAL int mls_errno;
+extern MLS_THREAD_LOCAL const char *mls_errfunc;
+extern MLS_THREAD_LOCAL const char *mls_errfile;
+extern MLS_THREAD_LOCAL int mls_errline;
 const char *mls_errmsg (int code);
 
 enum predefined_free_handler {

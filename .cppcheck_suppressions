@@ -6,9 +6,6 @@ missingIncludeSystem
 constParameterPointer
 constVariablePointer
 constVariable
-# Suppress shadow warnings
-shadowVariable
-shadowArgument
 # Suppress void pointer arithmetic (common in this lib)
 arithOperationsOnVoidPointer
 # Suppress knownConditionTrueFalse for now
@@ -21,3 +18,8 @@ unreadVariable
 varFuncNullUB
 # Suppress unusedStructMember
 unusedStructMember
+# ASSERT-based null checks (ASSERT always aborts, never compiled out)
+nullPointerRedundantCheck
+ctunullpointer
+# Pre-existing shadowFunction in mls.c (extern re-declaration of m_bsearch)
+shadowFunction

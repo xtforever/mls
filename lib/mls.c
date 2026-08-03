@@ -15,10 +15,10 @@
 
 /* Debug globals */
 int trace_level = 0;
-int mls_errno = 0;
-const char *mls_errfunc = "";
-const char *mls_errfile = "";
-int mls_errline = 0;
+MLS_THREAD_LOCAL int mls_errno = 0;
+MLS_THREAD_LOCAL const char *mls_errfunc = "";
+MLS_THREAD_LOCAL const char *mls_errfile = "";
+MLS_THREAD_LOCAL int mls_errline = 0;
 static int error_occurred = 0;
 /* this could be a define but that is not easy to debug */
 static inline int REAL_HDL( int m ) { return (m &  0xffffff); }
@@ -27,13 +27,18 @@ static int UAF_PROTECTION = 0;
 static struct ls_st ML = { 0 }; // stack allocated vars
 #ifdef MLS_THREAD_SAFE
 static pthread_mutex_t ml_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cs_map_lock = PTHREAD_MUTEX_INITIALIZER;
 static MLS_THREAD_LOCAL int freeing_handle = 0;
 #define MLS_MASTER_LOCK() pthread_mutex_lock (&ml_lock)
 #define MLS_MASTER_UNLOCK() pthread_mutex_unlock (&ml_lock)
+#define CS_MAP_LOCK() pthread_mutex_lock (&cs_map_lock)
+#define CS_MAP_UNLOCK() pthread_mutex_unlock (&cs_map_lock)
 #else
 static int freeing_handle = 0;
 #define MLS_MASTER_LOCK() ((void)0)
 #define MLS_MASTER_UNLOCK() ((void)0)
+#define CS_MAP_LOCK() ((void)0)
+#define CS_MAP_UNLOCK() ((void)0)
 #endif
 static int CS_MAP  = 0;
 static int CS_ZERO = 0;
@@ -86,16 +91,10 @@ static inline lst_t get_list_locked (int m)
 		ERR ("Invalid Handle %d", idx);
 	}
 	lst_t l = lst (&ML, idx);
-	if (l->data == NULL) {
-		ERR ("List %d not allocated", idx);
-	}
 
 	if (l->uaf_protection != uaf) {
 		ERR ("uaf protection pattern does not match, expected:%d, got:%d",
 		     l->uaf_protection, uaf);
-	}
-	if (l->free_hdl == 255 && REAL_HDL (freeing_handle) != idx) {
-		ERR ("List %d is being freed", idx);
 	}
 
 	init_handle_lock (l);
@@ -116,6 +115,23 @@ static lst_t lock_handle (int m, int write)
 #else
 	(void)write;
 #endif
+	/* ponytail: data+free_hdl checks moved here from get_list_locked
+	   so reads happen under per-handle rwlock, matching the writes
+	   in lst_resize/m_free — eliminates TSAN data races */
+	if (lp->data == NULL) {
+#ifdef MLS_THREAD_SAFE
+		pthread_rwlock_unlock (lp->lock);
+#endif
+		MLS_MASTER_UNLOCK ();
+		ERR ("List %d not allocated", REAL_HDL (m));
+	}
+	if (lp->free_hdl == 255 && REAL_HDL (freeing_handle) != REAL_HDL (m)) {
+#ifdef MLS_THREAD_SAFE
+		pthread_rwlock_unlock (lp->lock);
+#endif
+		MLS_MASTER_UNLOCK ();
+		ERR ("List %d is being freed", REAL_HDL (m));
+	}
 	MLS_MASTER_UNLOCK ();
 	return lp;
 }
@@ -144,11 +160,6 @@ static lst_t lock_handle_safe (int m, int write)
 		return NULL;
 	}
 	lp = lst (&ML, idx);
-	if (!lp->data || lp->free_hdl == 255) {
-		MLS_MASTER_UNLOCK ();
-		mls_errno = MLS_EUAF;
-		return NULL;
-	}
 	if (lp->uaf_protection != uaf) {
 		MLS_MASTER_UNLOCK ();
 		mls_errno = MLS_EUAF;
@@ -163,6 +174,14 @@ static lst_t lock_handle_safe (int m, int write)
 #else
 	(void)write;
 #endif
+	if (!lp->data || lp->free_hdl == 255) {
+#ifdef MLS_THREAD_SAFE
+		pthread_rwlock_unlock (lp->lock);
+#endif
+		MLS_MASTER_UNLOCK ();
+		mls_errno = MLS_EUAF;
+		return NULL;
+	}
 	MLS_MASTER_UNLOCK ();
 	return lp;
 }
@@ -267,7 +286,7 @@ static int lst_read_safe (lst_t l, size_t p, void **data, size_t n)
 void deb_err (int line, const char *file, const char *function,
 	      const char *format, ...)
 {
-	error_occurred = 1;
+	__atomic_store_n (&error_occurred, 1, __ATOMIC_RELAXED);
 	mls_errno = MLS_EINVAL;
 	mls_errfunc = function;
 	mls_errfile = file;
@@ -520,7 +539,7 @@ static int _mlsdb_check_index ()
  */
 void exit_error ()
 {
-	if (!error_occurred || !debi.me)
+	if (!__atomic_load_n (&error_occurred, __ATOMIC_RELAXED) || !debi.me)
 		return;
 
 	perr ("\n[mls post-mortem analysis]");
@@ -795,6 +814,14 @@ static inline lst_t get_list(int m) {
 
 	MLS_MASTER_LOCK ();
 	lp = get_list_locked (m);
+	if (lp->data == NULL) {
+		MLS_MASTER_UNLOCK ();
+		ERR ("List %d not allocated", REAL_HDL (m));
+	}
+	if (lp->free_hdl == 255) {
+		MLS_MASTER_UNLOCK ();
+		ERR ("List %d is being freed", REAL_HDL (m));
+	}
 	MLS_MASTER_UNLOCK ();
 	return lp;
 }
@@ -806,6 +833,8 @@ static inline lst_t get_list(int m) {
  * @return A pointer to the list structure pointer.
  */
 lst_t exported_get_list (int r) { return get_list (r); }
+lst_t mls_lock_handle (int m, int write) { return lock_handle (m, write); }
+void  mls_unlock_handle (lst_t lp) { unlock_handle (lp); }
 
 extern void m_free_strings (int list, int CLEAR_ONLY);
 
@@ -905,20 +934,24 @@ int conststr_lookup_c (const char *s, int copy_string )
 {
 	if (!s || !*s)
 		return CS_ZERO;
-	
+
+	CS_MAP_LOCK ();
 	int p = m_binsert(CS_MAP, s, mscmpc, 0);
 	if (p < 0) {
+		CS_MAP_UNLOCK ();
 		return INT(CS_MAP, (-p) - 1);
 	}
 
 	int hdl;
-	int len = strlen(s) +1;	
+	int len = strlen(s) +1;
 	if( copy_string ) {
 		s=strdup(s);
 		hdl = MFREE_NODESTRUCT;
 	} else  hdl = MFREE_NODESTRUCT | MFREE_NOALLOC;
 
-	return INT(CS_MAP,p) = new_list( s, len, len,1, hdl );
+	int ret = INT(CS_MAP,p) = new_list( s, len, len,1, hdl );
+	CS_MAP_UNLOCK ();
+	return ret;
 }
 
 /**
@@ -1281,26 +1314,15 @@ int m_is_valid(int h)
  */
 int m_is_freed (int h)
 {
-	if (h < 0)
+	if (h <= 0)
 		return 1;
-
-	int m =  REAL_HDL(h);
-	int u =  REAL_UAF(h);
-
-	MLS_MASTER_LOCK ();
-	if (!ML.data) {
-		MLS_MASTER_UNLOCK ();
+	/* ponytail: use lock_handle_safe so data+free_hdl are read
+	   under the per-handle rwlock, not just the master lock */
+	lst_t lp = lock_handle_safe (h, 0);
+	if (!lp)
 		return 1;
-	}
-	if ( m >= ML.l) {
-		MLS_MASTER_UNLOCK ();
-		return 1;
-	}
-	
-	lst_t l = lst (&ML, m);
-	int freed = (!l->data ||  u != l->uaf_protection ||  l->free_hdl == 255 );
-	MLS_MASTER_UNLOCK ();
-	return freed;
+	unlock_handle (lp);
+	return 0;
 }
 
 /**
@@ -1885,12 +1907,19 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		size_t nbytes = cnt * width;
 		if (cnt > 0 && nbytes / cnt != width)
 			ERR ("Integer overflow in slice");
+		/* ponytail: copy src to temp and release src lock before
+		   locking dest — avoids lock-order-inversion (rwlock → master) */
 		lst_t src_lp = lock_handle (m, 0);
-		void *src_ptr = lst (src_lp, (size_t)a);
-		lst_t dst_lp = lock_handle (dest, 1);
-		lst_write (dst_lp, offs, src_ptr, cnt);
-		unlock_handle (dst_lp);
+		void *tmp = malloc (nbytes);
+		if (!tmp)
+			ERR ("Out of Memory");
+		memcpy (tmp, lst (src_lp, (size_t)a), nbytes);
 		unlock_handle (src_lp);
+
+		lst_t dst_lp = lock_handle (dest, 1);
+		lst_write (dst_lp, offs, tmp, cnt);
+		unlock_handle (dst_lp);
+		free (tmp);
 	}
 	return dest;
 }
@@ -2382,8 +2411,14 @@ size_t m_count_allocated (void)
 	}
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
+#ifdef MLS_THREAD_SAFE
+		if (l->lock) pthread_rwlock_rdlock (l->lock);
+#endif
 		if (l->data && l->free_hdl != 255)
 			count++;
+#ifdef MLS_THREAD_SAFE
+		if (l->lock) pthread_rwlock_unlock (l->lock);
+#endif
 	}
 	MLS_MASTER_UNLOCK ();
 	return count;
@@ -2405,9 +2440,15 @@ size_t m_total_bytes (void)
 	}
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
+#ifdef MLS_THREAD_SAFE
+		if (l->lock) pthread_rwlock_rdlock (l->lock);
+#endif
 		if (l->data && l->free_hdl != 255
 		    && !(l->free_hdl & MFREE_NOALLOC))
 			total += l->max * l->w;
+#ifdef MLS_THREAD_SAFE
+		if (l->lock) pthread_rwlock_unlock (l->lock);
+#endif
 	}
 	MLS_MASTER_UNLOCK ();
 	return total;
@@ -2448,6 +2489,9 @@ void m_debug_print (FILE *fp)
 		 "Idx", "Handle", "Type", "Len", "Cap", "Data");
 	for (int idx = 0; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
+#ifdef MLS_THREAD_SAFE
+		if (l->lock) pthread_rwlock_rdlock (l->lock);
+#endif
 		if (l->data && l->free_hdl != 255) {
 			int h = (int)((unsigned int)idx)
 				| ((int)(l->uaf_protection) << 24);
@@ -2455,6 +2499,9 @@ void m_debug_print (FILE *fp)
 				 idx, h, l->free_hdl, l->l, l->max,
 				 (void *)l->data);
 		}
+#ifdef MLS_THREAD_SAFE
+		if (l->lock) pthread_rwlock_unlock (l->lock);
+#endif
 	}
 	MLS_MASTER_UNLOCK ();
 }

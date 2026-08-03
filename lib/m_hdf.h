@@ -87,4 +87,23 @@ int hdf_get_int (int h, const char *key, int default_val);
  */
 int hdf_get_bool (int h, const char *key, int default_val);
 
+/**
+ * @brief Set or add a string property (key value) in an HDF list.
+ * If the property already exists its value is replaced; otherwise a
+ * new property node is appended.
+ * @param h Parent list node.
+ * @param key Property key.
+ * @param value New string value.
+ * @return 0 on update, 1 on insert, -1 on error.
+ */
+int hdf_put_property (int h, const char *key, const char *value);
+
+/**
+ * @brief Write an HDF tree to a file as S-expressions.
+ * @param h HDF tree root.
+ * @param path Output file path.
+ * @return 0 on success, -1 on error.
+ */
+int hdf_write_file (int h, const char *path);
+
 #endif

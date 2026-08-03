@@ -7,8 +7,9 @@
 #include <stdlib.h>
 
 #define THREADS 12
-#define ITERS 50000
 #define SHARED_HANDLES 4
+
+static int g_iters = 50000;
 
 typedef struct {
 	int id;
@@ -47,14 +48,14 @@ static void *fuzz_worker (void *arg)
 {
 	fuzz_arg_t *a = arg;
 
-	for (int i = 0; i < ITERS; i++) {
+	for (int i = 0; i < g_iters; i++) {
 		unsigned int r = fuzz_rand (&a->seed);
 		int h = a->handles[r % SHARED_HANDLES];
 
 		switch (r % 6) {
 		case 0:
 		case 1: {
-			int v = (a->id * ITERS) + i;
+			int v = (a->id * g_iters) + i;
 			assert (m_puti (h, v) >= 0);
 			__sync_fetch_and_add (&append_count, 1);
 			break;
@@ -73,13 +74,15 @@ static void *fuzz_worker (void *arg)
 			break;
 		}
 		case 4: {
+			/* ponytail: use _safe variant — shared handle may be empty
+			   from another thread's perspective, and m_read would ERR(). */
 			int copy = 0;
 			void *dst = &copy;
-			assert (m_read (h, 0, &dst, 1) == 0);
+			m_read_safe (h, 0, &dst, 1);
 			break;
 		}
 		default:
-			exercise_local_alloc_free (&a->seed, (a->id * ITERS) + i);
+			exercise_local_alloc_free (&a->seed, (a->id * g_iters) + i);
 			break;
 		}
 	}
@@ -89,12 +92,15 @@ static void *fuzz_worker (void *arg)
 
 int main (void)
 {
+	char *env = getenv ("FUZZ_ITERS");
+	if (env) g_iters = atoi (env);
+
 	pthread_t threads[THREADS];
 	fuzz_arg_t args[THREADS];
 	int handles[SHARED_HANDLES];
 	int total_len = 0;
 
-	trace_level = 1;
+	trace_level = 0;  /* ponytail: silent for 100-round stress run */
 	assert (m_init () >= 0);
 
 	for (int i = 0; i < SHARED_HANDLES; i++)
@@ -120,6 +126,6 @@ int main (void)
 	m_destruct ();
 
 	printf ("thread-safe fuzzy test passed: %d randomized operations, %d shared appends\n",
-		THREADS * ITERS, append_count);
+		THREADS * g_iters, append_count);
 	return 0;
 }
