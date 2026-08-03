@@ -6,3 +6,6 @@ tests/error-handler
 *.exed
 *.swp
 *.bak
+*.hdf
+*.save
+nohup.out
