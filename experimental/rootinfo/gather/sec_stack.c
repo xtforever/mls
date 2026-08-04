@@ -10,19 +10,24 @@ static void add_version(int items, const char *label, const char *cmd)
 {
 	int out = subproc_read(cmd);
 	if (!out) return;
-	const char *v = m_str(out);
-	if (!*v) { m_free(out); return; }
-	while (*v == ' ' || *v == '\t') v++;
-	const char *nl = strchr(v, '\n');
-	char buf[256];
-	size_t len = nl ? (size_t)(nl - v) : strlen(v);
-	if (len >= sizeof(buf)) len = sizeof(buf) - 1;
-	memcpy(buf, v, len);
-	buf[len] = 0;
+
+	int outbuf = s_new();
+	int started = 0;
+	for (int i = 0; ; i++) {
+		char c = CHAR(out, i);
+		if (c == 0 || c == '\n') break;
+		if (!started && (c == ' ' || c == '\t')) continue;
+		started = 1;
+		m_putc(outbuf, c);
+	}
+	m_putc(outbuf, 0);
 	m_free(out);
 
+	if (!m_len(outbuf)) { m_free(outbuf); return; }
+
 	char line[320];
-	snprintf(line, sizeof(line), "%s: %s", label, buf);
+	snprintf(line, sizeof(line), "%s: %s", label, m_str(outbuf));
+	m_free(outbuf);
 	FIELD_ADD(items, line, ALIGN_LEFT);
 }
 
