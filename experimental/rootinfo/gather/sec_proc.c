@@ -13,10 +13,7 @@ int gather_proc(cfg_t cfg)
 	snprintf(cmd, sizeof(cmd), "ps -eo user,pid,%%cpu,%%mem,comm --sort=-%%cpu 2>/dev/null");
 
 	int lines = subproc_lines(cmd);
-	if (!lines) return 0;
-
-	int n = (int)m_len(lines);
-	if (!n) { m_free(lines); return 0; }
+	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
 	int sec_h = m_alloc(1, sizeof(section_t), 0);
 	section_t *sec = (section_t *)m_buf(sec_h);
@@ -38,7 +35,7 @@ int gather_proc(cfg_t cfg)
 
 	t->rows = m_create((size_t)(top + 1), sizeof(int));
 	int count = 0;
-	for (int i = 0; i < n && count < top; i++) {
+	for (int i = 0; i < (int)m_len(lines) && count < top; i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
 		const char *line = lh ? m_str(*lh) : "";
 		if (!line[0] || strstr(line, "USER") || strstr(line, "PID")) continue;

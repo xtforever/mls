@@ -3,6 +3,8 @@
 
 #include "cfg.h"
 
+#define STRTAB_EMPTY(h) ((h) == 0 || m_len(h) == 0)
+
 int gather_all(cfg_t cfg);
 
 int gather_system(cfg_t cfg);

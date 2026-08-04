@@ -10,10 +10,7 @@ int gather_zfs(cfg_t cfg)
 {
 	(void)cfg;
 	int lines = subproc_lines("zfs list -H -o name,used,avail,refer,mountpoint 2>/dev/null");
-	if (!lines) return 0;
-
-	int n = (int)m_len(lines);
-	if (!n) { m_free(lines); return 0; }
+	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
 	int sec_h = m_alloc(1, sizeof(section_t), 0);
 	section_t *sec = (section_t *)m_buf(sec_h);
@@ -32,8 +29,8 @@ int gather_zfs(cfg_t cfg)
 		m_put(t->header, &f);
 	}
 
-	t->rows = m_create((size_t)n, sizeof(int));
-	for (int i = 0; i < n; i++) {
+	t->rows = m_create(m_len(lines), sizeof(int));
+	for (int i = 0; i < (int)m_len(lines); i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
 		const char *line = lh ? m_str(*lh) : "";
 		if (!line[0]) continue;

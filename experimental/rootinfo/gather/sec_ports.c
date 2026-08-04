@@ -16,10 +16,7 @@ int gather_ports(cfg_t cfg)
 
 	const char *cmd = ipv4_only ? "ss -tlp4n 2>/dev/null" : "ss -tlpn 2>/dev/null";
 	int lines = subproc_lines(cmd);
-	if (!lines) return 0;
-
-	int n = (int)m_len(lines);
-	if (!n) { m_free(lines); return 0; }
+	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
 	int sec_h = m_alloc(1, sizeof(section_t), 0);
 	section_t *sec = (section_t *)m_buf(sec_h);
@@ -40,7 +37,7 @@ int gather_ports(cfg_t cfg)
 
 	t->rows = m_create((size_t)(max + 1), sizeof(int));
 	int count = 0;
-	for (int i = 0; i < n && count < max; i++) {
+	for (int i = 0; i < (int)m_len(lines) && count < max; i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
 		const char *line = lh ? m_str(*lh) : "";
 		if (!line[0] || strstr(line, "State") || strstr(line, "Netid")) continue;

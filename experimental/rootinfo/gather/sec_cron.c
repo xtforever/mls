@@ -10,9 +10,7 @@
 
 static void add_cron_table(int entries, const char *title, int lines, int max_lines)
 {
-	if (!lines) return;
-	int n = (int)m_len(lines);
-	if (!n) { m_free(lines); return; }
+	if (STRTAB_EMPTY(lines)) { m_free(lines); return; }
 
 	int th = m_alloc(1, sizeof(table_t), 0);
 	table_t *t = (table_t *)m_buf(th);
@@ -27,7 +25,7 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 
 	t->rows = m_create((size_t)(max_lines + 1), sizeof(int));
 	int count = 0;
-	for (int i = 0; i < n && count < max_lines; i++) {
+	for (int i = 0; i < (int)m_len(lines) && count < max_lines; i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
 		const char *line = lh ? m_str(*lh) : "";
 		if (!line[0] || line[0] == '#') continue;
