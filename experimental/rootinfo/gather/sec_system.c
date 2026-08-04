@@ -41,15 +41,6 @@ static void add_entry(int entries, const char *type, int data_h)
 	m_put(entries, &e);
 }
 
-static int cmp_who_user(const void *key, const void *elem)
-{
-	int ka = *(int *)key, eb = *(int *)elem;
-	char ku[64] = "", eu[64] = "";
-	sscanf(m_str(ka), "%63s", ku);
-	sscanf(m_str(eb), "%63s", eu);
-	return strcmp(ku, eu);
-}
-
 static void gather_osinfo(int entries, const char *host,
 			  const char *sysname, const char *release, const char *machine)
 {
@@ -229,22 +220,44 @@ static void gather_proc_uptime(int entries)
 	add_entry(entries, "list", h);
 }
 
+static int copy_word(int buf,int str)
+{
+	if(!buf) buf=m_create(10,1); else m_clear(buf);
+	int p; char *d; 
+        m_foreach(str,p,d) {
+	   if( isspace(*d) ) break;
+	   m_putc(buf,*d);
+	}
+	m_putc(buf,0);
+       return buf;
+}
+
+static inline int mstr_empty(int a)
+{
+	return  ( a == 0 || m_len(a) == 0 || CHAR(a,0) == 0 );
+}
+
+
+static int _cmp_mstr(const void * va, const void * vb)
+{
+	int a = *(int*)va; 
+	int b = *(int*)vb; 
+
+	if( mstr_empty(a) || mstr_empty(b) ) return 0;
+	return s_cmp(a,b);
+}
+
 static void gather_users(int entries)
 {
 	int who_lines = subproc_lines("who 2>/dev/null");
 	if (STRTAB_EMPTY(who_lines)) { m_free(who_lines); return; }
-
 	int unames = m_create(8, sizeof(int));
-	int n = (int)m_len(who_lines);
-	for (int i = 0; i < n; i++) {
-		int *lh = (int *)m_peek(who_lines, (size_t)i);
-		char c = CHAR(*lh, 0);
-		if (c == 0 || c == '\n') continue;
-
-		int p = m_binsert(unames, lh, cmp_who_user, 0);
-		if (p >= 0)
-			INT(unames, p) = s_dup(m_str(*lh));
+	int p,*d,buf=0;
+	m_foreach(who_lines,p,d) {
+		buf=copy_word(buf,*d);
+		if( m_binsert(unames, &buf, _cmp_mstr, 0)  >= 0 ) buf=0;
 	}
+        m_free(buf);
 	m_free(who_lines);
 
 	int ucount = (int)m_len(unames);
