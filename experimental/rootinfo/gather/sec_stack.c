@@ -9,7 +9,7 @@
 static void add_version(int items, const char *label, const char *cmd)
 {
 	int out = subproc_read(cmd);
-	if (!out) return;
+	if (STRTAB_EMPTY(out)) { m_free(out); return; }
 
 	int outbuf = s_new();
 	int started = 0;
@@ -36,7 +36,7 @@ static void add_service(int items, const char *label, const char *name)
 	char cmd[64];
 	snprintf(cmd, sizeof(cmd), "pgrep -c %s 2>/dev/null", name);
 	int out = subproc_read(cmd);
-	if (!out) return;
+	if (STRTAB_EMPTY(out)) { m_free(out); return; }
 	const char *v = m_str(out);
 	int count = atoi(v);
 	m_free(out);
