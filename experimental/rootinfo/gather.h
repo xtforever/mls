@@ -3,6 +3,7 @@
 
 #include "cfg.h"
 #include "m_types.h"
+#include "m_tool.h"
 #include <ctype.h>
 
 #define STRTAB_EMPTY(h) ((h) == 0 || m_len(h) == 0)
@@ -44,6 +45,18 @@ static inline int copy_word(int buf, int str)
 	}
 	m_putc(buf, 0);
 	return buf;
+}
+
+static inline int str_dup_h(int h)
+{
+	int out = s_new();
+	for (int i = 0; ; i++) {
+		char c = CHAR(h, i);
+		if (!c) break;
+		m_putc(out, c);
+	}
+	m_putc(out, 0);
+	return out;
 }
 
 int gather_all(cfg_t cfg);

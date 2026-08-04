@@ -64,13 +64,7 @@ static void gather_cpuinfo(int entries)
 	int cpuinfo = read_file("/proc/cpuinfo");
 	if (!cpuinfo) return;
 
-	int buf_h = s_new();
-	for (int i = 0; ; i++) {
-		char c = CHAR(cpuinfo, i);
-		if (!c) break;
-		m_putc(buf_h, c);
-	}
-	m_putc(buf_h, 0);
+	int buf_h = str_dup_h(cpuinfo);
 	m_free(cpuinfo);
 	const char *src = m_str(buf_h);
 
@@ -129,13 +123,7 @@ static void gather_meminfo(int entries)
 	FIELD_ADD(t->header, "Value", ALIGN_LEFT);
 	t->rows = m_create(4, sizeof(int));
 
-	int buf_h = s_new();
-	for (int i = 0; ; i++) {
-		char c = CHAR(meminfo, i);
-		if (!c) break;
-		m_putc(buf_h, c);
-	}
-	m_putc(buf_h, 0);
+	int buf_h = str_dup_h(meminfo);
 	m_free(meminfo);
 	const char *src = m_str(buf_h);
 
@@ -273,15 +261,9 @@ static void gather_network(int entries)
 		int out_h = subproc_read(cmd);
 		if (STRTAB_EMPTY(out_h)) { m_free(out_h); continue; }
 
-		char out[256];
-		int oi = 0;
-		for (int k = 0; oi < (int)sizeof(out) - 1; k++) {
-			char c = CHAR(out_h, k);
-			if (c == 0 || c == '\n') break;
-			out[oi++] = c;
-		}
-		out[oi] = 0;
+		int out_h2 = str_dup_h(out_h);
 		m_free(out_h);
+		const char *out = m_str(out_h2);
 
 		char ifname[64] = "", state[16] = "", ip4[64] = "";
 		sscanf(out, "%63s %15s", ifname, state);
@@ -311,6 +293,7 @@ static void gather_network(int entries)
 			off += snprintf(buf + off, sizeof(buf) - off, "%s (%s, %s)", ifname, state, ip4);
 		else
 			off += snprintf(buf + off, sizeof(buf) - off, "%s (%s)", ifname, state);
+		m_free(out_h2);
 	}
 	closedir(d);
 
