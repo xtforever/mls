@@ -37,9 +37,16 @@ static void add_service(int items, const char *label, const char *name)
 	snprintf(cmd, sizeof(cmd), "pgrep -c %s 2>/dev/null", name);
 	int out = subproc_read(cmd);
 	if (STRTAB_EMPTY(out)) { m_free(out); return; }
-	const char *v = m_str(out);
-	int count = atoi(v);
+	char sbuf[32];
+	int si = 0;
+	for (int i = 0; si < (int)sizeof(sbuf) - 1; i++) {
+		char c = CHAR(out, i);
+		if (c == 0 || c == '\n') break;
+		sbuf[si++] = c;
+	}
+	sbuf[si] = 0;
 	m_free(out);
+	int count = atoi(sbuf);
 
 	if (count > 0) {
 		char line[64];

@@ -30,7 +30,8 @@ int gather_zfs(cfg_t cfg)
 	t->rows = m_create(m_len(lines), sizeof(int));
 	for (int i = 0; i < (int)m_len(lines); i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
-		const char *line = lh ? m_str(*lh) : "";
+		char line[512];
+		STR_COPY(line, sizeof(line), *lh);
 		if (!line[0]) continue;
 
 		int row = m_create(5, sizeof(field_t));

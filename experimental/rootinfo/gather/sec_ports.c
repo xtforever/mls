@@ -37,7 +37,8 @@ int gather_ports(cfg_t cfg)
 	int count = 0;
 	for (int i = 0; i < (int)m_len(lines) && count < max; i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
-		const char *line = lh ? m_str(*lh) : "";
+		char line[512];
+		STR_COPY(line, sizeof(line), *lh);
 		if (!line[0] || strstr(line, "State") || strstr(line, "Netid")) continue;
 
 		char addr_buf[64] = "";

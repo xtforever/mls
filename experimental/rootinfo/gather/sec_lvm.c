@@ -37,7 +37,7 @@ int gather_lvm(cfg_t cfg)
 	int vgs_out = subproc_read("vgs --noheadings --units B --separator '|' -o vg_name,vg_size,vg_free 2>/dev/null");
 	int pvs_out = subproc_read("pvs --noheadings  --separator '|' -o pv_name,vg_name 2>/dev/null");
 
-	if (!lvs_out) return 0;
+	if (STRTAB_EMPTY(lvs_out)) { m_free(lvs_out); m_free(vgs_out); m_free(pvs_out); return 0; }
 
 	int nl_h = s_dup("\n");
 	int lv_lines = s_msplit(0, lvs_out, nl_h);
@@ -59,7 +59,8 @@ int gather_lvm(cfg_t cfg)
 		n_vg = (int)m_len(vg_lines);
 		for (int i = 0; i < n_vg && i < 64; i++) {
 			int *h = (int *)m_peek(vg_lines, (size_t)i);
-			const char *line = h ? m_str(*h) : "";
+			char line[512];
+			STR_COPY(line, sizeof(line), *h);
 			char *copy = strdup(line);
 			char *save = NULL;
 			char *tok = strtok_r(copy, "|", &save);

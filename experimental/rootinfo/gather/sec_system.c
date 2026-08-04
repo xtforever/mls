@@ -75,7 +75,15 @@ int gather_system(cfg_t cfg)
 
 	int cpuinfo = read_file("/proc/cpuinfo");
 	if (cpuinfo) {
-		const char *src = m_str(cpuinfo);
+		int buf_h = s_new();
+		for (int i = 0; ; i++) {
+			char c = CHAR(cpuinfo, i);
+			if (!c) break;
+			m_putc(buf_h, c);
+		}
+		m_putc(buf_h, 0);
+		m_free(cpuinfo);
+		const char *src = m_str(buf_h);
 		int cores = 0;
 		for (const char *p = src; (p = strstr(p, "model name")); p++)
 			cores++;
@@ -117,7 +125,7 @@ int gather_system(cfg_t cfg)
 		}
 
 		add_entry(sec->entries, "table", h);
-		m_free(cpuinfo);
+		m_free(buf_h);
 	}
 
 	int meminfo = read_file("/proc/meminfo");
@@ -127,12 +135,19 @@ int gather_system(cfg_t cfg)
 		*t = (table_t){0};
 		t->title_h = 0;
 		t->header = m_create(2, sizeof(field_t));
-		field_t fh = {0};
-		fh.str_h = s_dup("Key"); m_put(t->header, &fh);
-		fh.str_h = s_dup("Value"); m_put(t->header, &fh);
+		FIELD_ADD(t->header, "Key", ALIGN_LEFT);
+		FIELD_ADD(t->header, "Value", ALIGN_LEFT);
 
 		t->rows = m_create(4, sizeof(int));
-		const char *src = m_str(meminfo);
+		int buf_h = s_new();
+		for (int i = 0; ; i++) {
+			char c = CHAR(meminfo, i);
+			if (!c) break;
+			m_putc(buf_h, c);
+		}
+		m_putc(buf_h, 0);
+		m_free(meminfo);
+		const char *src = m_str(buf_h);
 		const char *keys[] = {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"};
 		for (int i = 0; i < 4; i++) {
 			const char *hit = strstr(src, keys[i]);
@@ -151,7 +166,7 @@ int gather_system(cfg_t cfg)
 		}
 
 		add_entry(sec->entries, "table", h);
-		m_free(meminfo);
+		m_free(buf_h);
 	}
 
 	{
@@ -217,13 +232,14 @@ int gather_system(cfg_t cfg)
 
 	{
 		int who_lines = subproc_lines("who 2>/dev/null");
-		if (who_lines) {
+		if (!STRTAB_EMPTY(who_lines)) {
 			char unames[64][64];
 			int ucount = 0;
 			int n = (int)m_len(who_lines);
 			for (int i = 0; i < n && ucount < 64; i++) {
 				int *lh = (int *)m_peek(who_lines, (size_t)i);
-				const char *line = lh ? m_str(*lh) : "";
+				char line[256];
+				STR_COPY(line, sizeof(line), *lh);
 				if (!line[0]) continue;
 				char user[64] = "";
 				sscanf(line, "%63s", user);
@@ -268,8 +284,17 @@ int gather_system(cfg_t cfg)
 				char cmd[256];
 				snprintf(cmd, sizeof(cmd), "ip -br addr show %.200s 2>/dev/null", de->d_name);
 				int out_h = subproc_read(cmd);
-				if (!out_h) continue;
-				const char *out = m_str(out_h);
+				if (STRTAB_EMPTY(out_h)) { m_free(out_h); continue; }
+
+				char out[256];
+				int oi = 0;
+				for (int k = 0; oi < (int)sizeof(out) - 1; k++) {
+					char c = CHAR(out_h, k);
+					if (c == 0 || c == '\n') break;
+					out[oi++] = c;
+				}
+				out[oi] = 0;
+				m_free(out_h);
 
 				char ifname[64] = "", state[16] = "", ip4[64] = "";
 				sscanf(out, "%63s %15s", ifname, state);
@@ -293,7 +318,6 @@ int gather_system(cfg_t cfg)
 						memcpy(ip4, ip, len);
 					}
 				}
-				m_free(out_h);
 
 				if (off) off += snprintf(buf + off, sizeof(buf) - off, ", ");
 				if (ip4[0])

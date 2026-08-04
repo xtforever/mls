@@ -10,6 +10,16 @@
 	m_put((container), &f_); \
 } while(0)
 
+#define STR_COPY(dst, dstsz, h) do { \
+	int _i = 0; \
+	for (; _i < (int)(dstsz) - 1; _i++) { \
+		char _c = CHAR((h), _i); \
+		if (_c == 0 || _c == '\n') break; \
+		(dst)[_i] = _c; \
+	} \
+	(dst)[_i] = 0; \
+} while(0)
+
 int gather_all(cfg_t cfg);
 
 int gather_system(cfg_t cfg);

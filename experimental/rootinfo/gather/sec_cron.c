@@ -25,22 +25,24 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 	int count = 0;
 	for (int i = 0; i < (int)m_len(lines) && count < max_lines; i++) {
 		int *lh = (int *)m_peek(lines, (size_t)i);
-		const char *line = lh ? m_str(*lh) : "";
-		if (!line[0] || line[0] == '#') continue;
+		char line[512];
+		STR_COPY(line, sizeof(line), *lh);
+		const char *s = line;
+		if (!s[0] || s[0] == '#') continue;
 
-		while (*line == ' ' || *line == '\t') line++;
-		if (!*line) continue;
+		while (*s == ' ' || *s == '\t') s++;
+		if (!*s) continue;
 
 		int row = m_create(2, sizeof(field_t));
 
-		if (isdigit((unsigned char)*line) || *line == '*' || *line == '@') {
-			const char *p = line;
+		if (isdigit((unsigned char)*s) || *s == '*' || *s == '@') {
+			const char *p = s;
 			int sp = 0;
 			while (*p && sp < 5) {
 				if (*p == ' ' || *p == '\t') sp++;
 				p++;
 			}
-			char *sched = strndup(line, (size_t)(p - line));
+			char *sched = strndup(s, (size_t)(p - s));
 			FIELD_ADD(row, sched, ALIGN_LEFT);
 			free(sched);
 
@@ -48,7 +50,7 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 			FIELD_ADD(row, p, ALIGN_LEFT);
 		} else {
 			FIELD_ADD(row, "", ALIGN_LEFT);
-			FIELD_ADD(row, line, ALIGN_LEFT);
+			FIELD_ADD(row, s, ALIGN_LEFT);
 		}
 		m_put(t->rows, &row);
 		count++;
