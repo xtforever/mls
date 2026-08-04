@@ -41,6 +41,11 @@ static void add_entry(int entries, const char *type, int data_h)
 	m_put(entries, &e);
 }
 
+static int str_cmp_c(const void *key, const void *elem)
+{
+	return s_strcmp_c(*(int *)elem, (const char *)key);
+}
+
 static void gather_osinfo(int entries, const char *host,
 			  const char *sysname, const char *release, const char *machine)
 {
@@ -225,10 +230,9 @@ static void gather_users(int entries)
 	int who_lines = subproc_lines("who 2>/dev/null");
 	if (STRTAB_EMPTY(who_lines)) { m_free(who_lines); return; }
 
-	char unames[64][64];
-	int ucount = 0;
+	int unames = m_create(8, sizeof(int));
 	int n = (int)m_len(who_lines);
-	for (int i = 0; i < n && ucount < 64; i++) {
+	for (int i = 0; i < n; i++) {
 		int *lh = (int *)m_peek(who_lines, (size_t)i);
 		char line[256];
 		STR_COPY(line, sizeof(line), *lh);
@@ -236,20 +240,22 @@ static void gather_users(int entries)
 		char user[64] = "";
 		sscanf(line, "%63s", user);
 		if (!user[0]) continue;
-		int found = 0;
-		for (int j = 0; j < ucount; j++)
-			if (!strcmp(unames[j], user)) { found = 1; break; }
-		if (!found) snprintf(unames[ucount++], sizeof(unames[0]), "%s", user);
+
+		int p = m_binsert(unames, user, str_cmp_c, 0);
+		if (p >= 0)
+			INT(unames, p) = s_dup(user);
 	}
 	m_free(who_lines);
 
-	if (!ucount) return;
+	int ucount = (int)m_len(unames);
+	if (!ucount) { m_free(unames); return; }
 
 	char line[256];
 	int off = snprintf(line, sizeof(line), "Users (%d): ", ucount);
 	for (int i = 0; i < ucount; i++) {
 		if (i) off += snprintf(line + off, sizeof(line) - (size_t)off, ", ");
-		off += snprintf(line + off, sizeof(line) - (size_t)off, "%s", unames[i]);
+		off += snprintf(line + off, sizeof(line) - (size_t)off, "%s",
+				m_str(INT(unames, i)));
 	}
 
 	int h = m_alloc(1, sizeof(text_t), 0);
@@ -257,6 +263,7 @@ static void gather_users(int entries)
 	*t = (text_t){0};
 	t->text_h = s_dup(line);
 	add_entry(entries, "text", h);
+	m_free(unames);
 }
 
 static void gather_network(int entries)
