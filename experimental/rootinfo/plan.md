@@ -210,22 +210,20 @@ renderer just calls `snprintf` with the conventional flags.
 ```c
 typedef struct {
     int  title_h;       /* MLS string handle — list title, or 0           */
-    field_t *items;
-    int  n;
+    int  items;         /* MLS list handle of field_t                     */
 } list_t;
 ```
 
 ### Table — list of lists
 
-A table is a list of lists: a header row (list of `field_t`) plus `n` body
-rows, each a list with exactly the same number of columns.
+A table is a list of lists: a header row (MLS list of `field_t`) plus body
+rows, each an MLS list with exactly the same number of columns.
 
 ```c
 typedef struct {
     int  title_h;       /* MLS string handle — table caption, or 0        */
-    list_t header;      /* column labels (fields, one per col)             */
-    list_t *rows;
-    int  n_rows;
+    int  header;        /* MLS list handle of field_t (column labels)      */
+    int  rows;          /* MLS list handle of list_t                       */
 } table_t;
 ```
 
@@ -244,11 +242,11 @@ typedef struct {
 typedef struct {
     int  title;         /* MLS string handle (section header)              */
     int  footer;        /* MLS string handle or 0                          */
-    const char *type;   /* "table" | "list" | "text" | "field"             */
-    void *data;         /* table_t* / list_t* / text_t* / field_t*         */
+    int  type_h;        /* MLS string handle: "table", "list", "text", …   */
+    int  data_h;        /* MLS handle to payload (m_alloc'd table_t*, ...) */
 } entry_t;
 
-typedef struct { int title; int footer; entry_t *e; int n; } section_t;
+typedef struct { int title; int footer; int entries; } section_t;  /* entries = MLS list handle of entry_t */
 ```
 
 ### How gather sections use these
@@ -271,16 +269,30 @@ characters, no separate datatype registration needed.
 ### Example: LVM table as data
 
 ```c
-field_t header[] = {
-    { .str_h = s_cstrc("Device"), .fmt = FMT_NONE },
-    { .str_h = s_cstrc("VG"),     .fmt = FMT_NONE },
-    { .str_h = s_cstrc("LV"),     .fmt = FMT_NONE },
-    { .str_h = s_cstrc("Size"),   .fmt = FMT_INT,  .human = 1, .unit_h = s_cstrc("GB") },
-    { .str_h = s_cstrc("Free"),   .fmt = FMT_INT,  .human = 1, .unit_h = s_cstrc("GB"),
-      .is_bar = 1, .frac = .08 },                                    /* human + bar */
-    { .str_h = s_cstrc("Mount"),  .fmt = FMT_NONE },
-};
-/* ... populate rows[] from `lvs` output ... */
+field_t f;
+int header = m_create(6, sizeof(field_t));
+
+f = (field_t){ .str_h = s_cstrc("Device"), .fmt = FMT_NONE };
+m_put(header, &f);
+f = (field_t){ .str_h = s_cstrc("VG"), .fmt = FMT_NONE };
+m_put(header, &f);
+f = (field_t){ .str_h = s_cstrc("LV"), .fmt = FMT_NONE };
+m_put(header, &f);
+f = (field_t){ .str_h = s_cstrc("Size"), .fmt = FMT_INT,
+              .human = 1, .unit_h = s_cstrc("GB") };
+m_put(header, &f);
+f = (field_t){ .str_h = s_cstrc("Free"), .fmt = FMT_INT,
+              .human = 1, .unit_h = s_cstrc("GB"),
+              .is_bar = 1, .frac = .08 };
+m_put(header, &f);
+f = (field_t){ .str_h = s_cstrc("Mount"), .fmt = FMT_NONE };
+m_put(header, &f);
+
+/* rows: MLS list-of-lists built from `subproc_lines("lvs ...")` */
+int rows = m_create(10, sizeof(int));
+/* ... for each parsed LVM line, m_create a list of field_t, m_put into rows ... */
+
+table_t t = { .title_h = 0, .header = header, .rows = rows };
 ```
 
 ### Datatype registry
@@ -291,8 +303,8 @@ touches a `switch` or an enum.
 
 ```c
 /* m_types.h */
-typedef void (*dt_render_fn)(const void *data, void *cfg);
-typedef void (*dt_free_fn)(void *data);
+typedef void (*dt_render_fn)(int data_h, void *cfg);
+typedef void (*dt_free_fn)(int data_h);
 
 typedef struct {
     const char *name;       /* "table", "list", "text", ...               */
@@ -302,18 +314,35 @@ typedef struct {
 
 void dt_register(const datatype_t *dt);          /* one call to add a datatype */
 const datatype_t *dt_lookup(const char *name);
-void dt_render(const entry_t *e, cfg_t cfg);     /* registry dispatch */
+void dt_render(const entry_t *e, void *cfg);     /* registry dispatch */
 ```
 
 ```c
-/* m_types.c — small name→datatype array */
-static datatype_t *reg[32];               /* ponytail: fixed cap, linear scan */
-void dt_register(const datatype_t *dt) { /* append to reg[] */ }
-const datatype_t *dt_lookup(const char *name) { /* strcmp scan */ }
+/* m_types.c — registry lives in an MLS list handle, not a raw C array */
+static int reg = 0;                       /* MLS list of datatype_t, lazy-init */
+
+void dt_register(const datatype_t *dt)
+{
+    if (!reg) reg = m_create(4, sizeof(datatype_t));
+    m_put(reg, dt);                       /* bounds-checked, auto-grows via MLS */
+}
+
+const datatype_t *dt_lookup(const char *name)
+{
+    if (!reg) return NULL;
+    datatype_t dt;
+    for (int i = 0; i < m_len(reg); i++) {
+        m_read(reg, i, &dt, 1);           /* bounds-checked */
+        if (!strcmp(dt.name, name))
+            return (const datatype_t *)m_buf(reg) + i; /* stable: init-time only */
+    }
+    return NULL;
+}
+
 void dt_render(const entry_t *e, void *cfg)
 {
-    const datatype_t *dt = dt_lookup(e->type);
-    if (dt) dt->render(e->data, cfg);
+    const datatype_t *dt = dt_lookup(m_str(e->type_h));
+    if (dt) dt->render(e->data_h, cfg);
 }
 ```
 
@@ -321,12 +350,16 @@ Built-ins (`table`, `list`, `text`) are registered by `out_init()`.
 Adding e.g. a `tree` datatype = write `render`+`free` for a `tree_t`,
 `dt_register`, done — gather and renderer dispatch untouched.
 
-Contract (per goal 3): payloads, titles and every string are MLS handles —
-`m_alloc` for structs/arrays, `s_dup`/`s_printf`/`s_cstr` for strings.
-Renderers read via `m_str`/`m_len`; each datatype's `free` fn releases
-handles with `m_free`; `free_sections()` calls `dt_free_fn` per entry.
-No bare `malloc`/`free`/`strdup` in gather or render code (only inside
-`m_subproc.c`, where `popen` reads need a raw buffer for `s_printf`).
+Contract (per goal 3): all memory and strings are MLS handles.  Every
+collection — `list_t.items`, `table_t.header`/`rows`, `section_t.entries` —
+is an MLS list handle, so access is bounds-checked via `m_read`/`m_write`
+and the count is `m_len(handle)` (no raw `.n` / `.n_rows` fields to drift).
+`m_alloc` for single structs, `m_create` for lists, `s_dup`/`s_printf`/
+`s_cstr` for strings.  Renderers read strings via `m_str`, lists via `m_len`
++ `m_read`; each datatype's `free` fn releases handles with `m_free`.
+`free_sections()` calls `dt_free_fn` per entry.  No bare `malloc`/`free`/
+`strdup` in gather or render code (only inside `m_subproc.c`, where `popen`
+reads need a raw buffer for `s_printf`).
 
 ## Data gathering — one file per section
 
@@ -349,16 +382,16 @@ section_t *gather_xxx(cfg_t cfg);   /* returns a fully-built section, or NULL */
   rendered (like the current `if (cpuinfo)` guards).
 - Section enable/disable lives in the `(section ...)` block: `rootinfo.c`
   skips `gather_xxx` when `cfg_bool(cfg, "section", "xxx", 1)` is false.
-- `gather.h` declares all eight + `section_t **gather_all(cfg_t)` (NULL-terminated).
+- `gather.h` declares all eight + `int gather_all(cfg_t)` (returns MLS list of `int` — section handles; `m_buf(h)` gives the `section_t *`).
 
 `rootinfo.c` shrinks to:
 
 ```c
 m_init();
 cfg_t cfg = cfg_load(NULL);            /* or -c <path> */
-section_t **s = gather_all(cfg);
+int s = gather_all(cfg);
 out_render(s, cfg);
-free_sections(s);   /* also in out.h or rootinfo.c */
+
 cfg_free(cfg);
 m_destruct();
 ```
@@ -369,20 +402,21 @@ m_destruct();
 
 ```c
 void out_init(void *cfg);                     /* register this backend's renderers */
-int  out_render(section_t **sections, void *cfg);  /* out_section for all      */
-void out_section(section_t *s, void *cfg);         /* dt_render per entry      */
+int  out_render(int sections_h, void *cfg);   /* out_section for each section     */
+void out_section(section_t *s, void *cfg);    /* dt_render per entry              */
 
 /* one render function per built-in datatype (registered via dt_register)
    — each casts void *cfg back to cfg_t internally */
-void out_table(const table_t *t, void *cfg);       /* list-of-list + header     */
-void out_list(const list_t *l, void *cfg);         /* fields, comma-sep or vert */
-void out_text(const text_t *t, void *cfg);
-void out_field(const field_t *f, void *cfg);       /* helper: string+modifiers+bar */
+void out_table(int data_h, void *cfg);       /* list-of-list + header     */
+void out_list(int data_h, void *cfg);         /* fields, comma-sep or vert */
+void out_text(int data_h, void *cfg);
+void out_field(const field_t *f, void *cfg);  /* helper: string+mods+bar (field is a value, not a handle) */
 ```
 
-`out_section` is a thin loop: for each entry it calls `dt_render(e, cfg)`,
-which looks the datatype up in the registry and invokes the backend's
-registered function — no `switch` to extend.
+`out_section` iterates entries via `m_len`+`m_read` (bounds-checked), calling
+`dt_render` per entry — no `switch` to extend.  Each renderer retrieves its
+payload via `m_buf(data_h)` (e.g. `table_t *t = m_buf(data_h)`) and iterates
+sub-lists the same way via MLS handles.
 
 - `out_term.c` renders tables, lists and text. `out_field` draws one field
   — format (int/hex/float), human-readable suffix, unit, and an inline bar

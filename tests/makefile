@@ -1,6 +1,6 @@
 include ../rules.mk
 
-TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_table_pointers test_splice
+TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_table_pointers test_splice test_m_subproc
 ifeq ($(thread_safe),1)
 TARGETS+=test_thread_safe_fuzzy
 TARGETS+=test_thread_safety
@@ -41,6 +41,9 @@ test_thread_safety.exe${OBJ}: test_thread_safety.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_tsan_races.exe${OBJ}: test_tsan_races.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_subproc.exe${OBJ}: test_m_subproc.o${OBJ} $(DEPS) ../lib/m_subproc.o${OBJ}
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)

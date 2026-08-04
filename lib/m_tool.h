@@ -97,7 +97,7 @@ bool glob_match (char const *pat, char const *str, const char **a,
 void conststr_stats (void);
 void conststr_init (void);
 void conststr_free (void);
-int conststr_lookup_c (const char *s);
+int conststr_lookup_c (const char *s, int copy_string);
 int conststr_lookup (int s);
 
 /*
@@ -107,7 +107,7 @@ int conststr_lookup (int s);
   to the created one
 */
 int cs_printf (const char *format, ...);
-inline static int s_cstr (const char *s) { return conststr_lookup_c (s); }
+inline static int s_cstr (const char *s) { return conststr_lookup_c (s, 0); }
 inline static int s_mstr (int m) { return conststr_lookup (m); }
 
 int m_regex (int m, const char *regex, const char *s);
