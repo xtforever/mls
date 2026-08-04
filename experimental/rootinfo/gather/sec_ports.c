@@ -35,10 +35,11 @@ int gather_ports(cfg_t cfg)
 
 	t->rows = m_create((size_t)(max + 1), sizeof(int));
 	int count = 0;
-	for (int i = 0; i < (int)m_len(lines) && count < max; i++) {
-		int *lh = (int *)m_peek(lines, (size_t)i);
+	int p, *d;
+	m_foreach(lines, p, d) {
+		if (count >= max) break;
 		char line[512];
-		STR_COPY(line, sizeof(line), *lh);
+		STR_COPY(line, sizeof(line), *d);
 		if (!line[0] || strstr(line, "State") || strstr(line, "Netid")) continue;
 
 		char addr_buf[64] = "";

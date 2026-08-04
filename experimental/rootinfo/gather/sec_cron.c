@@ -23,10 +23,11 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 
 	t->rows = m_create((size_t)(max_lines + 1), sizeof(int));
 	int count = 0;
-	for (int i = 0; i < (int)m_len(lines) && count < max_lines; i++) {
-		int *lh = (int *)m_peek(lines, (size_t)i);
+	int p, *d;
+	m_foreach(lines, p, d) {
+		if (count >= max_lines) break;
 		char line[512];
-		STR_COPY(line, sizeof(line), *lh);
+		STR_COPY(line, sizeof(line), *d);
 		const char *s = line;
 		if (!s[0] || s[0] == '#') continue;
 

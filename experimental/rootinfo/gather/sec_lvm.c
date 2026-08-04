@@ -56,11 +56,11 @@ int gather_lvm(cfg_t cfg)
 		int vg_lines = s_msplit(0, vgs_out, nl_h);
 		m_free(vgs_out);
 		m_free(nl_h);
-		n_vg = (int)m_len(vg_lines);
-		for (int i = 0; i < n_vg && i < 64; i++) {
-			int *h = (int *)m_peek(vg_lines, (size_t)i);
+		int vgp, *vgd;
+		m_foreach(vg_lines, vgp, vgd) {
+			if (vgp >= 64) break;
 			char line[512];
-			STR_COPY(line, sizeof(line), *h);
+			STR_COPY(line, sizeof(line), *vgd);
 			char *copy = strdup(line);
 			char *save = NULL;
 			char *tok = strtok_r(copy, "|", &save);
@@ -68,15 +68,16 @@ int gather_lvm(cfg_t cfg)
 			while (tok && col < 3) {
 				while (*tok == ' ' || *tok == '\t') tok++;
 				switch (col) {
-				case 0: snprintf(vg_names[i], sizeof(vg_names[i]), "%s", tok); break;
-				case 1: vg_sizes[i] = strtoull(tok, NULL, 10); break;
-				case 2: vg_frees[i] = strtoull(tok, NULL, 10); break;
+				case 0: snprintf(vg_names[vgp], sizeof(vg_names[vgp]), "%s", tok); break;
+				case 1: vg_sizes[vgp] = strtoull(tok, NULL, 10); break;
+				case 2: vg_frees[vgp] = strtoull(tok, NULL, 10); break;
 				}
 				tok = strtok_r(NULL, "|", &save);
 				col++;
 			}
 			free(copy);
 		}
+		n_vg = (int)m_len(vg_lines);
 		m_free(vg_lines);
 	}
 
@@ -88,32 +89,36 @@ int gather_lvm(cfg_t cfg)
 		int pv_lines = s_msplit(0, pvs_out, nl_h);
 		m_free(pvs_out);
 		m_free(nl_h);
-		n_pv = (int)m_len(pv_lines);
-		for (int i = 0; i < n_pv && i < 64; i++) {
-			int *h = (int *)m_peek(pv_lines, (size_t)i);
-			const char *line = h ? m_str(*h) : "";
+		int pvp, *pvd;
+		m_foreach(pv_lines, pvp, pvd) {
+			if (pvp >= 64) break;
+			char line[512];
+			STR_COPY(line, sizeof(line), *pvd);
 			char *copy = strdup(line);
 			char *save = NULL;
 			char *tok = strtok_r(copy, "|", &save);
 			if (tok) {
 				while (*tok == ' ') tok++;
-				snprintf(pv_names[i], sizeof(pv_names[i]), "%s", tok);
+				snprintf(pv_names[pvp], sizeof(pv_names[pvp]), "%s", tok);
 				tok = strtok_r(NULL, "|", &save);
 				if (tok) {
 					while (*tok == ' ') tok++;
-					snprintf(pv_vgs[i], sizeof(pv_vgs[i]), "%s", tok);
+					snprintf(pv_vgs[pvp], sizeof(pv_vgs[pvp]), "%s", tok);
 				}
 			}
 			free(copy);
 		}
+		n_pv = (int)m_len(pv_lines);
 		m_free(pv_lines);
 	}
 
 	lv_row_t rows[256];
 	int n_rows = 0;
-	for (int i = 0; i < n_lv && n_rows < 256; i++) {
-		int *h = (int *)m_peek(lv_lines, (size_t)i);
-		const char *line = h ? m_str(*h) : "";
+	int lvp, *lvd;
+	m_foreach(lv_lines, lvp, lvd) {
+		if (n_rows >= 256) break;
+		char line[512];
+		STR_COPY(line, sizeof(line), *lvd);
 		if (!line[0]) continue;
 
 		lv_row_t *r = &rows[n_rows];

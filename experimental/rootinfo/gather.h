@@ -3,6 +3,7 @@
 
 #include "cfg.h"
 #include "m_types.h"
+#include <ctype.h>
 
 #define STRTAB_EMPTY(h) ((h) == 0 || m_len(h) == 0)
 #define FIELD_ADD(container, str, a) do { \
@@ -19,6 +20,31 @@
 	} \
 	(dst)[_i] = 0; \
 } while(0)
+
+static inline int mstr_empty(int a)
+{
+	return (a == 0 || m_len(a) == 0 || CHAR(a, 0) == 0);
+}
+
+static inline int _cmp_mstr(const void *va, const void *vb)
+{
+	int a = *(int *)va;
+	int b = *(int *)vb;
+	if (mstr_empty(a) || mstr_empty(b)) return 0;
+	return m_cmp(a, b);
+}
+
+static inline int copy_word(int buf, int str)
+{
+	if (!buf) buf = m_create(10, 1); else m_clear(buf);
+	int p; char *d;
+	m_foreach(str, p, d) {
+		if (isspace(*d)) break;
+		m_putc(buf, *d);
+	}
+	m_putc(buf, 0);
+	return buf;
+}
 
 int gather_all(cfg_t cfg);
 

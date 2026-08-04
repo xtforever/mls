@@ -220,33 +220,6 @@ static void gather_proc_uptime(int entries)
 	add_entry(entries, "list", h);
 }
 
-static int copy_word(int buf,int str)
-{
-	if(!buf) buf=m_create(10,1); else m_clear(buf);
-	int p; char *d; 
-        m_foreach(str,p,d) {
-	   if( isspace(*d) ) break;
-	   m_putc(buf,*d);
-	}
-	m_putc(buf,0);
-       return buf;
-}
-
-static inline int mstr_empty(int a)
-{
-	return  ( a == 0 || m_len(a) == 0 || CHAR(a,0) == 0 );
-}
-
-
-static int _cmp_mstr(const void * va, const void * vb)
-{
-	int a = *(int*)va; 
-	int b = *(int*)vb; 
-
-	if( mstr_empty(a) || mstr_empty(b) ) return 0;
-	return s_cmp(a,b);
-}
-
 static void gather_users(int entries)
 {
 	int who_lines = subproc_lines("who 2>/dev/null");

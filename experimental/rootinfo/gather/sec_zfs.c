@@ -28,10 +28,10 @@ int gather_zfs(cfg_t cfg)
 		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
 
 	t->rows = m_create(m_len(lines), sizeof(int));
-	for (int i = 0; i < (int)m_len(lines); i++) {
-		int *lh = (int *)m_peek(lines, (size_t)i);
+	int p, *d;
+	m_foreach(lines, p, d) {
 		char line[512];
-		STR_COPY(line, sizeof(line), *lh);
+		STR_COPY(line, sizeof(line), *d);
 		if (!line[0]) continue;
 
 		int row = m_create(5, sizeof(field_t));
