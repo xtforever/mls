@@ -41,9 +41,13 @@ static void add_entry(int entries, const char *type, int data_h)
 	m_put(entries, &e);
 }
 
-static int str_cmp_c(const void *key, const void *elem)
+static int cmp_who_user(const void *key, const void *elem)
 {
-	return s_strcmp_c(*(int *)elem, (const char *)key);
+	int ka = *(int *)key, eb = *(int *)elem;
+	char ku[64] = "", eu[64] = "";
+	sscanf(m_str(ka), "%63s", ku);
+	sscanf(m_str(eb), "%63s", eu);
+	return strcmp(ku, eu);
 }
 
 static void gather_osinfo(int entries, const char *host,
@@ -234,16 +238,12 @@ static void gather_users(int entries)
 	int n = (int)m_len(who_lines);
 	for (int i = 0; i < n; i++) {
 		int *lh = (int *)m_peek(who_lines, (size_t)i);
-		char line[256];
-		STR_COPY(line, sizeof(line), *lh);
-		if (!line[0]) continue;
-		char user[64] = "";
-		sscanf(line, "%63s", user);
-		if (!user[0]) continue;
+		char c = CHAR(*lh, 0);
+		if (c == 0 || c == '\n') continue;
 
-		int p = m_binsert(unames, user, str_cmp_c, 0);
+		int p = m_binsert(unames, lh, cmp_who_user, 0);
 		if (p >= 0)
-			INT(unames, p) = s_dup(user);
+			INT(unames, p) = s_dup(m_str(*lh));
 	}
 	m_free(who_lines);
 
@@ -254,8 +254,9 @@ static void gather_users(int entries)
 	int off = snprintf(line, sizeof(line), "Users (%d): ", ucount);
 	for (int i = 0; i < ucount; i++) {
 		if (i) off += snprintf(line + off, sizeof(line) - (size_t)off, ", ");
-		off += snprintf(line + off, sizeof(line) - (size_t)off, "%s",
-				m_str(INT(unames, i)));
+		char user[64] = "";
+		sscanf(m_str(INT(unames, i)), "%63s", user);
+		off += snprintf(line + off, sizeof(line) - (size_t)off, "%s", user);
 	}
 
 	int h = m_alloc(1, sizeof(text_t), 0);
