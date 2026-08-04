@@ -59,6 +59,18 @@ static inline int str_dup_h(int h)
 	return out;
 }
 
+static inline int str_line(int h)
+{
+	int out = m_create(256, 1);
+	for (int i = 0; ; i++) {
+		char c = CHAR(h, i);
+		if (c == 0 || c == '\n') break;
+		m_putc(out, c);
+	}
+	m_putc(out, 0);
+	return out;
+}
+
 int gather_all(cfg_t cfg);
 
 int gather_system(cfg_t cfg);
