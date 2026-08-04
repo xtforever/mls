@@ -30,10 +30,8 @@ int gather_ports(cfg_t cfg)
 
 	t->header = m_create((size_t)ncols, sizeof(field_t));
 	const char *cols[] = {"Address", "Port", "Process"};
-	for (int i = 0; i < ncols; i++) {
-		field_t f = { .str_h = s_dup(cols[i]), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-		m_put(t->header, &f);
-	}
+	for (int i = 0; i < ncols; i++)
+		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
 
 	t->rows = m_create((size_t)(max + 1), sizeof(int));
 	int count = 0;
@@ -87,14 +85,10 @@ int gather_ports(cfg_t cfg)
 		}
 
 		int row = m_create((size_t)ncols, sizeof(field_t));
-		field_t f = { .str_h = s_dup(addr_buf), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-		m_put(row, &f);
-		f.str_h = s_dup(port_buf);
-		m_put(row, &f);
-		if (is_root) {
-			f.str_h = s_dup(proc_buf);
-			m_put(row, &f);
-		}
+		FIELD_ADD(row, addr_buf, ALIGN_LEFT);
+		FIELD_ADD(row, port_buf, ALIGN_LEFT);
+		if (is_root)
+			FIELD_ADD(row, proc_buf, ALIGN_LEFT);
 
 		m_put(t->rows, &row);
 		count++;

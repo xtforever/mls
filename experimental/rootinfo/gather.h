@@ -2,8 +2,13 @@
 #define GATHER_H
 
 #include "cfg.h"
+#include "m_types.h"
 
 #define STRTAB_EMPTY(h) ((h) == 0 || m_len(h) == 0)
+#define FIELD_ADD(container, str, a) do { \
+	field_t f_ = { .str_h = s_dup(str), .fmt = FMT_NONE, .align = (a) }; \
+	m_put((container), &f_); \
+} while(0)
 
 int gather_all(cfg_t cfg);
 

@@ -23,8 +23,7 @@ static void add_version(int items, const char *label, const char *cmd)
 
 	char line[320];
 	snprintf(line, sizeof(line), "%s: %s", label, buf);
-	field_t f = { .str_h = s_dup(line), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-	m_put(items, &f);
+	FIELD_ADD(items, line, ALIGN_LEFT);
 }
 
 static void add_service(int items, const char *label, const char *name)
@@ -40,8 +39,7 @@ static void add_service(int items, const char *label, const char *name)
 	if (count > 0) {
 		char line[64];
 		snprintf(line, sizeof(line), "%s: running (%d)", label, count);
-		field_t f = { .str_h = s_dup(line), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-		m_put(items, &f);
+		FIELD_ADD(items, line, ALIGN_LEFT);
 	}
 }
 

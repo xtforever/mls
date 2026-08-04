@@ -28,13 +28,8 @@ static int read_file(const char *path)
 static int kv_pair(const char *key, const char *val)
 {
 	int h = m_create(2, sizeof(field_t));
-	field_t f = {0};
-	f.str_h = s_dup(key);
-	f.align = ALIGN_LEFT;
-	m_put(h, &f);
-	f.str_h = s_dup(val);
-	f.align = ALIGN_LEFT;
-	m_put(h, &f);
+	FIELD_ADD(h, key, ALIGN_LEFT);
+	FIELD_ADD(h, val, ALIGN_LEFT);
 	return h;
 }
 
@@ -65,9 +60,8 @@ int gather_system(cfg_t cfg)
 		table_t *t = (table_t *)m_buf(h);
 		*t = (table_t){0};
 		t->header = m_create(2, sizeof(field_t));
-		field_t f = {0};
-		f.str_h = s_dup("Key"); m_put(t->header, &f);
-		f.str_h = s_dup("Value"); m_put(t->header, &f);
+		FIELD_ADD(t->header, "Key", ALIGN_LEFT);
+		FIELD_ADD(t->header, "Value", ALIGN_LEFT);
 
 		t->rows = m_create(4, sizeof(int));
 		int r;
@@ -216,9 +210,7 @@ int gather_system(cfg_t cfg)
 		list_t *l = (list_t *)m_buf(h);
 		*l = (list_t){0};
 		l->items = m_create(1, sizeof(field_t));
-		field_t f = {0};
-		f.str_h = s_dup(buf);
-		m_put(l->items, &f);
+		FIELD_ADD(l->items, buf, ALIGN_LEFT);
 
 		add_entry(sec->entries, "list", h);
 	}

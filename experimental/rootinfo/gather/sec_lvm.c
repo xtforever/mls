@@ -192,10 +192,8 @@ int gather_lvm(cfg_t cfg)
 
 	t->header = m_create(7, sizeof(field_t));
 	const char *cols[] = {"PV", "VG", "LV", "Size", "Free", "Mount", ""};
-	for (int i = 0; i < 7; i++) {
-		field_t f = { .str_h = s_dup(cols[i]), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-		m_put(t->header, &f);
-	}
+	for (int i = 0; i < 7; i++)
+		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
 
 	t->rows = m_create((size_t)n_rows, sizeof(int));
 
@@ -214,50 +212,41 @@ int gather_lvm(cfg_t cfg)
 		const char *pv_show = r->pv_name;
 		if (i > 0 && !strcmp(r->pv_name, prev_pv) && r->pv_name[0])
 			pv_show = "\"";
-		field_t f = { .str_h = s_dup(pv_show), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-		m_put(free_row, &f);
+		FIELD_ADD(free_row, pv_show, ALIGN_LEFT);
 		prev_pv = r->pv_name;
 
 		/* VG */
 		const char *vg_show = r->vg_name;
 		if (i > 0 && !strcmp(r->vg_name, prev_vg) && r->vg_name[0])
 			vg_show = "\"";
-		f.str_h = s_dup(vg_show);
-		m_put(free_row, &f);
+		FIELD_ADD(free_row, vg_show, ALIGN_LEFT);
 		prev_vg = r->vg_name;
 
 		/* LV */
-		f.str_h = s_dup(r->lv_name);
-		f.align = ALIGN_LEFT;
-		m_put(free_row, &f);
+		FIELD_ADD(free_row, r->lv_name, ALIGN_LEFT);
 
 		/* Size */
-		f.str_h = s_dup(size_buf);
-		f.align = ALIGN_RIGHT;
-		m_put(free_row, &f);
+		FIELD_ADD(free_row, size_buf, ALIGN_RIGHT);
 
 		/* Free */
-		if (r->vg_free) {
-			human_size(free_buf, sizeof(free_buf), r->vg_free);
-			f.str_h = s_dup(free_buf);
-		} else {
-			f.str_h = s_dup("-");
+		{
+			if (r->vg_free) {
+				human_size(free_buf, sizeof(free_buf), r->vg_free);
+				FIELD_ADD(free_row, free_buf, ALIGN_RIGHT);
+			} else {
+				FIELD_ADD(free_row, "-", ALIGN_RIGHT);
+			}
 		}
-		f.align = ALIGN_RIGHT;
-		m_put(free_row, &f);
 
 		/* Mount */
-		f.str_h = s_dup(r->mount[0] ? r->mount : "-");
-		f.align = ALIGN_LEFT;
-		m_put(free_row, &f);
+		FIELD_ADD(free_row, r->mount[0] ? r->mount : "-", ALIGN_LEFT);
 
 		/* Bar column */
-		f.str_h = s_dup("");
-		f.align = ALIGN_LEFT;
-		f.is_bar = 1;
-		f.frac = r->vg_size ? (double)(r->vg_size - r->vg_free) / (double)r->vg_size : 0.0;
-		f.len = 0;
-		m_put(free_row, &f);
+		{
+			field_t f = { .str_h = s_dup(""), .is_bar = 1,
+				      .frac = r->vg_size ? (double)(r->vg_size - r->vg_free) / (double)r->vg_size : 0.0 };
+			m_put(free_row, &f);
+		}
 
 		m_put(t->rows, &free_row);
 	}

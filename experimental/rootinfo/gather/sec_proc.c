@@ -28,10 +28,8 @@ int gather_proc(cfg_t cfg)
 	t->header = m_create(5, sizeof(field_t));
 	const char *cols[] = {"USER", "PID", "%CPU", "%MEM", "COMMAND"};
 	align_t aligns[] = {ALIGN_LEFT, ALIGN_RIGHT, ALIGN_RIGHT, ALIGN_RIGHT, ALIGN_LEFT};
-	for (int i = 0; i < 5; i++) {
-		field_t f = { .str_h = s_dup(cols[i]), .fmt = FMT_NONE, .align = aligns[i] };
-		m_put(t->header, &f);
-	}
+	for (int i = 0; i < 5; i++)
+		FIELD_ADD(t->header, cols[i], aligns[i]);
 
 	t->rows = m_create((size_t)(top + 1), sizeof(int));
 	int count = 0;
@@ -57,9 +55,8 @@ int gather_proc(cfg_t cfg)
 			size_t len = end ? (size_t)(end - fields[j]) : strlen(fields[j]);
 			char *v = strndup(fields[j], len);
 			align_t a = (j >= 1 && j <= 3) ? ALIGN_RIGHT : ALIGN_LEFT;
-			field_t f = { .str_h = s_dup(v), .fmt = FMT_NONE, .align = a };
+			FIELD_ADD(row, v, a);
 			free(v);
-			m_put(row, &f);
 		}
 		m_put(t->rows, &row);
 		count++;

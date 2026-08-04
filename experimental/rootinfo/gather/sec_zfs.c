@@ -24,10 +24,8 @@ int gather_zfs(cfg_t cfg)
 
 	t->header = m_create(5, sizeof(field_t));
 	const char *cols[] = {"Name", "Used", "Avail", "Refer", "Mount"};
-	for (int i = 0; i < 5; i++) {
-		field_t f = { .str_h = s_dup(cols[i]), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-		m_put(t->header, &f);
-	}
+	for (int i = 0; i < 5; i++)
+		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
 
 	t->rows = m_create(m_len(lines), sizeof(int));
 	for (int i = 0; i < (int)m_len(lines); i++) {
@@ -43,9 +41,8 @@ int gather_zfs(cfg_t cfg)
 			const char *end = p;
 			while (*end && *end != '\t') end++;
 			char *s = strndup(p, (size_t)(end - p));
-			field_t f = { .str_h = s_dup(s), .fmt = FMT_NONE, .align = ALIGN_LEFT };
+			FIELD_ADD(row, s, ALIGN_LEFT);
 			free(s);
-			m_put(row, &f);
 			p = *end ? end + 1 : end;
 		}
 		m_put(t->rows, &row);

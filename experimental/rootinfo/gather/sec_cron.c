@@ -18,10 +18,8 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 	t->title_h = 0;
 
 	t->header = m_create(2, sizeof(field_t));
-	field_t f = { .str_h = s_dup("Schedule"), .fmt = FMT_NONE, .align = ALIGN_LEFT };
-	m_put(t->header, &f);
-	f.str_h = s_dup("Command");
-	m_put(t->header, &f);
+	FIELD_ADD(t->header, "Schedule", ALIGN_LEFT);
+	FIELD_ADD(t->header, "Command", ALIGN_LEFT);
 
 	t->rows = m_create((size_t)(max_lines + 1), sizeof(int));
 	int count = 0;
@@ -43,18 +41,14 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 				p++;
 			}
 			char *sched = strndup(line, (size_t)(p - line));
-			f.str_h = s_dup(sched);
+			FIELD_ADD(row, sched, ALIGN_LEFT);
 			free(sched);
-			m_put(row, &f);
 
 			while (*p == ' ' || *p == '\t') p++;
-			f.str_h = s_dup(p);
-			m_put(row, &f);
+			FIELD_ADD(row, p, ALIGN_LEFT);
 		} else {
-			f.str_h = s_dup("");
-			m_put(row, &f);
-			f.str_h = s_dup(line);
-			m_put(row, &f);
+			FIELD_ADD(row, "", ALIGN_LEFT);
+			FIELD_ADD(row, line, ALIGN_LEFT);
 		}
 		m_put(t->rows, &row);
 		count++;
