@@ -51,6 +51,7 @@ int gather_lvm(cfg_t cfg)
 	char vg_names[64][256];
 	unsigned long long vg_sizes[64];
 	unsigned long long vg_frees[64];
+	int toks = m_alloc(10, sizeof(char *), MFREE_STR);
 	if (vgs_out) {
 		nl_h = s_dup("\n");
 		int vg_lines = s_msplit(0, vgs_out, nl_h);
@@ -59,23 +60,13 @@ int gather_lvm(cfg_t cfg)
 		int vgp, *vgd;
 		m_foreach(vg_lines, vgp, vgd) {
 			if (vgp >= 64) break;
-			char line[512];
-			STR_COPY(line, sizeof(line), *vgd);
-			char *copy = strdup(line);
-			char *save = NULL;
-			char *tok = strtok_r(copy, "|", &save);
-			int col = 0;
-			while (tok && col < 3) {
-				while (*tok == ' ' || *tok == '\t') tok++;
-				switch (col) {
-				case 0: snprintf(vg_names[vgp], sizeof(vg_names[vgp]), "%s", tok); break;
-				case 1: vg_sizes[vgp] = strtoull(tok, NULL, 10); break;
-				case 2: vg_frees[vgp] = strtoull(tok, NULL, 10); break;
-				}
-				tok = strtok_r(NULL, "|", &save);
-				col++;
+			s_split(toks, m_buf(*vgd), '|', 1);
+			char **t = (char **)m_buf(toks);
+			if (m_len(toks) >= 3) {
+				snprintf(vg_names[vgp], sizeof(vg_names[vgp]), "%s", t[0]);
+				vg_sizes[vgp] = strtoull(t[1], NULL, 10);
+				vg_frees[vgp] = strtoull(t[2], NULL, 10);
 			}
-			free(copy);
 		}
 		n_vg = (int)m_len(vg_lines);
 		m_free(vg_lines);
@@ -92,21 +83,10 @@ int gather_lvm(cfg_t cfg)
 		int pvp, *pvd;
 		m_foreach(pv_lines, pvp, pvd) {
 			if (pvp >= 64) break;
-			char line[512];
-			STR_COPY(line, sizeof(line), *pvd);
-			char *copy = strdup(line);
-			char *save = NULL;
-			char *tok = strtok_r(copy, "|", &save);
-			if (tok) {
-				while (*tok == ' ') tok++;
-				snprintf(pv_names[pvp], sizeof(pv_names[pvp]), "%s", tok);
-				tok = strtok_r(NULL, "|", &save);
-				if (tok) {
-					while (*tok == ' ') tok++;
-					snprintf(pv_vgs[pvp], sizeof(pv_vgs[pvp]), "%s", tok);
-				}
-			}
-			free(copy);
+			s_split(toks, m_buf(*pvd), '|', 1);
+			char **t = (char **)m_buf(toks);
+			if (m_len(toks) >= 1) snprintf(pv_names[pvp], sizeof(pv_names[pvp]), "%s", t[0]);
+			if (m_len(toks) >= 2) snprintf(pv_vgs[pvp], sizeof(pv_vgs[pvp]), "%s", t[1]);
 		}
 		n_pv = (int)m_len(pv_lines);
 		m_free(pv_lines);
@@ -117,29 +97,18 @@ int gather_lvm(cfg_t cfg)
 	int lvp, *lvd;
 	m_foreach(lv_lines, lvp, lvd) {
 		if (n_rows >= 256) break;
-		char line[512];
-		STR_COPY(line, sizeof(line), *lvd);
-		if (!line[0]) continue;
+
+		s_split(toks, m_buf(*lvd), '|', 1);
+		char **t = (char **)m_buf(toks);
+		if (m_len(toks) < 4) continue;
 
 		lv_row_t *r = &rows[n_rows];
 		memset(r, 0, sizeof(*r));
 
-		char *copy = strdup(line);
-		char *save = NULL;
-		char *tok = strtok_r(copy, "|", &save);
-		int col = 0;
-		while (tok && col < 4) {
-			while (*tok == ' ' || *tok == '\t') tok++;
-			switch (col) {
-			case 0: snprintf(r->lv_name, sizeof(r->lv_name), "%s", tok); break;
-			case 1: snprintf(r->vg_name, sizeof(r->vg_name), "%s", tok); break;
-			case 2: r->lv_size = strtoull(tok, NULL, 10); break;
-			case 3: snprintf(r->lv_path, sizeof(r->lv_path), "%s", tok); break;
-			}
-			tok = strtok_r(NULL, "|", &save);
-			col++;
-		}
-		free(copy);
+		snprintf(r->lv_name, sizeof(r->lv_name), "%s", t[0]);
+		snprintf(r->vg_name, sizeof(r->vg_name), "%s", t[1]);
+		r->lv_size = strtoull(t[2], NULL, 10);
+		snprintf(r->lv_path, sizeof(r->lv_path), "%s", t[3]);
 
 		/* lookup VG free/size */
 		for (int v = 0; v < n_vg; v++) {
@@ -182,6 +151,7 @@ int gather_lvm(cfg_t cfg)
 
 		n_rows++;
 	}
+	m_free(toks);
 	m_free(lv_lines);
 
 	if (!n_rows) return 0;
