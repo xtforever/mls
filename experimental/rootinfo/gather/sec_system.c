@@ -64,16 +64,13 @@ static void gather_cpuinfo(int entries)
 	int cpuinfo = read_file("/proc/cpuinfo");
 	if (!cpuinfo) return;
 
-	int buf_h = str_dup_h(cpuinfo);
-	m_free(cpuinfo);
-	const char *src = m_str(buf_h);
-
 	int cores = 0;
-	for (const char *p = src; (p = strstr(p, "model name")); p++)
-		cores++;
-	char buf[64];
-	snprintf(buf, sizeof(buf), "%d (sysconf %ld online)", cores,
-		 sysconf(_SC_NPROCESSORS_ONLN));
+	int pat = s_cstr("model name");
+	int off = 0;
+	while ((off = s_strstr(cpuinfo, off, pat)) >= 0) { cores++; off++; }
+
+	int ph = s_printf(0, 0, "%d (sysconf %ld online)", cores,
+			  sysconf(_SC_NPROCESSORS_ONLN));
 
 	int h = m_alloc(1, sizeof(table_t), 0);
 	table_t *t = (table_t *)m_buf(h);
@@ -83,23 +80,31 @@ static void gather_cpuinfo(int entries)
 	FIELD_ADD(t->header, "Value", ALIGN_LEFT);
 	t->rows = m_create(4, sizeof(int));
 
-	int r = kv_pair("Processors", buf);
+	int r = kv_pair("Processors", m_str(ph));
 	m_put(t->rows, &r);
+	m_free(ph);
 
-	const char *hit = strstr(src, "model name");
 	const char *model = "n/a";
-	char *free_me = NULL;
-	if (hit) { hit = strchr(hit, ':'); hit = hit ? hit + 1 : NULL;
-		while (hit && (*hit == ' ' || *hit == '\t')) hit++;
-		if (hit) { const char *nl = strchr(hit, '\n');
-			free_me = nl ? strndup(hit, (size_t)(nl - hit)) : strdup(hit);
-			model = free_me; } }
+	int mh = 0;
+	int mi = s_find(cpuinfo, "model name");
+	if (mi >= 0) {
+		int c = s_chr(cpuinfo, ':', mi);
+		if (c >= 0) {
+			int start = c + 1;
+			while (CHAR(cpuinfo, start) == ' ' || CHAR(cpuinfo, start) == '\t') start++;
+			int nl = s_chr(cpuinfo, '\n', start);
+			int end = nl < 0 ? s_strlen(cpuinfo) - 1 : nl - 1;
+			mh = s_slice(0, 0, cpuinfo, start, end);
+			model = m_str(mh);
+		}
+	}
 	r = kv_pair("Model", model);
 	m_put(t->rows, &r);
-	free(free_me);
+	if (mh) m_free(mh);
 
 	double av[3] = {0};
 	if (getloadavg(av, 3) == 3) {
+		char buf[64];
 		snprintf(buf, sizeof(buf), "%.2f / %.2f / %.2f (1/5/15 min)",
 			 av[0], av[1], av[2]);
 		r = kv_pair("Load", buf);
@@ -107,7 +112,7 @@ static void gather_cpuinfo(int entries)
 	}
 
 	add_entry(entries, "table", h);
-	m_free(buf_h);
+	m_free(cpuinfo);
 }
 
 static void gather_meminfo(int entries)
@@ -123,28 +128,29 @@ static void gather_meminfo(int entries)
 	FIELD_ADD(t->header, "Value", ALIGN_LEFT);
 	t->rows = m_create(4, sizeof(int));
 
-	int buf_h = str_dup_h(meminfo);
-	m_free(meminfo);
-	const char *src = m_str(buf_h);
-
 	const char *keys[] = {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"};
 	for (int i = 0; i < 4; i++) {
-		const char *hit = strstr(src, keys[i]);
-		const char *val = "n/a";
-		if (hit) { hit = strchr(hit, ':'); hit = hit ? hit + 1 : NULL;
-			while (hit && (*hit == ' ' || *hit == '\t')) hit++;
-			val = hit ? hit : val; }
-		long long kb = 0;
-		sscanf(val, "%lld", &kb);
-		double gb = (double)kb / (1024.0 * 1024.0);
 		char vbuf[32];
-		snprintf(vbuf, sizeof(vbuf), "%.1f GB", gb);
+		int hit = s_find(meminfo, keys[i]);
+		if (hit >= 0) {
+			int c = s_chr(meminfo, ':', hit);
+			int start = c >= 0 ? c + 1 : hit;
+			while (CHAR(meminfo, start) == ' ' || CHAR(meminfo, start) == '\t') start++;
+			int nl = s_chr(meminfo, '\n', start);
+			int end = nl < 0 ? s_strlen(meminfo) - 1 : nl - 1;
+			int vh = s_slice(0, 0, meminfo, start, end);
+			double gb = (double)s_to_long(vh) / (1024.0 * 1024.0);
+			snprintf(vbuf, sizeof(vbuf), "%.1f GB", gb);
+			m_free(vh);
+		} else {
+			snprintf(vbuf, sizeof(vbuf), "n/a");
+		}
 		int r = kv_pair(keys[i], vbuf);
 		m_put(t->rows, &r);
 	}
 
 	add_entry(entries, "table", h);
-	m_free(buf_h);
+	m_free(meminfo);
 }
 
 static void gather_disk(int entries)
@@ -182,7 +188,7 @@ static void gather_proc_uptime(int entries)
 	}
 
 	int ut = read_file("/proc/uptime");
-	char ubuf[64] = "";
+	int up_h = 0;
 	if (ut) {
 		double up = 0;
 		sscanf(m_str(ut), "%lf", &up);
@@ -191,20 +197,21 @@ static void gather_proc_uptime(int entries)
 		int dd = hh / 24;
 		hh %= 24;
 		if (dd)
-			snprintf(ubuf, sizeof(ubuf), "up %dd %dh %dm", dd, hh, mm);
+			up_h = s_printf(0, 0, "up %dd %dh %dm", dd, hh, mm);
 		else
-			snprintf(ubuf, sizeof(ubuf), "up %dh %dm", hh, mm);
+			up_h = s_printf(0, 0, "up %dh %dm", hh, mm);
 		m_free(ut);
 	}
 
-	char buf[128];
-	snprintf(buf, sizeof(buf), "%d processes, %s", nproc, ubuf);
+	int line = s_printf(0, 0, "%d processes, %s", nproc, up_h ? m_str(up_h) : "");
+	if (up_h) m_free(up_h);
 
 	int h = m_alloc(1, sizeof(list_t), 0);
 	list_t *l = (list_t *)m_buf(h);
 	*l = (list_t){0};
 	l->items = m_create(1, sizeof(field_t));
-	FIELD_ADD(l->items, buf, ALIGN_LEFT);
+	FIELD_ADD(l->items, m_str(line), ALIGN_LEFT);
+	m_free(line);
 	add_entry(entries, "list", h);
 }
 
@@ -224,19 +231,16 @@ static void gather_users(int entries)
 	int ucount = (int)m_len(unames);
 	if (!ucount) { m_free(unames); return; }
 
-	char line[256];
-	int off = snprintf(line, sizeof(line), "Users (%d): ", ucount);
+	int line = s_printf(0, 0, "Users (%d): ", ucount);
 	for (int i = 0; i < ucount; i++) {
-		if (i) off += snprintf(line + off, sizeof(line) - (size_t)off, ", ");
-		char user[64] = "";
-		sscanf(m_str(INT(unames, i)), "%63s", user);
-		off += snprintf(line + off, sizeof(line) - (size_t)off, "%s", user);
+		if (i) s_cat(line, ", ");
+		s_cat(line, m_str(INT(unames, i)));
 	}
 
 	int h = m_alloc(1, sizeof(text_t), 0);
 	text_t *t = (text_t *)m_buf(h);
 	*t = (text_t){0};
-	t->text_h = s_dup(line);
+	t->text_h = line;
 	add_entry(entries, "text", h);
 	m_free(unames);
 }
@@ -246,8 +250,8 @@ static void gather_network(int entries)
 	DIR *d = opendir("/sys/class/net");
 	if (!d) return;
 
-	char buf[512];
-	size_t off = 0;
+	int line = s_new();
+	int off = 0;
 	struct dirent *de;
 	while ((de = readdir(d))) {
 		if (de->d_name[0] == '.') continue;
@@ -261,50 +265,45 @@ static void gather_network(int entries)
 		int out_h = subproc_read(cmd);
 		if (STRTAB_EMPTY(out_h)) { m_free(out_h); continue; }
 
-		int out_h2 = str_dup_h(out_h);
-		m_free(out_h);
-		const char *out = m_str(out_h2);
+		s_trim(out_h);
+		if (s_isempty(out_h)) { m_free(out_h); continue; }
 
-		char ifname[64] = "", state[16] = "", ip4[64] = "";
-		sscanf(out, "%63s %15s", ifname, state);
-		const char *ip = out;
-		int toks = 0;
-		while (*ip) {
-			while (*ip == ' ' || *ip == '\t') ip++;
-			if (!*ip) break;
-			while (*ip && *ip != ' ' && *ip != '\t' && *ip != '\n') ip++;
-			toks++;
-			if (toks == 2) break;
-		}
-		while (*ip == ' ' || *ip == '\t') ip++;
-		if (*ip && toks == 2) {
-			char *slash = strchr(ip, '/');
-			char *end = strchr(ip, ' ');
-			if (!end) end = strchr(ip, '\n');
-			if (slash && (!end || slash < end)) {
-				size_t len = (size_t)(slash - ip);
-				if (len >= sizeof(ip4)) len = sizeof(ip4) - 1;
-				memcpy(ip4, ip, len);
-			}
+		int toks_h = m_alloc(8, sizeof(char *), MFREE_STR);
+		m_str_split(toks_h, m_buf(out_h), " ", 1);
+		char **t = (char **)m_buf(toks_h);
+
+		if (m_len(toks_h) < 2) { m_free(toks_h); m_free(out_h); continue; }
+
+		char ip4[64] = "";
+		if (m_len(toks_h) >= 3) {
+			int iph = s_dup(t[2]);
+			int slash = s_chr(iph, '/', 0);
+			int cut = slash >= 0 ? s_left(iph, slash) : s_clone(iph);
+			if (!s_isempty(cut)) snprintf(ip4, sizeof(ip4), "%s", m_str(cut));
+			m_free(cut);
+			m_free(iph);
 		}
 
-		if (off) off += snprintf(buf + off, sizeof(buf) - off, ", ");
+		if (off) s_cat(line, ", ");
+		off = 1;
 		if (ip4[0])
-			off += snprintf(buf + off, sizeof(buf) - off, "%s (%s, %s)", ifname, state, ip4);
+			s_printf(line, -1, "%s (%s, %s)", t[0], t[1], ip4);
 		else
-			off += snprintf(buf + off, sizeof(buf) - off, "%s (%s)", ifname, state);
-		m_free(out_h2);
+			s_printf(line, -1, "%s (%s)", t[0], t[1]);
+
+		m_free(toks_h);
+		m_free(out_h);
 	}
 	closedir(d);
 
-	if (!off) return;
+	if (!off) { m_free(line); return; }
 
-	char line[544];
-	snprintf(line, sizeof(line), "Network: %s", buf);
 	int h = m_alloc(1, sizeof(text_t), 0);
 	text_t *t = (text_t *)m_buf(h);
 	*t = (text_t){0};
-	t->text_h = s_dup(line);
+	int text_h = s_printf(0, 0, "Network: %s", m_str(line));
+	m_free(line);
+	t->text_h = text_h;
 	add_entry(entries, "text", h);
 }
 
