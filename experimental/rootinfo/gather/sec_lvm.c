@@ -3,30 +3,28 @@
 #include "m_subproc.h"
 #include "m_tool.h"
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
 
-static void human_size(char *buf, size_t sz, unsigned long long bytes)
+static int human_size(unsigned long long bytes)
 {
 	static const char *units[] = {"B", "K", "M", "G", "T", "P"};
 	double v = (double)bytes;
 	int ui = 0;
 	while (v >= 1024.0 && ui < 5) { v /= 1024.0; ui++; }
 	if (ui == 0)
-		snprintf(buf, sz, "%llu%s", bytes, units[ui]);
-	else
-		snprintf(buf, sz, "%.1f%s", v, units[ui]);
+		return s_printf(0, 0, "%llu%s", bytes, units[ui]);
+	return s_printf(0, 0, "%.1f%s", v, units[ui]);
 }
 
 typedef struct {
-	char pv_name[256];
-	char lv_name[256];
-	char vg_name[256];
+	int pv_name;
+	int lv_name;
+	int vg_name;
 	unsigned long long lv_size;
 	unsigned long long vg_free;
 	unsigned long long vg_size;
-	char mount[256];
-	char lv_path[256];
+	int mount;
+	int lv_path;
 } lv_row_t;
 
 int gather_lvm(cfg_t cfg)
@@ -47,11 +45,10 @@ int gather_lvm(cfg_t cfg)
 	int n_lv = (int)m_len(lv_lines);
 	if (!n_lv) { m_free(lv_lines); return 0; }
 
-	int n_vg = 0;
-	char vg_names[64][256];
-	unsigned long long vg_sizes[64];
-	unsigned long long vg_frees[64];
 	int toks = m_alloc(10, sizeof(char *), MFREE_STR);
+	int vg_names = m_create(8, sizeof(int));
+	int vg_sizes = m_create(8, sizeof(unsigned long long));
+	int vg_frees = m_create(8, sizeof(unsigned long long));
 	if (vgs_out) {
 		nl_h = s_dup("\n");
 		int vg_lines = s_msplit(0, vgs_out, nl_h);
@@ -59,22 +56,22 @@ int gather_lvm(cfg_t cfg)
 		m_free(nl_h);
 		int vgp, *vgd;
 		m_foreach(vg_lines, vgp, vgd) {
-			if (vgp >= 64) break;
 			s_split(toks, m_buf(*vgd), '|', 1);
 			char **t = (char **)m_buf(toks);
 			if (m_len(toks) >= 3) {
-				snprintf(vg_names[vgp], sizeof(vg_names[vgp]), "%s", t[0]);
-				vg_sizes[vgp] = strtoull(t[1], NULL, 10);
-				vg_frees[vgp] = strtoull(t[2], NULL, 10);
+				int nh = s_dup(t[0]);
+				m_put(vg_names, &nh);
+				unsigned long long sz = strtoull(t[1], NULL, 10);
+				m_put(vg_sizes, &sz);
+				unsigned long long fr = strtoull(t[2], NULL, 10);
+				m_put(vg_frees, &fr);
 			}
 		}
-		n_vg = (int)m_len(vg_lines);
 		m_free(vg_lines);
 	}
 
-	int n_pv = 0;
-	char pv_names[64][256];
-	char pv_vgs[64][256];
+	int pv_names = m_create(8, sizeof(int));
+	int pv_vgs = m_create(8, sizeof(int));
 	if (pvs_out) {
 		nl_h = s_dup("\n");
 		int pv_lines = s_msplit(0, pvs_out, nl_h);
@@ -82,79 +79,89 @@ int gather_lvm(cfg_t cfg)
 		m_free(nl_h);
 		int pvp, *pvd;
 		m_foreach(pv_lines, pvp, pvd) {
-			if (pvp >= 64) break;
 			s_split(toks, m_buf(*pvd), '|', 1);
 			char **t = (char **)m_buf(toks);
-			if (m_len(toks) >= 1) snprintf(pv_names[pvp], sizeof(pv_names[pvp]), "%s", t[0]);
-			if (m_len(toks) >= 2) snprintf(pv_vgs[pvp], sizeof(pv_vgs[pvp]), "%s", t[1]);
+			int nh = m_len(toks) >= 1 ? s_dup(t[0]) : s_dup("");
+			m_put(pv_names, &nh);
+			int vh = m_len(toks) >= 2 ? s_dup(t[1]) : s_dup("");
+			m_put(pv_vgs, &vh);
 		}
-		n_pv = (int)m_len(pv_lines);
 		m_free(pv_lines);
 	}
 
-	lv_row_t rows[256];
-	int n_rows = 0;
+	int rows = m_create(16, sizeof(lv_row_t));
 	int lvp, *lvd;
 	m_foreach(lv_lines, lvp, lvd) {
-		if (n_rows >= 256) break;
-
 		s_split(toks, m_buf(*lvd), '|', 1);
 		char **t = (char **)m_buf(toks);
 		if (m_len(toks) < 4) continue;
 
-		lv_row_t *r = &rows[n_rows];
-		memset(r, 0, sizeof(*r));
-
-		snprintf(r->lv_name, sizeof(r->lv_name), "%s", t[0]);
-		snprintf(r->vg_name, sizeof(r->vg_name), "%s", t[1]);
-		r->lv_size = strtoull(t[2], NULL, 10);
-		snprintf(r->lv_path, sizeof(r->lv_path), "%s", t[3]);
+		lv_row_t r = {0};
+		r.lv_name = s_dup(t[0]);
+		r.vg_name = s_dup(t[1]);
+		r.lv_size = strtoull(t[2], NULL, 10);
+		r.lv_path = s_dup(t[3]);
 
 		/* lookup VG free/size */
-		for (int v = 0; v < n_vg; v++) {
-			if (!strcmp(r->vg_name, vg_names[v])) {
-				r->vg_size = vg_sizes[v];
-				r->vg_free = vg_frees[v];
+		int vp;
+		int *vn;
+		m_foreach(vg_names, vp, vn) {
+			if (s_cmp(r.vg_name, *vn) == 0) {
+				r.vg_size = *(unsigned long long *)mls(vg_sizes, vp);
+				r.vg_free = *(unsigned long long *)mls(vg_frees, vp);
 				break;
 			}
 		}
 
 		/* lookup PV name for this VG */
-		for (int p = 0; p < n_pv; p++) {
-			if (!strcmp(r->vg_name, pv_vgs[p])) {
-				snprintf(r->pv_name, sizeof(r->pv_name), "%s", pv_names[p]);
+		int pp;
+		int *pv;
+		m_foreach(pv_vgs, pp, pv) {
+			if (s_cmp(r.vg_name, *pv) == 0) {
+				m_free(r.pv_name);
+				r.pv_name = s_dup(m_str(INT(pv_names, pp)));
 				break;
 			}
 		}
 
 		/* find mountpoint from /proc/mounts using device path or dm-crypt variant */
-		if (r->lv_path[0]) {
+		if (r.lv_path) {
 			/* build dm-crypt device name: /dev/mapper/<vg>-<lv> */
-			char dm_name[256];
-			int n = snprintf(dm_name, sizeof(dm_name), "/dev/mapper/");
-			snprintf(dm_name + n, sizeof(dm_name) - (size_t)n, "%.100s-%.100s", r->vg_name, r->lv_name);
-			FILE *mt = fopen("/proc/mounts", "r");
-			if (mt) {
-				char mline[512];
-				while (fgets(mline, sizeof(mline), mt)) {
-					char dev[256], mnt[256];
-					if (sscanf(mline, "%255s %255s", dev, mnt) == 2) {
-						if (!strcmp(dev, r->lv_path) || !strcmp(dev, dm_name)) {
-							snprintf(r->mount, sizeof(r->mount), "%s", mnt);
-							break;
-						}
+			int dm_h = s_printf(0, 0, "/dev/mapper/%.100s-%.100s",
+					    m_str(r.vg_name), m_str(r.lv_name));
+			int mounts = m_str_from_file("/proc/mounts");
+			if (mounts >= 0) {
+				nl_h = s_dup("\n");
+				int mlines = s_msplit(0, mounts, nl_h);
+				m_free(nl_h);
+				m_free(mounts);
+				int toks2 = m_alloc(8, sizeof(char *), MFREE_STR);
+				int mp;
+				int *md;
+				m_foreach(mlines, mp, md) {
+					s_split(toks2, m_buf(*md), ' ', 1);
+					char **mt = (char **)m_buf(toks2);
+					if (m_len(toks2) < 2) continue;
+					if (s_strcmp_c(r.lv_path, mt[0]) == 0 ||
+					    s_strcmp_c(dm_h, mt[0]) == 0) {
+						m_free(r.mount);
+						r.mount = s_dup(mt[1]);
+						break;
 					}
 				}
-				fclose(mt);
+				m_free(toks2);
+				m_free(mlines);
 			}
+			m_free(dm_h);
 		}
 
-		n_rows++;
+		m_put(rows, &r);
 	}
 	m_free(toks);
 	m_free(lv_lines);
 
-	if (!n_rows) return 0;
+	int n_rows = (int)m_len(rows);
+	if (!n_rows) { m_free(rows); return 0; }
 
 	int sec_h = m_alloc(1, sizeof(section_t), 0);
 	section_t *sec = (section_t *)m_buf(sec_h);
@@ -173,49 +180,46 @@ int gather_lvm(cfg_t cfg)
 
 	t->rows = m_create((size_t)n_rows, sizeof(int));
 
-	const char *prev_pv = "";
-	const char *prev_vg = "";
+	int prev_pv = 0;
+	int prev_vg = 0;
 
-	for (int i = 0; i < n_rows; i++) {
-		lv_row_t *r = &rows[i];
-
-		char size_buf[32], free_buf[32];
-		human_size(size_buf, sizeof(size_buf), r->lv_size);
+	int ri;
+	lv_row_t *r;
+	m_foreach(rows, ri, r) {
+		int size_h = human_size(r->lv_size);
 
 		int free_row = m_create(7, sizeof(field_t));
 
 		/* PV */
-		const char *pv_show = r->pv_name;
-		if (i > 0 && !strcmp(r->pv_name, prev_pv) && r->pv_name[0])
+		const char *pv_show = r->pv_name ? m_str(r->pv_name) : "";
+		if (ri > 0 && r->pv_name && prev_pv && s_cmp(r->pv_name, prev_pv) == 0)
 			pv_show = "\"";
 		FIELD_ADD(free_row, pv_show, ALIGN_LEFT);
 		prev_pv = r->pv_name;
 
 		/* VG */
-		const char *vg_show = r->vg_name;
-		if (i > 0 && !strcmp(r->vg_name, prev_vg) && r->vg_name[0])
+		const char *vg_show = r->vg_name ? m_str(r->vg_name) : "";
+		if (ri > 0 && prev_vg && s_cmp(r->vg_name, prev_vg) == 0)
 			vg_show = "\"";
 		FIELD_ADD(free_row, vg_show, ALIGN_LEFT);
 		prev_vg = r->vg_name;
 
 		/* LV */
-		FIELD_ADD(free_row, r->lv_name, ALIGN_LEFT);
+		FIELD_ADD(free_row, r->lv_name ? m_str(r->lv_name) : "", ALIGN_LEFT);
 
 		/* Size */
-		FIELD_ADD(free_row, size_buf, ALIGN_RIGHT);
+		FIELD_ADD(free_row, m_str(size_h), ALIGN_RIGHT);
+		m_free(size_h);
 
 		/* Free */
 		{
-			if (r->vg_free) {
-				human_size(free_buf, sizeof(free_buf), r->vg_free);
-				FIELD_ADD(free_row, free_buf, ALIGN_RIGHT);
-			} else {
-				FIELD_ADD(free_row, "-", ALIGN_RIGHT);
-			}
+			int free_h = r->vg_free ? human_size(r->vg_free) : 0;
+			FIELD_ADD(free_row, free_h ? m_str(free_h) : "-", ALIGN_RIGHT);
+			if (free_h) m_free(free_h);
 		}
 
 		/* Mount */
-		FIELD_ADD(free_row, r->mount[0] ? r->mount : "-", ALIGN_LEFT);
+		FIELD_ADD(free_row, r->mount ? m_str(r->mount) : "-", ALIGN_LEFT);
 
 		/* Bar column */
 		{
@@ -226,6 +230,30 @@ int gather_lvm(cfg_t cfg)
 
 		m_put(t->rows, &free_row);
 	}
+
+	/* free per-row string handles */
+	int fi;
+	lv_row_t *fr;
+	m_foreach(rows, fi, fr) {
+		m_free(fr->pv_name);
+		m_free(fr->lv_name);
+		m_free(fr->vg_name);
+		m_free(fr->mount);
+		m_free(fr->lv_path);
+	}
+	m_free(rows);
+
+	/* free vg/pv name handles */
+	int i;
+	int *h;
+	m_foreach(vg_names, i, h) m_free(*h);
+	m_foreach(pv_names, i, h) m_free(*h);
+	m_foreach(pv_vgs, i, h) m_free(*h);
+	m_free(vg_names);
+	m_free(vg_sizes);
+	m_free(vg_frees);
+	m_free(pv_names);
+	m_free(pv_vgs);
 
 	entry_t e = { .type_h = s_dup("table"), .data_h = th };
 	m_put(sec->entries, &e);
