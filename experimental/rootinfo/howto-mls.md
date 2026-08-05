@@ -3,7 +3,9 @@
 The pattern in `gather_users()` shows how to process MLS string handles
 without raw pointer access, ad-hoc arrays, or hand-rolled loops.  The same
 building blocks apply wherever you need to extract substrings, build
-unique lists, or iterate handle contents.
+unique lists, or iterate handle contents.  The lib's `s_*`/`m_*` API is a
+full libc-string replacement — the reference table is below in
+"String API — libc replacement".
 
 ## Core ideas
 
@@ -14,6 +16,104 @@ unique lists, or iterate handle contents.
 5. **`m_binsert` — sorted unique list, drops duplicates automatically**
 6. **`s_split` — delimiter parsing without `strtok`/`strdup` (LVM/ports style)**
 7. **`str_dup_h` / `str_line` / `STR_COPY` — safe CHAR-based copies**
+8. **`s_*` string API — libc replacement** (reference below)
+
+## String API — libc replacement
+
+The `s_*` family (`lib/m_tool.h`) plus the `m_*` core (`lib/mls.h`) is
+designed to replace the libc string functions entirely. Everything works on
+integer handles, never raw `char *`; the lib tracks length, reallocation, and
+freeing. The only `char *` that ever appears is a *read-only* view via
+`m_str(h)` / `m_buf(h)` — never write through it.
+
+| libc | MLS replacement | notes |
+|------|-----------------|-------|
+| `strlen` | `s_strlen(h)` | logical length, trailing nulls excluded |
+| `strdup` | `s_dup(c)` | empty handle for NULL/`""` |
+| `strcpy` | `s_strcpy_c(out, c)` | clears `out`, copies in |
+| `strcat` | `s_cat(h, c)` | allocates if `h == 0` |
+| `strncat` | `s_ncat(h, c, n)` | up to `n` chars |
+| `sprintf` | `s_printf(h, p, fmt, ...)` | appends when `p` is out of range |
+| `strcmp` | `s_cmp(a, b)` | both handles |
+| `strncmp` | `s_ncmp(a, b, n)` | |
+| `strcasecmp` | `s_casecmp(a, b)` | `m_extra.h` |
+| `strchr` | `s_chr(h, c, off)` | index or `-1` |
+| `strrchr` | `s_rchr(h, c)` | index or `-1` |
+| `strstr` | `s_find(h, sub_c)` / `s_strstr(h, off, sub_h)` | index or `-1` |
+| `strspn` / `strcspn` | `s_spn(h, accept)` / `s_cspn(h, reject)` | |
+| `strncpy` | `m_strncpy(dst, src, max)` | handle-to-handle |
+| `atol` | `s_to_long(h)` | `m_extra.h` |
+| `tolower`/`toupper` | `s_lower(h)` / `s_upper(h)` | in-place |
+| `strtrim` (hand-rolled) | `s_trim(h)` in-place; `s_trim_c(h, chars)` new handle | |
+| `strstr`+replace | `s_replace_c(h, old, new)` | all occurrences, new handle |
+| `fgets` | `s_readln(buf, fp)` | length or `EOF` |
+| `fgetc` loop | `m_fscan(m, delim, fp)` / `m_fscan2` | |
+| whole file | `m_str_from_file(path)` | handle or `-1` |
+| `printf("%s", m_str(h))` | `printf("%M", h)` | after one `m_register_printf()` |
+
+**Split / join:**
+- `s_split(m, cstr, c, trimws)` — m-array of `char *` (`MFREE_STR`; free with
+  `m_free_strings(m, 1)` then `m_free(m)`).
+- `s_msplit(dest, src_h, pat_h)` — m-array of string **handles** (`MFREE_EACH`).
+- `m_str_split(ms, cstr, delim, trimws)` — m-array of `char *`, multi-char delimiter.
+- `s_join(sep, ...)` — joins C strings (NULL-terminated varargs).
+- `s_implode(dest, srcs_h, sep_h)` — joins a handle list into one handle.
+
+**Substring extraction:** `s_sub(h, pos, len)`, `s_left(h, n)`, `s_right(h, n)`,
+`s_slice(dest, offs, src, a, b)` — all return/new handles, source untouched.
+
+**Wrap without copying** (zero-copy / constant): `s_ccstr(c)` / `s_cstrdup(c)`
+(constant string handles from the conststr pool), `m_wrapcstr(s)`,
+`m_wrapstrings(arr, n)`, `m_wrapints(arr, n)` — wrap existing memory
+(`MFREE_NOALLOC`, do not `m_free` the data).
+
+**Gotchas:**
+- `m_putc(m, c)` does **not** null-terminate — you must `m_putc(m, 0)`
+  yourself before `m_str()` or length logic works. `s_printf`/`s_app`/
+  `s_slice` do it for you.
+- `s_strlen` excludes trailing nulls; `m_len` counts raw bytes (may include
+  the terminator). For strings, use `s_strlen`.
+- `s_msplit` (handles) vs `s_split` (`char *`) differ in element type. Use
+  `s_split` for fixed-width column parsing (see the LVM pattern), `s_msplit`
+  when the parts feed other handle APIs.
+- `cmp_mstr`, `cmp_mstr_fast`, `cmp_mstr_cstr_fast`, and `compare_int` are
+  declared in `m_tool.h` but **not implemented** — using them is a link error.
+  Use `_cmp_mstr` from `gather.h`, or `cmp_int` (defined in `mls.c`).
+- `s_has_prefix(h, c)` / `s_has_suffix(h, c)` replace hand-rolled
+  `strncmp` prefix/suffix checks.
+
+## m_extra.c — extra string utilities
+
+`lib/m_extra.h` adds string helpers beyond the m_tool core. Most return a
+**new** handle and leave the input untouched; in-place ones are marked.
+
+**Case-insensitive compare:**
+- `s_casecmp(a, b)` — like `s_cmp` but case-insensitive.
+- `s_ncasecmp(a, b, n)` — up to `n` chars.
+
+**Numeric conversion:**
+- `s_to_long(h)` — `atol` replacement, 0 if empty/invalid.
+- `s_from_int(val)` / `s_from_double(val)` — number → new handle
+  (`%d` / `%g`).
+
+**Trimming** (all return new handles):
+- `s_trim_left_c(h, chars)` — strip leading chars (NULL/empty = whitespace).
+- `s_trim_right_c(h, chars)` — strip trailing chars.
+- (m_tool core already has `s_trim` in-place and `s_trim_c` both sides.)
+
+**Manipulation:**
+- `s_reverse(h)` — in-place.
+- `s_pad_left(h, width, pad)` / `s_pad_right(h, width, pad)` — pad to a
+  width, return new handles (clone if already wide enough).
+
+**Classification:**
+- `s_is_numeric(h)` — digits only.
+- `s_is_alpha(h)` — letters only.
+
+**Security / encoding:**
+- `s_secure_cmp(a, b)` — constant-time compare (timing-attack safe); returns
+  0 equal / 1 not equal.
+- `s_base64_decode(h)` — decode to a new handle.
 
 ## copy_word — reusable word buffer
 
