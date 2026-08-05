@@ -17,6 +17,8 @@ full libc-string replacement — the reference table is below in
 6. **`s_split` — delimiter parsing without `strtok`/`strdup` (LVM/ports style)**
 7. **`str_dup_h` / `str_line` / `STR_COPY` — safe CHAR-based copies**
 8. **`s_*` string API — libc replacement** (reference below)
+9. **supervised access — `mls_safe`/`*_SAFE`/`m_write_safe` instead of raw
+   pointer deref or `memcpy` into the buffer** (below)
 
 ## String API — libc replacement
 
@@ -121,6 +123,55 @@ freeing. The only `char *` that ever appears is a *read-only* view via
 - `s_secure_cmp(a, b)` — constant-time compare (timing-attack safe); returns
   0 equal / 1 not equal.
 - `s_base64_decode(h)` — decode to a new handle.
+
+## Supervised memory access — the `*_SAFE` family
+
+The lib's whole point is to replace libc's **unsafe direct memory access** —
+`memcpy` into the buffer, `*(int*)m_buf(h)` casts, `strcpy`/`strcat` into
+fixed arrays — with **supervised** functions that check bounds, handle
+use-after-free, and never overflow. Prefer these over touching `m_buf(h)`
+or `m_str(h)` yourself.
+
+### Element access — three tiers
+
+Every typed accessor comes in three flavors. Pick checked or safe; the raw
+pointer forms are the ones you are replacing:
+
+| tier | macro | does |
+|------|-------|------|
+| checked | `INT(h,i)`, `CHAR(h,i)`, `STR(h,i)` … | `mls(h,i)`, aborts on bad handle/OOB |
+| safe | `INT_SAFE(h,i)`, `CHAR_SAFE(h,i)`, `STR_SAFE(h,i)` … | `mls_safe(h,i)`, returns 0/NULL + sets `mls_errno` |
+| unchecked | `INT_UNCHECKED(h,i)` … | `m_peek(h,i)`, no bounds check |
+
+- `mls_safe(h, i)` — the non-aborting element pointer itself. Returns NULL
+  on `h <= 0` (`MLS_EINVAL`), out-of-bounds (`MLS_EBOUNDS`), or
+  use-after-free (`MLS_EUAF`). Check `mls_errno` to distinguish.
+- `INT_SAFE(h, i)` — typed read that returns `0`/`NULL` instead of
+  crashing. **This replaces `*(int *)m_buf(h) + i` and pointer arithmetic.**
+- Use `_UNCHECKED` only in a proven-bound hot loop; it skips the check
+  entirely.
+
+### Bulk copy — replace `memcpy`
+
+- `m_write(m, p, data, n)` — supervised `memcpy` **into** the array.
+- `m_write_safe(m, p, data, n)` — same, returns `-1` + `mls_errno` instead
+  of aborting.
+- `m_read_safe(h, p, &data, n)` — supervised read **out** of the array.
+- `m_cat(h, s)` — `m_write(h, m_len(h), s, strlen(s))`: append a C string,
+  the `strcat` replacement. `s_cat(h, c)`/`s_printf` are the handle
+  versions.
+- `m_slice(dest, offs, m, a, b)` — copy a range between handles; the
+  `memcpy(dst + off, src + a, n)` replacement.
+
+### Non-aborting mutations
+
+`m_put_safe`, `m_free_safe`, `m_setlen_safe`, `m_del_safe` — the normal
+`m_put`/`m_free`/`m_setlen`/`m_del` but return `-1` and set `mls_errno`
+instead of calling `ERR()`. Use at trust boundaries (parsing external
+input) where a malformed handle should degrade, not kill the program.
+
+The safe API is validated by `experimental/ex_fuzzy/test_error_api.c`
+(build `make -C experimental/ex_fuzzy` and run `test_error_api.exed`).
 
 ## copy_word — reusable word buffer
 
@@ -314,6 +365,11 @@ fixed-size arrays.
 | `const char *v = m_str(h); sscanf(v, "%s", buf)` | `buf = copy_word(buf, h)` |
 | `strdup(line)` + `strtok_r` + trim loop + `free` | `s_split(toks, m_buf(h), '|', 1)` |
 | `char line[512]; memcpy(line, m_str(h), ...)` | `str_dup_h(h)` / `str_line(h)` / `STR_COPY(buf, sz, h)` |
+| `*(int *)m_buf(h) + i` / pointer arithmetic | `INT(h,i)` (checked) / `INT_SAFE(h,i)` (safe) |
+| `memcpy(dst, src, n)` into/out of the array | `m_write(m,p,data,n)` / `m_read_safe(h,p,&data,n)` |
+| `strcat(buf, s)` into a fixed buffer | `m_cat(h, s)` / `s_cat(h, c)` / `s_printf(h, -1, ...)` |
+| unchecked `memcpy`/`memmove` | `m_slice(dest, offs, m, a, b)` |
+| abort-prone `m_put`/`m_free` on untrusted data | `m_put_safe` / `m_free_safe` (+ `mls_errno` check) |
 
 ## Where else this applies
 
@@ -325,3 +381,6 @@ model for working with handle lists:
 - Extracting the first whitespace-delimited field from each entry
 - Any place where `m_peek` + index variable + `m_len` can become
   `m_foreach`
+- Anywhere you reach into the buffer with `m_buf`/`m_str` + `memcpy` or a
+  cast — replace with `*_SAFE` accessors / `m_write` / `m_slice` instead
+  (write through `m_buf(h)` is undefined; always go through the API)
