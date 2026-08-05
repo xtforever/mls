@@ -178,8 +178,8 @@ void out_table(int data_h, void *cfg)
 	int *colw = (int *)calloc((size_t)ncols, sizeof(int));
 	field_t *hdr = (field_t *)m_buf(t->header);
 	int kv_header = (ncols == 2 && hdr[0].str_h && hdr[1].str_h
-			&& !strcmp(m_str(hdr[0].str_h), "Key")
-			&& !strcmp(m_str(hdr[1].str_h), "Value"));
+			&& s_strcmp_c(hdr[0].str_h, "Key") == 0
+			&& s_strcmp_c(hdr[1].str_h, "Value") == 0);
 	for (int c = 0; c < ncols; c++) {
 		int vw = hdr[c].len ? hdr[c].len : (hdr[c].str_h ? (int)strlen(m_str(hdr[c].str_h)) : 0);
 		colw[c] = vw;
