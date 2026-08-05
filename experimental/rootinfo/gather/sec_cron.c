@@ -43,12 +43,13 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 				if (*p == ' ' || *p == '\t') sp++;
 				p++;
 			}
-			char *sched = strndup(s, (size_t)(p - s));
-			FIELD_ADD(row, sched, ALIGN_LEFT);
-			free(sched);
-
-			while (*p == ' ' || *p == '\t') p++;
-			FIELD_ADD(row, p, ALIGN_LEFT);
+			char *cmd = (char *)p;
+			while (*cmd == ' ' || *cmd == '\t') cmd++;
+			char saved = *cmd;
+			*cmd = 0;
+			FIELD_ADD(row, s, ALIGN_LEFT);
+			*cmd = saved;
+			FIELD_ADD(row, cmd, ALIGN_LEFT);
 		} else {
 			FIELD_ADD(row, "", ALIGN_LEFT);
 			FIELD_ADD(row, s, ALIGN_LEFT);
@@ -70,30 +71,23 @@ static void add_cron_list_line(int entries, const char *label, const char *dir)
 	DIR *d = opendir(dir);
 	if (!d) return;
 
-	char buf[512];
-	size_t off = 0;
+	int line = s_printf(0, 0, "%s: ", label);
+	int off = 0;
 	struct dirent *de;
 	while ((de = readdir(d))) {
 		if (de->d_name[0] == '.') continue;
-		if (off > 0 && off < sizeof(buf) - 2)
-			buf[off++] = ',', buf[off++] = ' ';
-		if (off + strlen(de->d_name) < sizeof(buf) - 1) {
-			memcpy(buf + off, de->d_name, strlen(de->d_name));
-			off += strlen(de->d_name);
-		}
+		if (off) s_cat(line, ", ");
+		off = 1;
+		s_cat(line, de->d_name);
 	}
 	closedir(d);
 
-	if (!off) return;
-
-	char line[536];
-	snprintf(line, sizeof(line), "%s: ", label);
-	strncat(line, buf, sizeof(line) - strlen(line) - 1);
+	if (!off) { m_free(line); return; }
 
 	int th = m_alloc(1, sizeof(text_t), 0);
 	text_t *t = (text_t *)m_buf(th);
 	*t = (text_t){0};
-	t->text_h = s_dup(line);
+	t->text_h = line;
 	entry_t e = { .type_h = s_dup("text"), .data_h = th };
 	m_put(entries, &e);
 }
@@ -115,36 +109,7 @@ int gather_cron(cfg_t cfg)
 	add_cron_list_line(sec->entries, "Daily",   "/etc/cron.daily");
 	add_cron_list_line(sec->entries, "Weekly",  "/etc/cron.weekly");
 	add_cron_list_line(sec->entries, "Monthly", "/etc/cron.monthly");
-
-	{
-		DIR *d = opendir("/var/spool/cron/crontabs");
-		if (d) {
-			char buf[512];
-			size_t off = 0;
-			struct dirent *de;
-			while ((de = readdir(d))) {
-				if (de->d_name[0] == '.') continue;
-				if (off > 0 && off < sizeof(buf) - 2)
-					buf[off++] = ',', buf[off++] = ' ';
-				if (off + strlen(de->d_name) < sizeof(buf) - 1) {
-					memcpy(buf + off, de->d_name, strlen(de->d_name));
-					off += strlen(de->d_name);
-				}
-			}
-			closedir(d);
-
-			if (off) {
-				char line[536];
-				snprintf(line, sizeof(line), "Users: %s", buf);
-				int th = m_alloc(1, sizeof(text_t), 0);
-				text_t *t = (text_t *)m_buf(th);
-				*t = (text_t){0};
-				t->text_h = s_dup(line);
-				entry_t e = { .type_h = s_dup("text"), .data_h = th };
-				m_put(sec->entries, &e);
-			}
-		}
-	}
+	add_cron_list_line(sec->entries, "Users",   "/var/spool/cron/crontabs");
 
 	return sec_h;
 }
