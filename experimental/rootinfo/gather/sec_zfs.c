@@ -28,26 +28,20 @@ int gather_zfs(cfg_t cfg)
 		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
 
 	t->rows = m_create(m_len(lines), sizeof(int));
+	int toks = m_alloc(10, sizeof(char *), MFREE_STR);
 	int p, *d;
 	m_foreach(lines, p, d) {
-		char line[512];
-		STR_COPY(line, sizeof(line), *d);
-		if (!line[0]) continue;
-
+		if (s_isempty(*d)) continue;
+		s_split(toks, m_buf(*d), '\t', 1);
+		char **tk = (char **)m_buf(toks);
+		int ncols = (int)m_len(toks);
+		if (ncols > 5) ncols = 5;
 		int row = m_create(5, sizeof(field_t));
-		const char *p = line;
-		for (int c = 0; c < 5; c++) {
-			while (*p == ' ' || *p == '\t') p++;
-			if (!*p) break;
-			const char *end = p;
-			while (*end && *end != '\t') end++;
-			char *s = strndup(p, (size_t)(end - p));
-			FIELD_ADD(row, s, ALIGN_LEFT);
-			free(s);
-			p = *end ? end + 1 : end;
-		}
+		for (int c = 0; c < 5; c++)
+			FIELD_ADD(row, c < ncols ? tk[c] : "", ALIGN_LEFT);
 		m_put(t->rows, &row);
 	}
+	m_free(toks);
 
 	entry_t e = { .type_h = s_dup("table"), .data_h = th };
 	m_put(sec->entries, &e);
