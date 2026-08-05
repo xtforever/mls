@@ -38,50 +38,53 @@ int gather_ports(cfg_t cfg)
 	int p, *d;
 	m_foreach(lines, p, d) {
 		if (count >= max) break;
-		char line[512];
-		STR_COPY(line, sizeof(line), *d);
-		if (!line[0] || strstr(line, "State") || strstr(line, "Netid")) continue;
+		int line = *d;
+		if (s_has_prefix(line, "State") || s_has_prefix(line, "Netid")) continue;
 
 		char addr_buf[64] = "";
 		char port_buf[16] = "";
-		char proc_buf[128] = "";
+		int proc_h = 0;
 
-		const char *colon = strchr(line, ':');
-		if (colon) {
-			const char *a = colon;
-			while (a > line && *(a-1) != ' ') a--;
-			size_t alen = (size_t)(colon - a);
-			if (alen >= sizeof(addr_buf)) alen = sizeof(addr_buf) - 1;
-			memcpy(addr_buf, a, alen);
+		int c0 = s_chr(line, ':', 0);
+		if (c0 >= 0) {
+			int a = c0;
+			while (a > 0 && CHAR(line, a - 1) != ' ') a--;
+			int ah = s_slice(0, 0, line, a, c0 - 1);
+			if (!s_isempty(ah)) snprintf(addr_buf, sizeof(addr_buf), "%s", m_str(ah));
+			m_free(ah);
 
-			const char *p = colon + 1;
-			while (*p >= '0' && *p <= '9') {
-				if (p - colon - 1 < (int)sizeof(port_buf) - 1)
-					port_buf[p - colon - 1] = *p;
-				p++;
-			}
-		}
+			int pe = c0 + 1;
+			while (isdigit((unsigned char)CHAR(line, pe))) pe++;
+			int ph = s_slice(0, 0, line, c0 + 1, pe - 1);
+			if (!s_isempty(ph)) snprintf(port_buf, sizeof(port_buf), "%s", m_str(ph));
+			m_free(ph);
 
-		if (is_root) {
-			const char *second_colon = colon ? strchr(colon + 1, ':') : NULL;
-			if (second_colon) {
-				const char *proc = second_colon + 1;
-				while (*proc && *proc != ' ') proc++;
-				while (*proc == ' ') proc++;
-				if (*proc) {
-					size_t plen = strlen(proc);
-					if (plen >= sizeof(proc_buf)) plen = sizeof(proc_buf) - 1;
-					memcpy(proc_buf, proc, plen);
+			if (is_root) {
+				int sc = s_chr(line, ':', c0 + 1);
+				if (sc >= 0) {
+					int pp = sc + 1;
+					while (CHAR(line, pp) && CHAR(line, pp) != ' ') pp++;
+					while (CHAR(line, pp) == ' ') pp++;
+					if (CHAR(line, pp)) {
+						int end = pp;
+						while (CHAR(line, end) && CHAR(line, end) != ' ') end++;
+						proc_h = s_slice(0, 0, line, pp, end - 1);
+					}
 				}
-			}
-			char *name = strstr(proc_buf, "((\"");
-			if (name) {
-				name += 3;
-				char *end = strstr(name, "\",pid=");
-				if (end) {
-					size_t len = (size_t)(end - name);
-					memmove(proc_buf, name, len);
-					proc_buf[len] = 0;
+				if (proc_h) {
+					int name = s_find(proc_h, "((\"");
+					if (name >= 0) {
+						int start = name + 3;
+						int end = s_find(proc_h, "\",pid=");
+						if (end >= 0) {
+							int nh = s_slice(0, 0, proc_h, start, end - 1);
+							m_free(proc_h);
+							proc_h = nh;
+						} else {
+							m_free(proc_h);
+							proc_h = 0;
+						}
+					}
 				}
 			}
 		}
@@ -90,7 +93,8 @@ int gather_ports(cfg_t cfg)
 		FIELD_ADD(row, addr_buf, ALIGN_LEFT);
 		FIELD_ADD(row, port_buf, ALIGN_LEFT);
 		if (is_root)
-			FIELD_ADD(row, proc_buf, ALIGN_LEFT);
+			FIELD_ADD(row, proc_h ? m_str(proc_h) : "", ALIGN_LEFT);
+		if (proc_h) m_free(proc_h);
 
 		m_put(t->rows, &row);
 		count++;
