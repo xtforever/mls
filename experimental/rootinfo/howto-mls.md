@@ -81,6 +81,13 @@ freeing. The only `char *` that ever appears is a *read-only* view via
   Use `_cmp_mstr` from `gather.h`, or `cmp_int` (defined in `mls.c`).
 - `s_has_prefix(h, c)` / `s_has_suffix(h, c)` replace hand-rolled
   `strncmp` prefix/suffix checks.
+- `m_str_split(ms, s, " ", 1)` only returns the **first** token on
+  space-separated input — `skip_delim` advances its own `delim` pointer, so a
+  single-char delimiter consumes just one char and a second `cut_word` hits
+  `a == b` and stops. It is safe only for single-delimiter text (HTTP lines,
+  query strings). For variable whitespace, use `s_split(m, s, ' ', 1)` and
+  skip the empty tokens (repeated delimiters yield empty parts), or split on a
+  char that never repeats (LVM/ports `'|'`/`':'` style).
 
 ## m_extra.c — extra string utilities
 
