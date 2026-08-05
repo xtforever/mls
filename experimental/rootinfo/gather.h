@@ -4,6 +4,7 @@
 #include "cfg.h"
 #include "m_types.h"
 #include "m_tool.h"
+#include "m_extra.h"
 #include <ctype.h>
 
 #define STRTAB_EMPTY(h) ((h) == 0 || m_len(h) == 0)
