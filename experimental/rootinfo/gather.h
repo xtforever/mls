@@ -13,6 +13,11 @@
 	m_put((container), &f_); \
 } while(0)
 
+#define FIELD_ADD_H(container, handle, a) do { \
+	field_t f_ = { .str_h = (handle), .fmt = FMT_NONE, .align = (a) }; \
+	m_put((container), &f_); \
+} while(0)
+
 #define STR_COPY(dst, dstsz, h) do { \
 	int _i = 0; \
 	for (; _i < (int)(dstsz) - 1; _i++) { \

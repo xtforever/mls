@@ -203,15 +203,12 @@ static void gather_proc_uptime(int entries)
 		m_free(ut);
 	}
 
-	int line = s_printf(0, 0, "%d processes, %s", nproc, up_h ? m_str(up_h) : "");
-	if (up_h) m_free(up_h);
-
 	int h = m_alloc(1, sizeof(list_t), 0);
 	list_t *l = (list_t *)m_buf(h);
 	*l = (list_t){0};
 	l->items = m_create(1, sizeof(field_t));
-	FIELD_ADD(l->items, m_str(line), ALIGN_LEFT);
-	m_free(line);
+	FIELD_ADD_H(l->items, s_printf(0, 0, "%d processes, %s", nproc, up_h ? m_str(up_h) : ""), ALIGN_LEFT);
+	if (up_h) m_free(up_h);
 	add_entry(entries, "list", h);
 }
 

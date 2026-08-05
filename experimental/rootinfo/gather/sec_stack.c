@@ -16,10 +16,8 @@ static void add_version(int items, const char *label, const char *cmd)
 	s_trim(outbuf);
 	if (!m_len(outbuf)) { m_free(outbuf); return; }
 
-	int line = s_printf(0, 0, "%s: %s", label, m_str(outbuf));
+	FIELD_ADD_H(items, s_printf(0, 0, "%s: %s", label, m_str(outbuf)), ALIGN_LEFT);
 	m_free(outbuf);
-	FIELD_ADD(items, m_str(line), ALIGN_LEFT);
-	m_free(line);
 }
 
 static void add_service(int items, const char *label, const char *name)
@@ -33,11 +31,8 @@ static void add_service(int items, const char *label, const char *name)
 	long count = s_to_long(line);
 	m_free(line);
 
-	if (count > 0) {
-		int l = s_printf(0, 0, "%s: running (%ld)", label, count);
-		FIELD_ADD(items, m_str(l), ALIGN_LEFT);
-		m_free(l);
-	}
+	if (count > 0)
+		FIELD_ADD_H(items, s_printf(0, 0, "%s: running (%ld)", label, count), ALIGN_LEFT);
 }
 
 int gather_stack(cfg_t cfg)

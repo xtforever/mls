@@ -186,8 +186,6 @@ int gather_lvm(cfg_t cfg)
 	int ri;
 	lv_row_t *r;
 	m_foreach(rows, ri, r) {
-		int size_h = human_size(r->lv_size);
-
 		int free_row = m_create(7, sizeof(field_t));
 
 		/* PV */
@@ -208,15 +206,13 @@ int gather_lvm(cfg_t cfg)
 		FIELD_ADD(free_row, r->lv_name ? m_str(r->lv_name) : "", ALIGN_LEFT);
 
 		/* Size */
-		FIELD_ADD(free_row, m_str(size_h), ALIGN_RIGHT);
-		m_free(size_h);
+		FIELD_ADD_H(free_row, human_size(r->lv_size), ALIGN_RIGHT);
 
 		/* Free */
-		{
-			int free_h = r->vg_free ? human_size(r->vg_free) : 0;
-			FIELD_ADD(free_row, free_h ? m_str(free_h) : "-", ALIGN_RIGHT);
-			if (free_h) m_free(free_h);
-		}
+		if (r->vg_free)
+			FIELD_ADD_H(free_row, human_size(r->vg_free), ALIGN_RIGHT);
+		else
+			FIELD_ADD(free_row, "-", ALIGN_RIGHT);
 
 		/* Mount */
 		FIELD_ADD(free_row, r->mount ? m_str(r->mount) : "-", ALIGN_LEFT);

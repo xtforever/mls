@@ -41,23 +41,17 @@ int gather_ports(cfg_t cfg)
 		int line = *d;
 		if (s_has_prefix(line, "State") || s_has_prefix(line, "Netid")) continue;
 
-		char addr_buf[64] = "";
-		char port_buf[16] = "";
-		int proc_h = 0;
+		int ah = 0, ph = 0, proc_h = 0;
 
 		int c0 = s_chr(line, ':', 0);
 		if (c0 >= 0) {
 			int a = c0;
 			while (a > 0 && CHAR(line, a - 1) != ' ') a--;
-			int ah = s_slice(0, 0, line, a, c0 - 1);
-			if (!s_isempty(ah)) snprintf(addr_buf, sizeof(addr_buf), "%s", m_str(ah));
-			m_free(ah);
+			ah = s_slice(0, 0, line, a, c0 - 1);
 
 			int pe = c0 + 1;
 			while (isdigit((unsigned char)CHAR(line, pe))) pe++;
-			int ph = s_slice(0, 0, line, c0 + 1, pe - 1);
-			if (!s_isempty(ph)) snprintf(port_buf, sizeof(port_buf), "%s", m_str(ph));
-			m_free(ph);
+			ph = s_slice(0, 0, line, c0 + 1, pe - 1);
 
 			if (is_root) {
 				int sc = s_chr(line, ':', c0 + 1);
@@ -90,11 +84,10 @@ int gather_ports(cfg_t cfg)
 		}
 
 		int row = m_create((size_t)ncols, sizeof(field_t));
-		FIELD_ADD(row, addr_buf, ALIGN_LEFT);
-		FIELD_ADD(row, port_buf, ALIGN_LEFT);
+		FIELD_ADD_H(row, ah, ALIGN_LEFT);
+		FIELD_ADD_H(row, ph, ALIGN_LEFT);
 		if (is_root)
-			FIELD_ADD(row, proc_h ? m_str(proc_h) : "", ALIGN_LEFT);
-		if (proc_h) m_free(proc_h);
+			FIELD_ADD_H(row, proc_h, ALIGN_LEFT);
 
 		m_put(t->rows, &row);
 		count++;
