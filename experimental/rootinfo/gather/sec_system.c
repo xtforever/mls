@@ -269,14 +269,18 @@ static void gather_network(int entries)
 		if (s_isempty(out_h)) { m_free(out_h); continue; }
 
 		int toks_h = m_alloc(8, sizeof(char *), MFREE_STR);
-		m_str_split(toks_h, m_buf(out_h), " ", 1);
+		s_split(toks_h, m_buf(out_h), ' ', 1);
 		char **t = (char **)m_buf(toks_h);
+		int ntok = 0;
+		char *fields[3] = {0};
+		for (int j = 0; j < (int)m_len(toks_h) && ntok < 3; j++)
+			if (t[j][0]) fields[ntok++] = t[j];
 
-		if (m_len(toks_h) < 2) { m_free(toks_h); m_free(out_h); continue; }
+		if (ntok < 2) { m_free(toks_h); m_free(out_h); continue; }
 
 		char ip4[64] = "";
-		if (m_len(toks_h) >= 3) {
-			int iph = s_dup(t[2]);
+		if (ntok >= 3) {
+			int iph = s_dup(fields[2]);
 			int slash = s_chr(iph, '/', 0);
 			int cut = slash >= 0 ? s_left(iph, slash) : s_clone(iph);
 			if (!s_isempty(cut)) snprintf(ip4, sizeof(ip4), "%s", m_str(cut));
@@ -287,9 +291,9 @@ static void gather_network(int entries)
 		if (off) s_cat(line, ", ");
 		off = 1;
 		if (ip4[0])
-			s_printf(line, -1, "%s (%s, %s)", t[0], t[1], ip4);
+			s_printf(line, -1, "%s (%s, %s)", fields[0], fields[1], ip4);
 		else
-			s_printf(line, -1, "%s (%s)", t[0], t[1]);
+			s_printf(line, -1, "%s (%s)", fields[0], fields[1]);
 
 		m_free(toks_h);
 		m_free(out_h);

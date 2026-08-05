@@ -62,9 +62,9 @@ void out_init(void *cfg)
 
 int out_render(int sections_h, void *cfg)
 {
-	for (int i = 0; i < (int)m_len(sections_h); i++) {
-		int *sec_h = (int *)m_peek(sections_h, (size_t)i);
-		if (!sec_h) continue;
+	int i;
+	int *sec_h;
+	m_foreach(sections_h, i, sec_h) {
 		section_t *s = (section_t *)m_buf(*sec_h);
 		out_section(s, cfg);
 	}
@@ -77,9 +77,9 @@ void out_section(section_t *s, void *cfg)
 	if (s->title)
 		printf("\n  ---- \033[1m%s\033[0m ----\n", m_str(s->title));
 
-	for (int i = 0; i < (int)m_len(s->entries); i++) {
-		entry_t *e = (entry_t *)m_peek(s->entries, (size_t)i);
-		if (!e) continue;
+	int i;
+	entry_t *e;
+	m_foreach(s->entries, i, e) {
 		dt_render(e, cfg);
 	}
 
@@ -174,40 +174,45 @@ void out_table(int data_h, void *cfg)
 	int ncols = (int)m_len(t->header);
 	if (!ncols) return;
 
-	int nrows = (int)m_len(t->rows);
 	int *colw = (int *)calloc((size_t)ncols, sizeof(int));
-	field_t *hdr = (field_t *)m_buf(t->header);
-	int kv_header = (ncols == 2 && hdr[0].str_h && hdr[1].str_h
-			&& s_strcmp_c(hdr[0].str_h, "Key") == 0
-			&& s_strcmp_c(hdr[1].str_h, "Value") == 0);
-	for (int c = 0; c < ncols; c++) {
-		int vw = hdr[c].len ? hdr[c].len : (hdr[c].str_h ? (int)strlen(m_str(hdr[c].str_h)) : 0);
+	field_t *h0 = (field_t *)mls(t->header, 0);
+	field_t *h1 = (field_t *)mls(t->header, 1);
+	int kv_header = (ncols == 2 && h0 && h1 && h0->str_h && h1->str_h
+			&& s_strcmp_c(h0->str_h, "Key") == 0
+			&& s_strcmp_c(h1->str_h, "Value") == 0);
+	int c;
+	field_t *hc;
+	m_foreach(t->header, c, hc) {
+		int vw = hc->len ? hc->len : (hc->str_h ? (int)s_strlen(hc->str_h) : 0);
 		colw[c] = vw;
 	}
 
-	for (int r = 0; r < nrows; r++) {
-		int *rh = (int *)m_peek(t->rows, (size_t)r);
-		int row_h = rh ? *rh : 0;
+	int r;
+	int *rh;
+	m_foreach(t->rows, r, rh) {
+		int row_h = *rh;
 		if (!row_h) continue;
-		field_t *row = (field_t *)m_buf(row_h);
-		for (int c = 0; c < ncols && c < (int)m_len(row_h); c++) {
+		int c2;
+		field_t *fc;
+		m_foreach(row_h, c2, fc) {
+			if (c2 >= ncols) break;
 			char vbuf[128];
-			render_field_value(&row[c], vbuf, sizeof(vbuf));
+			render_field_value(fc, vbuf, sizeof(vbuf));
 			int vw = (int)strlen(vbuf);
-			if (vw > colw[c]) colw[c] = vw;
+			if (vw > colw[c2]) colw[c2] = vw;
 		}
 	}
 
-	cfg_t c = cfg ? *(cfg_t *)cfg : 0;
-	int maxw = cfg_int(c, "table", "max_col_width", 24);
+	cfg_t cc = cfg ? *(cfg_t *)cfg : 0;
+	int maxw = cfg_int(cc, "table", "max_col_width", 24);
 	for (int i = 0; i < ncols; i++)
 		if (colw[i] > maxw) colw[i] = maxw;
 
 	if (!kv_header) {
 	printf("  ");
-	for (int c = 0; c < ncols; c++) {
+	m_foreach(t->header, c, hc) {
 		if (c) printf("  ");
-		field_t fh = hdr[c];
+		field_t fh = *hc;
 		int orig = fh.len;
 		fh.len = colw[c];
 		fh.align = ALIGN_LEFT;
@@ -217,24 +222,25 @@ void out_table(int data_h, void *cfg)
 	printf("\n");
 
 	printf("  ");
-	for (int c = 0; c < ncols; c++) {
-		if (c) printf("  ");
-		for (int i = 0; i < colw[c]; i++) putchar('-');
+	for (int i = 0; i < ncols; i++) {
+		if (i) printf("  ");
+		for (int j = 0; j < colw[i]; j++) putchar('-');
 	}
 	printf("\n");
 	}
 
-	for (int r = 0; r < nrows; r++) {
-		int *rh = (int *)m_peek(t->rows, (size_t)r);
-		int row_h = rh ? *rh : 0;
+	m_foreach(t->rows, r, rh) {
+		int row_h = *rh;
 		if (!row_h) continue;
-		field_t *row = (field_t *)m_buf(row_h);
 		printf("  ");
-		for (int c = 0; c < ncols && c < (int)m_len(row_h); c++) {
-			if (c) printf("  ");
-			field_t fr = row[c];
+		int c2;
+		field_t *fc;
+		m_foreach(row_h, c2, fc) {
+			if (c2 >= ncols) break;
+			if (c2) printf("  ");
+			field_t fr = *fc;
 			int orig = fr.len;
-			fr.len = colw[c];
+			fr.len = colw[c2];
 			out_field(&fr, cfg);
 			fr.len = orig;
 		}
@@ -252,9 +258,9 @@ void out_list(int data_h, void *cfg)
 	if (l->title_h)
 		printf("  %s\n", m_str(l->title_h));
 
-	for (int i = 0; i < (int)m_len(l->items); i++) {
-		field_t *f = (field_t *)m_peek(l->items, (size_t)i);
-		if (!f) continue;
+	int i;
+	field_t *f;
+	m_foreach(l->items, i, f) {
 		printf("  ");
 		out_field(f, cfg);
 		printf("\n");
