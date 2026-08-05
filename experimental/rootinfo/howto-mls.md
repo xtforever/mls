@@ -12,6 +12,8 @@ unique lists, or iterate handle contents.
 3. **`mstr_empty` — safe empty-handle check (replaces `!m_str(h)` or `!*v`)**
 4. **`_cmp_mstr` — compares two MLS string handles, empty-handle safe**
 5. **`m_binsert` — sorted unique list, drops duplicates automatically**
+6. **`s_split` — delimiter parsing without `strtok`/`strdup` (LVM/ports style)**
+7. **`str_dup_h` / `str_line` / `STR_COPY` — safe CHAR-based copies**
 
 ## copy_word — reusable word buffer
 
@@ -42,6 +44,52 @@ for (...) {
 }
 m_free(buf);
 ```
+
+## s_split — delimiter parsing without strtok/strdup
+
+For fixed-field command output (LVM `--separator '|'`, etc.) use
+`s_split()` from `lib/m_tool.c` instead of `strtok_r` + `strdup` + manual
+trim loops:
+
+```
+int toks = m_alloc(10, sizeof(char *), MFREE_STR);   // token array, reused
+
+m_foreach(lines, p, d) {
+    s_split(toks, m_buf(*d), '|', 1);   // 1 = trim whitespace from fields
+    char **t = (char **)m_buf(toks);
+    if (m_len(toks) >= 4) {             // guard short/malformed lines
+        // t[0] t[1] t[2] t[3] = columns, in position
+    }
+}
+m_free(toks);
+```
+
+How it works:
+- Splits a C string on a delimiter char into an m-array of `char*`.
+- `remove_wspace = 1` trims each field, so LVM's column padding is handled
+  for free.
+- Passing a non-zero handle makes `s_split` clear and reuse it — one
+  allocation for the whole loop, `m_free` once at the end.
+- Empty fields become empty strings, so column positions stay stable.
+- The tokens are owned by the lib (`MFREE_STR`); there is no `strdup` or
+  `free` in your code, and no raw token pointer escapes the lib.
+- Read the line via `m_buf(*d)` directly — no 512-byte `STR_COPY`
+  intermediate, so no truncation.
+
+## str_dup_h / str_line / STR_COPY — CHAR-based copies
+
+Three ways to copy a handle, all reading through `CHAR()` and writing
+through `m_putc` (no `m_str` pointer chasing):
+
+- `str_dup_h(h)` — exact copy of a handle into a fresh handle.
+- `str_line(h)` — copy up to the first `\n` or end (a handle that holds
+  several lines), returns a fresh handle.
+- `STR_COPY(dst, dstsz, h)` — copy into a fixed C buffer, stopping at `\0`
+  or `\n`, always null-terminated.
+
+Prefer a handle-returning helper (`str_dup_h`/`str_line`) whenever the
+result feeds another MLS API; use `STR_COPY` only when a raw buffer is
+genuinely required.
 
 ## mstr_empty — safe empty check
 
@@ -157,6 +205,8 @@ fixed-size arrays.
 | `!handle` or `!*m_str(h)` | `mstr_empty(h)` |
 | `strcmp(m_str(a), m_str(b))` | `_cmp_mstr(&a, &b)` |
 | `const char *v = m_str(h); sscanf(v, "%s", buf)` | `buf = copy_word(buf, h)` |
+| `strdup(line)` + `strtok_r` + trim loop + `free` | `s_split(toks, m_buf(h), '|', 1)` |
+| `char line[512]; memcpy(line, m_str(h), ...)` | `str_dup_h(h)` / `str_line(h)` / `STR_COPY(buf, sz, h)` |
 
 ## Where else this applies
 
