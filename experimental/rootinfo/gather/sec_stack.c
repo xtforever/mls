@@ -11,24 +11,15 @@ static void add_version(int items, const char *label, const char *cmd)
 	int out = subproc_read(cmd);
 	if (STRTAB_EMPTY(out)) { m_free(out); return; }
 
-	int outbuf = s_new();
-	int started = 0;
-	for (int i = 0; ; i++) {
-		char c = CHAR(out, i);
-		if (c == 0 || c == '\n') break;
-		if (!started && (c == ' ' || c == '\t')) continue;
-		started = 1;
-		m_putc(outbuf, c);
-	}
-	m_putc(outbuf, 0);
+	int outbuf = str_line(out);
 	m_free(out);
-
+	s_trim(outbuf);
 	if (!m_len(outbuf)) { m_free(outbuf); return; }
 
-	char line[320];
-	snprintf(line, sizeof(line), "%s: %s", label, m_str(outbuf));
+	int line = s_printf(0, 0, "%s: %s", label, m_str(outbuf));
 	m_free(outbuf);
-	FIELD_ADD(items, line, ALIGN_LEFT);
+	FIELD_ADD(items, m_str(line), ALIGN_LEFT);
+	m_free(line);
 }
 
 static void add_service(int items, const char *label, const char *name)
@@ -39,13 +30,13 @@ static void add_service(int items, const char *label, const char *name)
 	if (STRTAB_EMPTY(out)) { m_free(out); return; }
 	int line = str_line(out);
 	m_free(out);
-	int count = atoi(m_str(line));
+	long count = s_to_long(line);
 	m_free(line);
 
 	if (count > 0) {
-		char line[64];
-		snprintf(line, sizeof(line), "%s: running (%d)", label, count);
-		FIELD_ADD(items, line, ALIGN_LEFT);
+		int l = s_printf(0, 0, "%s: running (%ld)", label, count);
+		FIELD_ADD(items, m_str(l), ALIGN_LEFT);
+		m_free(l);
 	}
 }
 
