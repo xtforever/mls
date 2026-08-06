@@ -32,22 +32,26 @@ int gather_ports(cfg_t cfg)
 		if (s_has_prefix(line, "State") || s_has_prefix(line, "Netid")) continue;
 
 		s_split(toks, m_buf(line), ' ', 1);
-		char **tk = (char **)m_buf(toks);
-		char *tok[8];
+		int tok = m_alloc(8, sizeof(int), MFREE_EACH);
 		int n = 0;
 		for (int j = 0; j < (int)m_len(toks) && n < 8; j++)
-			if (tk[j][0]) tok[n++] = tk[j];
-		if (n < 5) continue;
+			if (STR(toks, j)[0]) {
+				int h = s_dup(STR(toks, j));
+				m_put(tok, &h);
+				n++;
+			}
+		if (n < 5) { m_free(tok); continue; }
 
-		char *local = tok[3];
+		char *local = m_str(INT(tok, 3));
 		char *colon = strrchr(local, ':');
-		if (!colon || !colon[1]) continue;
+		if (!colon || !colon[1]) { m_free(tok); continue; }
 
 		int ah = s_dup(local);
 		int a2 = s_left(ah, (int)(colon - local));
 		m_free(ah);
 		ah = a2;
 		int ph = s_dup(colon + 1);
+		m_free(tok);
 
 		int proc_h = 0;
 		if (is_root) {

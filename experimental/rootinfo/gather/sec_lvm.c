@@ -57,13 +57,12 @@ int gather_lvm(cfg_t cfg)
 		int vgp, *vgd;
 		m_foreach(vg_lines, vgp, vgd) {
 			s_split(toks, m_buf(*vgd), '|', 1);
-			char **t = (char **)m_buf(toks);
 			if (m_len(toks) >= 3) {
-				int nh = s_dup(t[0]);
+				int nh = s_dup(STR(toks, 0));
 				m_put(vg_names, &nh);
-				unsigned long long sz = strtoull(t[1], NULL, 10);
+				unsigned long long sz = strtoull(STR(toks, 1), NULL, 10);
 				m_put(vg_sizes, &sz);
-				unsigned long long fr = strtoull(t[2], NULL, 10);
+				unsigned long long fr = strtoull(STR(toks, 2), NULL, 10);
 				m_put(vg_frees, &fr);
 			}
 		}
@@ -80,10 +79,9 @@ int gather_lvm(cfg_t cfg)
 		int pvp, *pvd;
 		m_foreach(pv_lines, pvp, pvd) {
 			s_split(toks, m_buf(*pvd), '|', 1);
-			char **t = (char **)m_buf(toks);
-			int nh = m_len(toks) >= 1 ? s_dup(t[0]) : s_dup("");
+			int nh = m_len(toks) >= 1 ? s_dup(STR(toks, 0)) : s_dup("");
 			m_put(pv_names, &nh);
-			int vh = m_len(toks) >= 2 ? s_dup(t[1]) : s_dup("");
+			int vh = m_len(toks) >= 2 ? s_dup(STR(toks, 1)) : s_dup("");
 			m_put(pv_vgs, &vh);
 		}
 		m_free(pv_lines);
@@ -93,14 +91,13 @@ int gather_lvm(cfg_t cfg)
 	int lvp, *lvd;
 	m_foreach(lv_lines, lvp, lvd) {
 		s_split(toks, m_buf(*lvd), '|', 1);
-		char **t = (char **)m_buf(toks);
 		if (m_len(toks) < 4) continue;
 
 		lv_row_t r = {0};
-		r.lv_name = s_dup(t[0]);
-		r.vg_name = s_dup(t[1]);
-		r.lv_size = strtoull(t[2], NULL, 10);
-		r.lv_path = s_dup(t[3]);
+		r.lv_name = s_dup(STR(toks, 0));
+		r.vg_name = s_dup(STR(toks, 1));
+		r.lv_size = strtoull(STR(toks, 2), NULL, 10);
+		r.lv_path = s_dup(STR(toks, 3));
 
 		/* lookup VG free/size */
 		int vp;
@@ -139,14 +136,13 @@ int gather_lvm(cfg_t cfg)
 				int mp;
 				int *md;
 				m_foreach(mlines, mp, md) {
-					s_split(toks2, m_buf(*md), ' ', 1);
-					char **mt = (char **)m_buf(toks2);
-					if (m_len(toks2) < 2) continue;
-					if (s_strcmp_c(r.lv_path, mt[0]) == 0 ||
-					    s_strcmp_c(dm_h, mt[0]) == 0) {
-						m_free(r.mount);
-						r.mount = s_dup(mt[1]);
-						break;
+				s_split(toks2, m_buf(*md), ' ', 1);
+				if (m_len(toks2) < 2) continue;
+				if (s_strcmp_c(r.lv_path, STR(toks2, 0)) == 0 ||
+				    s_strcmp_c(dm_h, STR(toks2, 0)) == 0) {
+					m_free(r.mount);
+					r.mount = s_dup(STR(toks2, 1));
+					break;
 					}
 				}
 				m_free(toks2);

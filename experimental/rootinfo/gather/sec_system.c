@@ -144,23 +144,27 @@ static void gather_disk(int entries)
 	m_foreach(lines, p, d) {
 		if (s_has_prefix(*d, "Filesystem")) continue;
 		s_split(toks, m_buf(*d), ' ', 1);
-		char **tk = (char **)m_buf(toks);
-		char *tok[16];
+		int tok = m_alloc(16, sizeof(int), MFREE_EACH);
 		int n = 0;
 		for (int j = 0; j < (int)m_len(toks) && n < 16; j++)
-			if (tk[j][0]) tok[n++] = tk[j];
-		if (n < 6) continue;
+			if (STR(toks, j)[0]) {
+				int h = s_dup(STR(toks, j));
+				m_put(tok, &h);
+				n++;
+			}
+		if (n < 6) { m_free(tok); continue; }
 
 		int row = m_create(6, sizeof(field_t));
-		FIELD_ADD_H(row, s_dup(tok[0]));
+		FIELD_ADD_H(row, s_dup(m_str(INT(tok, 0))));
 		for (int c = 1; c < 5; c++)
-			FIELD_ADD_H_R(row, s_dup(tok[c]));
+			FIELD_ADD_H_R(row, s_dup(m_str(INT(tok, c))));
 		int mnt = s_new();
 		for (int j = 5; j < n; j++) {
 			if (j > 5) s_cat(mnt, " ");
-			s_cat(mnt, tok[j]);
+			s_cat(mnt, m_str(INT(tok, j)));
 		}
 		FIELD_ADD_H(row, mnt);
+		m_free(tok);
 		m_put(t->rows, &row);
 	}
 	m_free(toks);

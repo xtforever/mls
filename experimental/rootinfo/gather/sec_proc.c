@@ -30,29 +30,32 @@ int gather_proc(cfg_t cfg)
 		if (s_has_prefix(*d, "USER") || s_has_prefix(*d, "PID")) continue;
 
 		s_split(toks, m_buf(*d), ' ', 1);
-		char **tk = (char **)m_buf(toks);
 		int n = m_len(toks);
-		char *fields[4] = {0};
+		int fields = m_alloc(4, sizeof(int), MFREE_EACH);
 		int fcnt = 0;
 		int cmd_h = s_new();
 		for (int j = 0; j < n; j++) {
-			if (!tk[j][0]) continue;
-			if (fcnt < 4) fields[fcnt++] = tk[j];
-			else {
+			if (!STR(toks, j)[0]) continue;
+			if (fcnt < 4) {
+				int h = s_dup(STR(toks, j));
+				m_put(fields, &h);
+				fcnt++;
+			} else {
 				if (s_strlen(cmd_h)) s_cat(cmd_h, " ");
-				s_cat(cmd_h, tk[j]);
+				s_cat(cmd_h, STR(toks, j));
 			}
 		}
-		if (fcnt < 4) { m_free(cmd_h); continue; }
+		if (fcnt < 4) { m_free(fields); m_free(cmd_h); continue; }
 
 		int row = m_create(5, sizeof(field_t));
-		const char *cols2[] = {fields[0], fields[1], fields[2], fields[3],
-				       m_str(cmd_h)};
-		for (int j = 0; j < 5; j++) {
-			field_t f_ = { .str_h = s_dup(cols2[j]),
+		for (int j = 0; j < 4; j++) {
+			field_t f_ = { .str_h = s_dup(m_str(INT(fields, j))),
 				       .align = (j >= 1 && j <= 3) ? ALIGN_RIGHT : ALIGN_LEFT };
 			m_put(row, &f_);
 		}
+		field_t f_ = { .str_h = s_dup(m_str(cmd_h)), .align = ALIGN_LEFT };
+		m_put(row, &f_);
+		m_free(fields);
 		m_free(cmd_h);
 		m_put(t->rows, &row);
 		count++;

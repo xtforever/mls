@@ -22,12 +22,11 @@ int gather_zfs(cfg_t cfg)
 	m_foreach(lines, p, d) {
 		if (s_isempty(*d)) continue;
 		s_split(toks, m_buf(*d), '\t', 1);
-		char **tk = (char **)m_buf(toks);
 		int ncols = (int)m_len(toks);
 		if (ncols > 5) ncols = 5;
 		int row = m_create(5, sizeof(field_t));
 		for (int c = 0; c < 5; c++)
-			FIELD_ADD(row, c < ncols ? tk[c] : "");
+			FIELD_ADD(row, c < ncols ? STR(toks, c) : "");
 		m_put(t->rows, &row);
 	}
 	m_free(toks);

@@ -214,9 +214,8 @@ int toks = m_alloc(10, sizeof(char *), MFREE_STR);   // token array, reused
 
 m_foreach(lines, p, d) {
     s_split(toks, m_buf(*d), '|', 1);   // 1 = trim whitespace from fields
-    char **t = (char **)m_buf(toks);
     if (m_len(toks) >= 4) {             // guard short/malformed lines
-        // t[0] t[1] t[2] t[3] = columns, in position
+        // STR(toks,0) STR(toks,1) STR(toks,2) STR(toks,3) = columns, in position
     }
 }
 m_free(toks);
