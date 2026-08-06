@@ -22,6 +22,11 @@ const datatype_t *dt_lookup(const char *name)
 	return NULL;
 }
 
+void dt_free_all(void)
+{
+	if (reg) { m_free(reg); reg = 0; }
+}
+
 void dt_render(const entry_t *e, void *cfg)
 {
 	const datatype_t *dt = dt_lookup(m_str(e->type_h));

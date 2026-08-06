@@ -12,15 +12,8 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 {
 	if (STRTAB_EMPTY(lines)) { m_free(lines); return; }
 
-	int th = m_alloc(1, sizeof(table_t), 0);
+	int th = table_new(2, (const char *[]){"Schedule", "Command"});
 	table_t *t = (table_t *)m_buf(th);
-	*t = (table_t){0};
-	t->title_h = 0;
-
-	t->header = m_create(2, sizeof(field_t));
-	FIELD_ADD(t->header, "Schedule", ALIGN_LEFT);
-	FIELD_ADD(t->header, "Command", ALIGN_LEFT);
-
 	t->rows = m_create((size_t)(max_lines + 1), sizeof(int));
 	int count = 0;
 	int p, *d;
@@ -58,8 +51,7 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 		count++;
 	}
 	if (count > 0) {
-		entry_t e = { .type_h = s_dup("table"), .data_h = th };
-		m_put(entries, &e);
+		add_entry(entries, "table", th);
 	} else {
 		m_free(th);
 	}
@@ -84,23 +76,15 @@ static void add_cron_list_line(int entries, const char *label, const char *dir)
 
 	if (!off) { m_free(line); return; }
 
-	int th = m_alloc(1, sizeof(text_t), 0);
-	text_t *t = (text_t *)m_buf(th);
-	*t = (text_t){0};
-	t->text_h = line;
-	entry_t e = { .type_h = s_dup("text"), .data_h = th };
-	m_put(entries, &e);
+	add_entry(entries, "text", text_new(line));
 }
 
 int gather_cron(cfg_t cfg)
 {
 	int max_lines = cfg_int(cfg, "cron", "max_lines", 10);
 
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	int sec_h = section_new("CRON", 8);
 	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("CRON");
-	sec->entries = m_create(8, sizeof(entry_t));
 
 	add_cron_table(sec->entries, "Crontab",
 		subproc_lines("crontab -l 2>/dev/null"), max_lines);

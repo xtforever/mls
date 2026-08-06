@@ -33,6 +33,49 @@ static inline int mstr_empty(int a)
 	return (a == 0 || m_len(a) == 0 || CHAR(a, 0) == 0);
 }
 
+static inline int section_new(const char *title, int cap)
+{
+	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	section_t *sec = (section_t *)m_buf(sec_h);
+	*sec = (section_t){0};
+	sec->title = s_dup(title);
+	sec->entries = m_create((size_t)cap, sizeof(entry_t));
+	return sec_h;
+}
+
+static inline void add_entry(int entries, const char *type, int data_h)
+{
+	entry_t e = {0};
+	e.type_h = s_dup(type);
+	e.data_h = data_h;
+	m_put(entries, &e);
+}
+
+static inline int table_new_a(int ncols, const char **cols, const align_t *aligns)
+{
+	int th = m_alloc(1, sizeof(table_t), 0);
+	table_t *t = (table_t *)m_buf(th);
+	*t = (table_t){0};
+	t->header = m_create((size_t)ncols, sizeof(field_t));
+	for (int i = 0; i < ncols; i++)
+		FIELD_ADD(t->header, cols[i], aligns ? aligns[i] : ALIGN_LEFT);
+	return th;
+}
+
+static inline int table_new(int ncols, const char **cols)
+{
+	return table_new_a(ncols, cols, 0);
+}
+
+static inline int text_new(int text_h)
+{
+	int th = m_alloc(1, sizeof(text_t), 0);
+	text_t *t = (text_t *)m_buf(th);
+	*t = (text_t){0};
+	t->text_h = text_h;
+	return th;
+}
+
 static inline int _cmp_mstr(const void *va, const void *vb)
 {
 	int a = *(int *)va;

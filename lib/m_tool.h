@@ -48,6 +48,8 @@ int s_strncpy (int dst, int src, int max);
 int m_mcopy (int dest, int destp, int src, int srcp, int src_count);
 int m_binsert (int buf, const void *data,
 	       int (*cmpf) (const void *a, const void *b), int with_duplicates);
+int m_binsert2 (int buf, const void *data,
+	       int (*cmpf) (const void *a, const void *b), int with_duplicates, int with_copy);
 int compare_int (const void *a, const void *b);
 int cmp_mstr_fast (const void *a, const void *b);
 int cmp_mstr_cstr_fast (const void *a, const void *b);

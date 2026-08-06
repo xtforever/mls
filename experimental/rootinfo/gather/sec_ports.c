@@ -18,21 +18,11 @@ int gather_ports(cfg_t cfg)
 	int lines = subproc_lines(cmd);
 	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	int sec_h = section_new("OPEN PORTS", 2);
 	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("OPEN PORTS");
-	sec->entries = m_create(2, sizeof(entry_t));
 
-	int th = m_alloc(1, sizeof(table_t), 0);
+	int th = table_new(ncols, (const char *[]){"Address", "Port", "Process"});
 	table_t *t = (table_t *)m_buf(th);
-	*t = (table_t){0};
-
-	t->header = m_create((size_t)ncols, sizeof(field_t));
-	const char *cols[] = {"Address", "Port", "Process"};
-	for (int i = 0; i < ncols; i++)
-		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
-
 	t->rows = m_create((size_t)(max + 1), sizeof(int));
 	int count = 0;
 	int p, *d;
@@ -93,8 +83,7 @@ int gather_ports(cfg_t cfg)
 		count++;
 	}
 
-	entry_t e = { .type_h = s_dup("table"), .data_h = th };
-	m_put(sec->entries, &e);
+	add_entry(sec->entries, "table", th);
 	m_free(lines);
 
 	return sec_h;

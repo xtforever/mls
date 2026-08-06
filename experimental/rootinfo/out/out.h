@@ -6,6 +6,7 @@
 void out_init(void *cfg);
 int  out_render(int sections_h, void *cfg);
 void out_section(section_t *s, void *cfg);
+void free_sections(int sections_h);
 
 void out_table(int data_h, void *cfg);
 void out_list(int data_h, void *cfg);

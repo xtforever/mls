@@ -9,28 +9,19 @@
 int gather_proc(cfg_t cfg)
 {
 	int top = cfg_int(cfg, "proc", "top", 5);
-	char cmd[128];
-	snprintf(cmd, sizeof(cmd), "ps -eo user,pid,%%cpu,%%mem,comm --sort=-%%cpu 2>/dev/null");
+	int cmd = s_printf(0, 0, "ps -eo user,pid,%%cpu,%%mem,comm --sort=-%%cpu 2>/dev/null");
 
-	int lines = subproc_lines(cmd);
+	int lines = subproc_lines(m_str(cmd));
+	m_free(cmd);
 	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	int sec_h = section_new("TOP PROCESSES", 2);
 	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("TOP PROCESSES");
-	sec->entries = m_create(2, sizeof(entry_t));
 
-	int th = m_alloc(1, sizeof(table_t), 0);
-	table_t *t = (table_t *)m_buf(th);
-	*t = (table_t){0};
-
-	t->header = m_create(5, sizeof(field_t));
 	const char *cols[] = {"USER", "PID", "%CPU", "%MEM", "COMMAND"};
 	align_t aligns[] = {ALIGN_LEFT, ALIGN_RIGHT, ALIGN_RIGHT, ALIGN_RIGHT, ALIGN_LEFT};
-	for (int i = 0; i < 5; i++)
-		FIELD_ADD(t->header, cols[i], aligns[i]);
-
+	int th = table_new_a(5, cols, aligns);
+	table_t *t = (table_t *)m_buf(th);
 	t->rows = m_create((size_t)(top + 1), sizeof(int));
 	int count = 0;
 	int p, *d;
@@ -68,8 +59,7 @@ int gather_proc(cfg_t cfg)
 	}
 	m_free(toks);
 
-	entry_t e = { .type_h = s_dup("table"), .data_h = th };
-	m_put(sec->entries, &e);
+	add_entry(sec->entries, "table", th);
 	m_free(lines);
 
 	return sec_h;

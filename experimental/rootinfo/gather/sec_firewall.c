@@ -2,7 +2,14 @@
 #include "m_types.h"
 #include "m_subproc.h"
 #include "m_tool.h"
-#include <string.h>
+#include <unistd.h>
+
+static int section_with_text(const char *title, const char *text)
+{
+	int sec_h = section_new(title, 2);
+	add_entry(((section_t *)m_buf(sec_h))->entries, "text", text_new(s_dup(text)));
+	return sec_h;
+}
 
 int gather_firewall(cfg_t cfg)
 {
@@ -15,22 +22,10 @@ int gather_firewall(cfg_t cfg)
 		status = "ENABLED";
 	else if (rc == 127)
 		status = "DISABLED (iptables not found)";
-	else
+	else if (geteuid() != 0)
 		status = "ENABLED (requires root to list rules)";
+	else
+		status = "DISABLED (iptables returned error)";
 
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
-	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("IPTABLES");
-
-	int th = m_alloc(1, sizeof(text_t), 0);
-	text_t *t = (text_t *)m_buf(th);
-	*t = (text_t){0};
-	t->text_h = s_dup(status);
-
-	entry_t e = { .type_h = s_dup("text"), .data_h = th };
-	sec->entries = m_create(2, sizeof(entry_t));
-	m_put(sec->entries, &e);
-
-	return sec_h;
+	return section_with_text("IPTABLES", status);
 }

@@ -43,8 +43,8 @@ uptime, "17d 3h" is more meaningful than "411h".
 **Fix:** In `gather/sec_system.c:217`, add day extraction:
 ```c
 int dd = hh / 24; hh %= 24;
-if (dd) snprintf(buf, sizeof(buf), "%dd %dh %dm", dd, hh, mm);
-else    snprintf(buf, sizeof(buf), "%dh %dm", hh, mm);
+if (dd) up_h = s_printf(0, 0, "%dd %dh %dm", dd, hh, mm);
+else    up_h = s_printf(0, 0, "%dh %dm", hh, mm);
 ```
 
 **Affects:** `gather/sec_system.c:209-231`.

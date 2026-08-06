@@ -163,21 +163,11 @@ int gather_lvm(cfg_t cfg)
 	int n_rows = (int)m_len(rows);
 	if (!n_rows) { m_free(rows); return 0; }
 
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	int sec_h = section_new("LVM", 2);
 	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("LVM");
-	sec->entries = m_create(2, sizeof(entry_t));
 
-	int th = m_alloc(1, sizeof(table_t), 0);
+	int th = table_new(7, (const char *[]){"PV", "VG", "LV", "Size", "Free", "Mount", ""});
 	table_t *t = (table_t *)m_buf(th);
-	*t = (table_t){0};
-
-	t->header = m_create(7, sizeof(field_t));
-	const char *cols[] = {"PV", "VG", "LV", "Size", "Free", "Mount", ""};
-	for (int i = 0; i < 7; i++)
-		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
-
 	t->rows = m_create((size_t)n_rows, sizeof(int));
 
 	int prev_pv = 0;
@@ -251,8 +241,7 @@ int gather_lvm(cfg_t cfg)
 	m_free(pv_names);
 	m_free(pv_vgs);
 
-	entry_t e = { .type_h = s_dup("table"), .data_h = th };
-	m_put(sec->entries, &e);
+	add_entry(sec->entries, "table", th);
 
 	return sec_h;
 }

@@ -22,9 +22,9 @@ static void add_version(int items, const char *label, const char *cmd)
 
 static void add_service(int items, const char *label, const char *name)
 {
-	char cmd[64];
-	snprintf(cmd, sizeof(cmd), "pgrep -c %s 2>/dev/null", name);
-	int out = subproc_read(cmd);
+	int cmd = s_printf(0, 0, "pgrep -c %s 2>/dev/null", name);
+	int out = subproc_read(m_str(cmd));
+	m_free(cmd);
 	if (STRTAB_EMPTY(out)) { m_free(out); return; }
 	int line = str_line(out);
 	m_free(out);
@@ -38,10 +38,8 @@ static void add_service(int items, const char *label, const char *name)
 int gather_stack(cfg_t cfg)
 {
 	(void)cfg;
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	int sec_h = section_new("SOFTWARE STACKS", 2);
 	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("SOFTWARE STACKS");
 
 	int lh = m_alloc(1, sizeof(list_t), 0);
 	list_t *l = (list_t *)m_buf(lh);
@@ -57,9 +55,7 @@ int gather_stack(cfg_t cfg)
 	add_service(l->items, "Nginx", "nginx");
 	add_service(l->items, "HAProxy", "haproxy");
 
-	entry_t e = { .type_h = s_dup("list"), .data_h = lh };
-	sec->entries = m_create(2, sizeof(entry_t));
-	m_put(sec->entries, &e);
+	add_entry(sec->entries, "list", lh);
 
 	return sec_h;
 }

@@ -12,8 +12,10 @@ int main(void)
 
 	int sections = gather_all(cfg);
 	out_render(sections, &cfg);
+	free_sections(sections);
 
 	cfg_free(cfg);
+	dt_free_all();
 	m_destruct();
 	return 0;
 }

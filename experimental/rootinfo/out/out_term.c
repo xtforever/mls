@@ -5,11 +5,27 @@
 #include <string.h>
 #include <math.h>
 
+static void free_field_list(int list_h)
+{
+	field_t *f;
+	int i;
+	m_foreach(list_h, i, f) {
+		m_free(f->str_h);
+		m_free(f->unit_h);
+	}
+	m_free(list_h);
+}
+
 static void free_table(int data_h)
 {
 	table_t *t = (table_t *)m_buf(data_h);
 	m_free(t->title_h);
-	m_free(t->header);
+	free_field_list(t->header);
+	int *row_h;
+	int i;
+	m_foreach(t->rows, i, row_h) {
+		free_field_list(*row_h);
+	}
 	m_free(t->rows);
 	m_free(data_h);
 }
@@ -18,7 +34,7 @@ static void free_list(int data_h)
 {
 	list_t *l = (list_t *)m_buf(data_h);
 	m_free(l->title_h);
-	m_free(l->items);
+	free_field_list(l->items);
 	m_free(data_h);
 }
 
@@ -71,6 +87,27 @@ int out_render(int sections_h, void *cfg)
 	return 0;
 }
 
+void free_sections(int sections_h)
+{
+	int si, *sec_h;
+	m_foreach(sections_h, si, sec_h) {
+		section_t *s = (section_t *)m_buf(*sec_h);
+		m_free(s->title);
+		m_free(s->footer);
+		int ei;
+		entry_t *e;
+		m_foreach(s->entries, ei, e) {
+			m_free(e->title);
+			m_free(e->footer);
+			dt_free(e);
+			m_free(e->type_h);
+		}
+		m_free(s->entries);
+		m_free(*sec_h);
+	}
+	m_free(sections_h);
+}
+
 void out_section(section_t *s, void *cfg)
 {
 	if (!s) return;
@@ -95,7 +132,7 @@ static const char *human_suffix(double *v)
 	return suf[i];
 }
 
-static void render_field_value(const field_t *f, char *buf, size_t sz)
+static int render_field_value(const field_t *f)
 {
 	const char *str = f->str_h ? m_str(f->str_h) : "";
 	double val = 0;
@@ -108,35 +145,32 @@ static void render_field_value(const field_t *f, char *buf, size_t sz)
 		const char *unit = f->unit_h ? m_str(f->unit_h) : "";
 		if (f->human) {
 			const char *suf = human_suffix(&dv);
-			snprintf(buf, sz, "%.1f%s%s", dv, suf, unit);
+			return s_printf(0, 0, "%.1f%s%s", dv, suf, unit);
 		} else if (f->fmt == FMT_HEX) {
-			snprintf(buf, sz, "%llx", v);
+			return s_printf(0, 0, "%llx", v);
 		} else {
-			snprintf(buf, sz, "%s%s", str, unit);
+			return s_printf(0, 0, "%s%s", str, unit);
 		}
-		break;
 	}
 	case FMT_FLOAT:
 		val = strtod(str, NULL);
 		if (f->human) {
 			const char *suf = human_suffix(&val);
-			snprintf(buf, sz, "%.1f%s%s", val, suf, f->unit_h ? m_str(f->unit_h) : "");
+			return s_printf(0, 0, "%.1f%s%s", val, suf, f->unit_h ? m_str(f->unit_h) : "");
 		} else {
-			snprintf(buf, sz, "%.*f%s", f->prec ? f->prec : 1, val,
-				 f->unit_h ? m_str(f->unit_h) : "");
+			return s_printf(0, 0, "%.*f%s", f->prec ? f->prec : 1, val,
+					f->unit_h ? m_str(f->unit_h) : "");
 		}
-		break;
 	default:
-		snprintf(buf, sz, "%s", str);
-		break;
+		return s_printf(0, 0, "%s", str);
 	}
 }
 
 void out_field(const field_t *f, void *cfg)
 {
 	(void)cfg;
-	char vbuf[128];
-	render_field_value(f, vbuf, sizeof(vbuf));
+	int vh = render_field_value(f);
+	const char *vbuf = m_str(vh);
 	int w = f->len ? f->len : (int)strlen(vbuf);
 
 	switch (f->align) {
@@ -161,6 +195,7 @@ void out_field(const field_t *f, void *cfg)
 		for (int i = 0; i < filled; i++) fputs(full, stdout);
 		for (int i = filled; i < bw; i++) fputs(empty, stdout);
 	}
+	m_free(vh);
 }
 
 void out_table(int data_h, void *cfg)
@@ -196,9 +231,9 @@ void out_table(int data_h, void *cfg)
 		field_t *fc;
 		m_foreach(row_h, c2, fc) {
 			if (c2 >= ncols) break;
-			char vbuf[128];
-			render_field_value(fc, vbuf, sizeof(vbuf));
-			int vw = (int)strlen(vbuf);
+			int vh = render_field_value(fc);
+			int vw = (int)strlen(m_str(vh));
+			m_free(vh);
 			if (vw > colw[c2]) colw[c2] = vw;
 		}
 	}

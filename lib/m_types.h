@@ -58,6 +58,7 @@ typedef struct {
 } datatype_t;
 
 void dt_register(const datatype_t *dt);
+void dt_free_all(void);
 const datatype_t *dt_lookup(const char *name);
 void dt_render(const entry_t *e, void *cfg);
 void dt_free(const entry_t *e);

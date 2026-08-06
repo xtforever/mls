@@ -12,21 +12,11 @@ int gather_zfs(cfg_t cfg)
 	int lines = subproc_lines("zfs list -H -o name,used,avail,refer,mountpoint 2>/dev/null");
 	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
-	int sec_h = m_alloc(1, sizeof(section_t), 0);
+	int sec_h = section_new("ZFS", 2);
 	section_t *sec = (section_t *)m_buf(sec_h);
-	*sec = (section_t){0};
-	sec->title = s_dup("ZFS");
-	sec->entries = m_create(2, sizeof(entry_t));
 
-	int th = m_alloc(1, sizeof(table_t), 0);
+	int th = table_new(5, (const char *[]){"Name", "Used", "Avail", "Refer", "Mount"});
 	table_t *t = (table_t *)m_buf(th);
-	*t = (table_t){0};
-
-	t->header = m_create(5, sizeof(field_t));
-	const char *cols[] = {"Name", "Used", "Avail", "Refer", "Mount"};
-	for (int i = 0; i < 5; i++)
-		FIELD_ADD(t->header, cols[i], ALIGN_LEFT);
-
 	t->rows = m_create(m_len(lines), sizeof(int));
 	int toks = m_alloc(10, sizeof(char *), MFREE_STR);
 	int p, *d;
@@ -43,8 +33,7 @@ int gather_zfs(cfg_t cfg)
 	}
 	m_free(toks);
 
-	entry_t e = { .type_h = s_dup("table"), .data_h = th };
-	m_put(sec->entries, &e);
+	add_entry(sec->entries, "table", th);
 	m_free(lines);
 
 	return sec_h;

@@ -27,9 +27,9 @@ cfg_t cfg_load(const char *override)
 	if (!h) {
 		const char *home = getenv("HOME");
 		if (home) {
-			char buf[512];
-			snprintf(buf, sizeof(buf), "%s/.config/rootinfo/rootinfo.hdf", home);
-			h = hdf_parse_file(buf);
+			int path = s_printf(0, 0, "%s/.config/rootinfo/rootinfo.hdf", home);
+			h = hdf_parse_file(m_str(path));
+			m_free(path);
 		}
 	}
 	if (!h) {

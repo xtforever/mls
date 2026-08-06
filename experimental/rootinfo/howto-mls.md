@@ -326,26 +326,25 @@ static void gather_users(int entries)
     int ucount = (int)m_len(unames);
     if (!ucount) { m_free(unames); return; }
 
-    char line[256];
-    int off = snprintf(line, sizeof(line), "Users (%d): ", ucount);
+    int line = s_printf(0, 0, "Users (%d): ", ucount);
     for (int i = 0; i < ucount; i++) {
-        if (i) off += snprintf(line + off, sizeof(line) - (size_t)off, ", ");
-        char user[64] = "";
-        sscanf(m_str(INT(unames, i)), "%63s", user);
-        off += snprintf(line + off, sizeof(line) - (size_t)off, "%s", user);
+        if (i) s_cat(line, ", ");
+        s_cat(line, m_str(INT(unames, i)));
     }
 
     int h = m_alloc(1, sizeof(text_t), 0);
     text_t *t = (text_t *)m_buf(h);
     *t = (text_t){0};
-    t->text_h = s_dup(line);
+    t->text_h = line;
     add_entry(entries, "text", h);
     m_free(unames);
 }
 ```
 
 Zero ad-hoc arrays.  No `m_peek`/`m_len` index loops.  No raw `m_str`
-pointer chasing in the hot path.  No `O(n^2)` manual dedup.
+pointer chasing in the hot path.  No `O(n^2)` manual dedup.  No
+`snprintf`/offset bookkeeping — `s_printf(0, 0, ...)` creates the line
+handle and `s_cat` appends the comma-separated names.
 
 ## What this replaces
 
@@ -368,6 +367,7 @@ fixed-size arrays.
 | `*(int *)m_buf(h) + i` / pointer arithmetic | `INT(h,i)` (checked) / `INT_SAFE(h,i)` (safe) |
 | `memcpy(dst, src, n)` into/out of the array | `m_write(m,p,data,n)` / `m_read_safe(h,p,&data,n)` |
 | `strcat(buf, s)` into a fixed buffer | `m_cat(h, s)` / `s_cat(h, c)` / `s_printf(h, -1, ...)` |
+| `char line[256]; int off = snprintf(...); off += snprintf(...)` | `s_printf(0, 0, ...)` then `s_cat(line, ...)` — no offset math |
 | unchecked `memcpy`/`memmove` | `m_slice(dest, offs, m, a, b)` |
 | abort-prone `m_put`/`m_free` on untrusted data | `m_put_safe` / `m_free_safe` (+ `mls_errno` check) |
 

@@ -203,7 +203,8 @@ typedef struct {
 The renderer reuses printf-style formatting for numbers: `FMT_INT`/`FMT_FLOAT`/
 `FMT_HEX` map to `%d`/`%f`/`%x`, `prec` controls the fraction-width, and
 `align` sets `%-*s` vs `%*s` vs center-pad.  No new format system — the
-renderer just calls `snprintf` with the conventional flags.
+renderer builds each value string with `s_printf` (`lib/m_tool.h`) and
+prints it with `%*s`/`%-*s`.
 
 ### List — ordered array of fields
 

@@ -922,6 +922,9 @@ static int new_list(const char *buf, size_t len, size_t max, size_t w, int hdl )
 	return ret;
 }
 
+int m_binsert2 (int buf, const void *data,
+	       int (*cmpf) (const void *data, const void *buf_elem),
+	       int with_duplicates, int with_copy);
 
 /**
  * Looks up or creates a constant string from a C-style string.
@@ -936,7 +939,7 @@ int conststr_lookup_c (const char *s, int copy_string )
 		return CS_ZERO;
 
 	CS_MAP_LOCK ();
-	int p = m_binsert(CS_MAP, s, mscmpc, 0);
+	int p = m_binsert2(CS_MAP, s, mscmpc, 0, 0);
 	if (p < 0) {
 		CS_MAP_UNLOCK ();
 		return INT(CS_MAP, (-p) - 1);
@@ -2271,10 +2274,33 @@ int cmp_int (const void *a0, const void *b0)
  * @param cmpf Comparison function pointer.
  * @param with_duplicates If non-zero, allows duplicate elements.
  * @return The index where the element was inserted, or -index if it exists and duplicates are not allowed.
+ * @bugs if data is not allocated or its alloced size if less the m_width(buf) this will crash!
  */
 int m_binsert (int buf, const void *data,
+               int (*cmpf) (const void *data, const void *buf_elem),
+               int with_duplicates )
+{
+	return m_binsert2( buf,data,cmpf,with_duplicates, 1);
+}
+
+/**
+ * Inserts an element into a sorted m-array, maintaining order.
+ * Like m_binsert, but with_copy=0 skips copying data into the array —
+ * only an empty slot is made room for and the caller must fill it.
+ * Use when data is not m_width(buf) bytes long (e.g. a C string looked
+ * up in an int list).
+ *
+ * @param buf The handle of the m-array.
+ * @param data Pointer to the element to insert.
+ * @param cmpf Comparison function pointer.
+ * @param with_duplicates If non-zero, allows duplicate elements.
+ * @param with_copy If non-zero, data is copied into the array; if zero,
+ *        an empty (zeroed) slot is inserted instead.
+ * @return The index where the element was inserted, or -index if it exists and duplicates are not allowed.
+ */
+int m_binsert2 (int buf, const void *data,
 	       int (*cmpf) (const void *data, const void *buf_elem),
-	       int with_duplicates)
+	       int with_duplicates, int with_copy )
 {
 	int left = 0;
 	int right = m_len (buf) + 1;
@@ -2282,7 +2308,10 @@ int m_binsert (int buf, const void *data,
 	void *obj;
 	int cmp;
 	if (m_len (buf) == 0) {
-		m_put (buf, data);
+		if (with_copy)
+			m_put (buf, data);
+		else
+			m_ins (buf, 0, 1);
 		return 0;
 	}
 	while (1) {
@@ -2308,7 +2337,7 @@ int m_binsert (int buf, const void *data,
 	}
 	cur--;
 	m_ins (buf, cur, 1);
-	m_write (buf, cur, data, 1);
+	if( with_copy ) m_write (buf, cur, data, 1);
 	return cur;
 }
 
