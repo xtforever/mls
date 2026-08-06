@@ -94,5 +94,15 @@ int gather_cron(cfg_t cfg)
 	add_cron_list_line(sec->entries, "Monthly", "/etc/cron.monthly");
 	add_cron_list_line(sec->entries, "Users",   "/var/spool/cron/crontabs");
 
+	/* systemd timers (active only) */
+	int timers = subproc_read("systemctl list-timers --no-legend 2>/dev/null");
+	if (timers > 0 && !s_isempty(timers)) {
+		int n = 0, p;
+		for (p = 0; p < (int)s_strlen(timers); p++)
+			if (CHAR(timers, p) == '\n') n++;
+		add_entry(sec->entries, text_new(s_printf(0, 0, "systemd timers: %d active", n)));
+	}
+	m_free(timers);
+
 	return sec_h;
 }

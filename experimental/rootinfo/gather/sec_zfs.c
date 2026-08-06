@@ -35,5 +35,28 @@ int gather_zfs(cfg_t cfg)
 	add_entry(sec->entries, th);
 	m_free(lines);
 
+	int zstat = subproc_read("zpool status 2>/dev/null");
+	if (zstat > 0 && !s_isempty(zstat)) {
+		int line = s_new();
+		int off = 0;
+		int p, *d;
+		int toks = m_alloc(8, sizeof(int), MFREE_EACH);
+		s_msplit(toks, zstat, s_cstr("\n"));
+		m_foreach(toks, p, d) {
+			s_trim(*d);
+			if (s_isempty(*d)) continue;
+			if (off >= 5) break;
+			if (s_has_prefix(*d, "config:") ||
+			    s_has_prefix(*d, "NAME") ||
+			    s_has_prefix(*d, "  errors:")) continue;
+			if (off) s_cat(line, " | ");
+			s_cat(line, m_str(*d));
+			off++;
+		}
+		m_free(toks);
+		add_entry(sec->entries, text_new(line));
+	}
+	m_free(zstat);
+
 	return sec_h;
 }

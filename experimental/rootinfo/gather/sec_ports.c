@@ -10,11 +10,11 @@
 int gather_ports(cfg_t cfg)
 {
 	int max = cfg_int(cfg, "ports", "max", 5);
-	int ipv4_only = cfg_bool(cfg, "ports", "ipv4", 1);
+	int ipv6 = cfg_bool(cfg, "ports", "ipv6", 1);
 	int is_root = (geteuid() == 0);
 	int ncols = is_root ? 3 : 2;
 
-	const char *cmd = ipv4_only ? "ss -tlp4n 2>/dev/null" : "ss -tlpn 2>/dev/null";
+	const char *cmd = ipv6 ? "ss -tlpn 2>/dev/null" : "ss -tlp4n 2>/dev/null";
 	int lines = subproc_lines(cmd);
 	if (STRTAB_EMPTY(lines)) { m_free(lines); return 0; }
 
@@ -23,6 +23,7 @@ int gather_ports(cfg_t cfg)
 
 	int th = table_new(ncols, (const char *[]){"Address", "Port", "Process"});
 	data_t *t = (data_t *)m_buf(th);
+	int toks = m_alloc(8, sizeof(char *), MFREE_STR);
 	int count = 0;
 	int p, *d;
 	m_foreach(lines, p, d) {
@@ -30,45 +31,32 @@ int gather_ports(cfg_t cfg)
 		int line = *d;
 		if (s_has_prefix(line, "State") || s_has_prefix(line, "Netid")) continue;
 
-		int ah = 0, ph = 0, proc_h = 0;
+		s_split(toks, m_buf(line), ' ', 1);
+		char **tk = (char **)m_buf(toks);
+		char *tok[8];
+		int n = 0;
+		for (int j = 0; j < (int)m_len(toks) && n < 8; j++)
+			if (tk[j][0]) tok[n++] = tk[j];
+		if (n < 5) continue;
 
-		int c0 = s_chr(line, ':', 0);
-		if (c0 >= 0) {
-			int a = c0;
-			while (a > 0 && CHAR(line, a - 1) != ' ') a--;
-			ah = s_slice(0, 0, line, a, c0 - 1);
+		char *local = tok[3];
+		char *colon = strrchr(local, ':');
+		if (!colon || !colon[1]) continue;
 
-			int pe = c0 + 1;
-			while (isdigit((unsigned char)CHAR(line, pe))) pe++;
-			ph = s_slice(0, 0, line, c0 + 1, pe - 1);
+		int ah = s_dup(local);
+		int a2 = s_left(ah, (int)(colon - local));
+		m_free(ah);
+		ah = a2;
+		int ph = s_dup(colon + 1);
 
-			if (is_root) {
-				int sc = s_chr(line, ':', c0 + 1);
-				if (sc >= 0) {
-					int pp = sc + 1;
-					while (CHAR(line, pp) && CHAR(line, pp) != ' ') pp++;
-					while (CHAR(line, pp) == ' ') pp++;
-					if (CHAR(line, pp)) {
-						int end = pp;
-						while (CHAR(line, end) && CHAR(line, end) != ' ') end++;
-						proc_h = s_slice(0, 0, line, pp, end - 1);
-					}
-				}
-				if (proc_h) {
-					int name = s_find(proc_h, "((\"");
-					if (name >= 0) {
-						int start = name + 3;
-						int end = s_find(proc_h, "\",pid=");
-						if (end >= 0) {
-							int nh = s_slice(0, 0, proc_h, start, end - 1);
-							m_free(proc_h);
-							proc_h = nh;
-						} else {
-							m_free(proc_h);
-							proc_h = 0;
-						}
-					}
-				}
+		int proc_h = 0;
+		if (is_root) {
+			int name = s_find(line, "((\"");
+			if (name >= 0) {
+				int start = name + 3;
+				int end = s_find(line, "\",pid=");
+				if (end >= 0)
+					proc_h = s_slice(0, 0, line, start, end - 1);
 			}
 		}
 
@@ -81,6 +69,7 @@ int gather_ports(cfg_t cfg)
 		m_put(t->rows, &row);
 		count++;
 	}
+	m_free(toks);
 
 	add_entry(sec->entries, th);
 	m_free(lines);

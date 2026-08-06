@@ -133,6 +133,40 @@ static void gather_disk(int entries)
 			used / (1024.0*1024.0*1024.0),
 			total / (1024.0*1024.0*1024.0),
 			frac * 100.0), frac));
+
+	int lines = subproc_lines("LC_ALL=C df -kP -x tmpfs -x devtmpfs -x overlay -x squashfs 2>/dev/null");
+	if (STRTAB_EMPTY(lines)) { m_free(lines); return; }
+
+	int th = table_new(6, (const char *[]){"Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"});
+	data_t *t = (data_t *)m_buf(th);
+	int toks = m_alloc(16, sizeof(char *), MFREE_STR);
+	int p, *d;
+	m_foreach(lines, p, d) {
+		if (s_has_prefix(*d, "Filesystem")) continue;
+		s_split(toks, m_buf(*d), ' ', 1);
+		char **tk = (char **)m_buf(toks);
+		char *tok[16];
+		int n = 0;
+		for (int j = 0; j < (int)m_len(toks) && n < 16; j++)
+			if (tk[j][0]) tok[n++] = tk[j];
+		if (n < 6) continue;
+
+		int row = m_create(6, sizeof(field_t));
+		FIELD_ADD_H(row, s_dup(tok[0]));
+		for (int c = 1; c < 5; c++)
+			FIELD_ADD_H_R(row, s_dup(tok[c]));
+		int mnt = s_new();
+		for (int j = 5; j < n; j++) {
+			if (j > 5) s_cat(mnt, " ");
+			s_cat(mnt, tok[j]);
+		}
+		FIELD_ADD_H(row, mnt);
+		m_put(t->rows, &row);
+	}
+	m_free(toks);
+	m_free(lines);
+
+	add_entry(entries, th);
 }
 
 static void gather_proc_uptime(int entries)
@@ -261,6 +295,29 @@ static void gather_network(int entries)
 	int text_h = s_printf(0, 0, "Network: %s", m_str(line));
 	m_free(line);
 	add_entry(entries, text_new(text_h));
+
+	/* default gateway + DNS */
+	int gw = subproc_read("ip route show default 2>/dev/null");
+	if (gw > 0 && !s_isempty(gw)) {
+		int via = s_find(gw, "via ");
+		if (via >= 0) {
+			int start = via + 4;
+			int end = start;
+			while (CHAR(gw, end) && CHAR(gw, end) != ' ') end++;
+			int ip = s_slice(0, 0, gw, start, end - 1);
+			add_entry(entries, text_new(s_printf(0, 0, "Gateway: %s", m_str(ip))));
+			m_free(ip);
+		}
+	}
+	m_free(gw);
+
+	int dns = subproc_read("sed -n 's/^nameserver //p' /etc/resolv.conf 2>/dev/null");
+	if (dns > 0 && !s_isempty(dns)) {
+		int dns_line = s_printf(0, 0, "DNS: %s", m_str(dns));
+		s_trim(dns_line);
+		add_entry(entries, text_new(dns_line));
+	}
+	m_free(dns);
 }
 
 int gather_system(cfg_t cfg)
@@ -306,6 +363,10 @@ int gather_all(cfg_t cfg)
 		if ((sh = gather_lvm(cfg))) m_put(sections, &sh);
 	if (cfg_bool(cfg, "section", "zfs", 1))
 		if ((sh = gather_zfs(cfg))) m_put(sections, &sh);
+	if (cfg_bool(cfg, "section", "docker", 1))
+		if ((sh = gather_docker(cfg))) m_put(sections, &sh);
+	if (cfg_bool(cfg, "section", "health", 1))
+		if ((sh = gather_health(cfg))) m_put(sections, &sh);
 
 	return sections;
 }

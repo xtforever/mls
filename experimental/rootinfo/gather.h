@@ -155,5 +155,7 @@ int gather_proc(cfg_t cfg);
 int gather_cron(cfg_t cfg);
 int gather_firewall(cfg_t cfg);
 int gather_stack(cfg_t cfg);
+int gather_docker(cfg_t cfg);
+int gather_health(cfg_t cfg);
 
 #endif
