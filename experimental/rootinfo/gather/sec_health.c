@@ -26,7 +26,7 @@ int gather_health(cfg_t cfg)
 			if (s_has_prefix(*d, "PermitRootLogin") ||
 			    s_has_prefix(*d, "PasswordAuthentication")) {
 				if (m_len(ssh)) s_cat(ssh, ", ");
-				s_cat(ssh, m_str(*d));
+				s_mcat(ssh, *d);
 			}
 		}
 		m_free(toks);

@@ -46,7 +46,7 @@ int gather_firewall(cfg_t cfg)
 		m_foreach(lines, p, d) {
 			if (s_has_prefix(*d, "-P ")) {
 				if (m_len(pol_h) > 0) s_cat(pol_h, ", ");
-				s_cat(pol_h, m_str(*d));
+				s_mcat(pol_h, *d);
 			} else if (!s_has_prefix(*d, "-N ") && !s_has_prefix(*d, "-X ")) {
 				nrules++;
 			}

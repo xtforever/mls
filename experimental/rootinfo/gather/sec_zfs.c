@@ -49,7 +49,7 @@ int gather_zfs(cfg_t cfg)
 			    s_has_prefix(*d, "NAME") ||
 			    s_has_prefix(*d, "  errors:")) continue;
 			if (off) s_cat(line, " | ");
-			s_cat(line, m_str(*d));
+			s_mcat(line, *d);
 			off++;
 		}
 		m_free(toks);

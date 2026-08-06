@@ -286,6 +286,17 @@ int s_clone (int h)
 }
 
 /**
+ * Copies a string buffer into a new string buffer.
+ *
+ * @param h The handle of the string buffer to copy.
+ * @return The handle of the new string buffer.
+ */
+int s_mdup (int h)
+{
+	return s_clone (h);
+}
+
+/**
  * Resizes a string buffer and ensures it is null-terminated.
  *
  * @param h The handle of the string buffer.
@@ -538,6 +549,22 @@ int s_cat (int h, const char *src)
 		h = s_new ();
 	if (src)
 		s_app1 (h, (char *)src);
+	return h;
+}
+
+/**
+ * Concatenates the content of a string buffer to a string buffer.
+ *
+ * @param h The handle of the string buffer. If <= 0, a new one is allocated.
+ * @param src The handle of the string buffer to concatenate.
+ * @return The handle of the string buffer.
+ */
+int s_mcat (int h, int src)
+{
+	if (h == 0)
+		h = s_new ();
+	if (src > 0 && s_strlen (src) > 0)
+		m_write (h, s_strlen (h), m_str (src), s_strlen (src) + 1);
 	return h;
 }
 

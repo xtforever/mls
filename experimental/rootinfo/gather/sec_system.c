@@ -155,13 +155,13 @@ static void gather_disk(int entries)
 		if (n < 6) { m_free(tok); continue; }
 
 		int row = m_create(6, sizeof(field_t));
-		FIELD_ADD_H(row, s_dup(m_str(INT(tok, 0))));
+		FIELD_ADD_H(row, s_mdup(INT(tok, 0)));
 		for (int c = 1; c < 5; c++)
-			FIELD_ADD_H_R(row, s_dup(m_str(INT(tok, c))));
+			FIELD_ADD_H_R(row, s_mdup(INT(tok, c)));
 		int mnt = s_new();
 		for (int j = 5; j < n; j++) {
 			if (j > 5) s_cat(mnt, " ");
-			s_cat(mnt, m_str(INT(tok, j)));
+			s_mcat(mnt, INT(tok, j));
 		}
 		FIELD_ADD_H(row, mnt);
 		m_free(tok);
@@ -228,7 +228,7 @@ static void gather_users(int entries)
 	int line = s_printf(0, 0, "Users (%d): ", ucount);
 	for (int i = 0; i < ucount; i++) {
 		if (i) s_cat(line, ", ");
-		s_cat(line, m_str(INT(unames, i)));
+		s_mcat(line, INT(unames, i));
 	}
 
 	add_entry(entries, text_new(line));

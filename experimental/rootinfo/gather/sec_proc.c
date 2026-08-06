@@ -49,11 +49,11 @@ int gather_proc(cfg_t cfg)
 
 		int row = m_create(5, sizeof(field_t));
 		for (int j = 0; j < 4; j++) {
-			field_t f_ = { .str_h = s_dup(m_str(INT(fields, j))),
+			field_t f_ = { .str_h = s_mdup(INT(fields, j)),
 				       .align = (j >= 1 && j <= 3) ? ALIGN_RIGHT : ALIGN_LEFT };
 			m_put(row, &f_);
 		}
-		field_t f_ = { .str_h = s_dup(m_str(cmd_h)), .align = ALIGN_LEFT };
+		field_t f_ = { .str_h = s_mdup(cmd_h), .align = ALIGN_LEFT };
 		m_put(row, &f_);
 		m_free(fields);
 		m_free(cmd_h);

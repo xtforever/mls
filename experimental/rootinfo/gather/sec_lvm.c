@@ -116,7 +116,7 @@ int gather_lvm(cfg_t cfg)
 		m_foreach(pv_vgs, pp, pv) {
 			if (s_cmp(r.vg_name, *pv) == 0) {
 				m_free(r.pv_name);
-				r.pv_name = s_dup(m_str(INT(pv_names, pp)));
+				r.pv_name = s_mdup(INT(pv_names, pp));
 				break;
 			}
 		}
