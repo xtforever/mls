@@ -15,8 +15,8 @@
 static int kv_pair(const char *key, const char *val)
 {
 	int h = m_create(2, sizeof(field_t));
-	FIELD_ADD(h, key, ALIGN_LEFT);
-	FIELD_ADD(h, val, ALIGN_LEFT);
+	FIELD_ADD(h, key);
+	FIELD_ADD(h, val);
 	return h;
 }
 
@@ -24,14 +24,13 @@ static void gather_osinfo(int entries, const char *host,
 			  const char *sysname, const char *release, const char *machine)
 {
 	int h = table_new(2, (const char *[]){"Key", "Value"});
-	table_t *t = (table_t *)m_buf(h);
-	t->rows = m_create(4, sizeof(int));
+	data_t *t = (data_t *)m_buf(h);
 	int r;
 	r = kv_pair("Hostname", host); m_put(t->rows, &r);
 	r = kv_pair("OS", sysname);    m_put(t->rows, &r);
 	r = kv_pair("Kernel", release);  m_put(t->rows, &r);
 	r = kv_pair("Arch", machine);    m_put(t->rows, &r);
-	add_entry(entries, "table", h);
+	add_entry(entries, h);
 }
 
 static void gather_cpuinfo(int entries)
@@ -48,8 +47,7 @@ static void gather_cpuinfo(int entries)
 			  sysconf(_SC_NPROCESSORS_ONLN));
 
 	int h = table_new(2, (const char *[]){"Key", "Value"});
-	table_t *t = (table_t *)m_buf(h);
-	t->rows = m_create(4, sizeof(int));
+	data_t *t = (data_t *)m_buf(h);
 
 	int r = kv_pair("Processors", m_str(ph));
 	m_put(t->rows, &r);
@@ -82,7 +80,7 @@ static void gather_cpuinfo(int entries)
 		m_put(t->rows, &r);
 	}
 
-	add_entry(entries, "table", h);
+	add_entry(entries, h);
 	m_free(cpuinfo);
 }
 
@@ -92,8 +90,7 @@ static void gather_meminfo(int entries)
 	if (meminfo < 0) return;
 
 	int h = table_new(2, (const char *[]){"Key", "Value"});
-	table_t *t = (table_t *)m_buf(h);
-	t->rows = m_create(4, sizeof(int));
+	data_t *t = (data_t *)m_buf(h);
 
 	const char *keys[] = {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"};
 	for (int i = 0; i < 4; i++) {
@@ -117,7 +114,7 @@ static void gather_meminfo(int entries)
 		m_put(t->rows, &r);
 	}
 
-	add_entry(entries, "table", h);
+	add_entry(entries, h);
 	m_free(meminfo);
 }
 
@@ -131,14 +128,11 @@ static void gather_disk(int entries)
 	double used = total - avail;
 	double frac = total > 0 ? used / total : 0.0;
 
-	int h = m_alloc(1, sizeof(field_t), 0);
-	field_t *f = (field_t *)m_buf(h);
-	*f = (field_t){ .str_h = s_printf(0, 0,
+	add_entry(entries, bar_new(s_printf(0, 0,
 			"Disk: %.1fG/%.1fG used (%.0f%%)",
 			used / (1024.0*1024.0*1024.0),
 			total / (1024.0*1024.0*1024.0),
-			frac * 100.0), .frac = frac };
-	add_entry(entries, "bar", h);
+			frac * 100.0), frac));
 }
 
 static void gather_proc_uptime(int entries)
@@ -169,13 +163,12 @@ static void gather_proc_uptime(int entries)
 		m_free(ut);
 	}
 
-	int h = m_alloc(1, sizeof(list_t), 0);
-	list_t *l = (list_t *)m_buf(h);
-	*l = (list_t){0};
+	int h = data_new(DT_LIST);
+	data_t *l = (data_t *)m_buf(h);
 	l->items = m_create(1, sizeof(field_t));
-	FIELD_ADD_H(l->items, s_printf(0, 0, "%d processes, %s", nproc, up_h ? m_str(up_h) : ""), ALIGN_LEFT);
+	FIELD_ADD_H(l->items, s_printf(0, 0, "%d processes, %s", nproc, up_h ? m_str(up_h) : ""));
 	if (up_h) m_free(up_h);
-	add_entry(entries, "list", h);
+	add_entry(entries, h);
 }
 
 static void gather_users(int entries)
@@ -200,7 +193,7 @@ static void gather_users(int entries)
 		s_cat(line, m_str(INT(unames, i)));
 	}
 
-	add_entry(entries, "text", text_new(line));
+	add_entry(entries, text_new(line));
 	m_free(unames);
 }
 
@@ -267,7 +260,7 @@ static void gather_network(int entries)
 
 	int text_h = s_printf(0, 0, "Network: %s", m_str(line));
 	m_free(line);
-	add_entry(entries, "text", text_new(text_h));
+	add_entry(entries, text_new(text_h));
 }
 
 int gather_system(cfg_t cfg)

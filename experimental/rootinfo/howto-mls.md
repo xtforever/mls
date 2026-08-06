@@ -332,11 +332,7 @@ static void gather_users(int entries)
         s_cat(line, m_str(INT(unames, i)));
     }
 
-    int h = m_alloc(1, sizeof(text_t), 0);
-    text_t *t = (text_t *)m_buf(h);
-    *t = (text_t){0};
-    t->text_h = line;
-    add_entry(entries, "text", h);
+    add_entry(entries, text_new(line));
     m_free(unames);
 }
 ```

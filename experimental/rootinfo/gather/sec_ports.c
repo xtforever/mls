@@ -22,8 +22,7 @@ int gather_ports(cfg_t cfg)
 	section_t *sec = (section_t *)m_buf(sec_h);
 
 	int th = table_new(ncols, (const char *[]){"Address", "Port", "Process"});
-	table_t *t = (table_t *)m_buf(th);
-	t->rows = m_create((size_t)(max + 1), sizeof(int));
+	data_t *t = (data_t *)m_buf(th);
 	int count = 0;
 	int p, *d;
 	m_foreach(lines, p, d) {
@@ -74,16 +73,16 @@ int gather_ports(cfg_t cfg)
 		}
 
 		int row = m_create((size_t)ncols, sizeof(field_t));
-		FIELD_ADD_H(row, ah, ALIGN_LEFT);
-		FIELD_ADD_H(row, ph, ALIGN_LEFT);
+		FIELD_ADD_H(row, ah);
+		FIELD_ADD_H(row, ph);
 		if (is_root)
-			FIELD_ADD_H(row, proc_h, ALIGN_LEFT);
+			FIELD_ADD_H(row, proc_h);
 
 		m_put(t->rows, &row);
 		count++;
 	}
 
-	add_entry(sec->entries, "table", th);
+	add_entry(sec->entries, th);
 	m_free(lines);
 
 	return sec_h;

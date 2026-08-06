@@ -16,8 +16,7 @@ int gather_zfs(cfg_t cfg)
 	section_t *sec = (section_t *)m_buf(sec_h);
 
 	int th = table_new(5, (const char *[]){"Name", "Used", "Avail", "Refer", "Mount"});
-	table_t *t = (table_t *)m_buf(th);
-	t->rows = m_create(m_len(lines), sizeof(int));
+	data_t *t = (data_t *)m_buf(th);
 	int toks = m_alloc(10, sizeof(char *), MFREE_STR);
 	int p, *d;
 	m_foreach(lines, p, d) {
@@ -28,12 +27,12 @@ int gather_zfs(cfg_t cfg)
 		if (ncols > 5) ncols = 5;
 		int row = m_create(5, sizeof(field_t));
 		for (int c = 0; c < 5; c++)
-			FIELD_ADD(row, c < ncols ? tk[c] : "", ALIGN_LEFT);
+			FIELD_ADD(row, c < ncols ? tk[c] : "");
 		m_put(t->rows, &row);
 	}
 	m_free(toks);
 
-	add_entry(sec->entries, "table", th);
+	add_entry(sec->entries, th);
 	m_free(lines);
 
 	return sec_h;

@@ -3,6 +3,7 @@
 #include "m_tool.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <math.h>
 
 static void free_field_list(int list_h)
@@ -16,67 +17,54 @@ static void free_field_list(int list_h)
 	m_free(list_h);
 }
 
-static void free_table(int data_h)
+static void free_data(const data_t *d)
 {
-	table_t *t = (table_t *)m_buf(data_h);
-	m_free(t->title_h);
-	free_field_list(t->header);
-	int *row_h;
+	m_free(d->title_h);
+	m_free(d->footer_h);
 	int i;
-	m_foreach(t->rows, i, row_h) {
-		free_field_list(*row_h);
+	switch (d->type) {
+	case DT_TABLE:
+		free_field_list(d->header);
+		{
+			int *rh;
+			m_foreach(d->rows, i, rh) free_field_list(*rh);
+		}
+		m_free(d->rows);
+		break;
+	case DT_LIST:
+		free_field_list(d->items);
+		break;
+	case DT_TEXT:
+		m_free(d->text_h);
+		break;
+	case DT_BAR: {
+		field_t *f = (field_t *)m_buf(d->bar_h);
+		m_free(f->str_h);
+		m_free(f->unit_h);
+		m_free(d->bar_h);
+		break;
 	}
-	m_free(t->rows);
-	m_free(data_h);
+	}
 }
 
-static void free_list(int data_h)
+void out_bar(const data_t *d, void *cfg)
 {
-	list_t *l = (list_t *)m_buf(data_h);
-	m_free(l->title_h);
-	free_field_list(l->items);
-	m_free(data_h);
-}
-
-static void free_text(int data_h)
-{
-	text_t *t = (text_t *)m_buf(data_h);
-	m_free(t->text_h);
-	m_free(t->footer_h);
-	m_free(data_h);
-}
-
-void out_bar(int data_h, void *cfg)
-{
-	field_t *f = (field_t *)m_buf(data_h);
-	f->is_bar = 1;
 	printf("  ");
-	out_field(f, cfg);
+	out_field((const field_t *)m_buf(d->bar_h), cfg);
 	printf("\n");
 }
 
-static void free_bar(int data_h)
+void out_data(const data_t *d, void *cfg)
 {
-	field_t *f = (field_t *)m_buf(data_h);
-	m_free(f->str_h);
-	m_free(data_h);
+	switch (d->type) {
+	case DT_TABLE: out_table(d, cfg); break;
+	case DT_LIST:  out_list(d, cfg); break;
+	case DT_TEXT:  out_text(d, cfg); break;
+	case DT_BAR:   out_bar(d, cfg); break;
+	}
 }
 
-void out_init(void *cfg)
-{
-	(void)cfg;
-	datatype_t t;
-	t = (datatype_t){ .name = "table", .render = out_table, .free = free_table };
-	dt_register(&t);
-	t = (datatype_t){ .name = "list",  .render = out_list,  .free = free_list };
-	dt_register(&t);
-	t = (datatype_t){ .name = "text",  .render = out_text,  .free = free_text };
-	dt_register(&t);
-	t = (datatype_t){ .name = "bar",   .render = out_bar,   .free = free_bar };
-	dt_register(&t);
-}
-
-int out_render(int sections_h, void *cfg)
+void out_render(int sections_h, void *cfg)
 {
 	int i;
 	int *sec_h;
@@ -84,7 +72,6 @@ int out_render(int sections_h, void *cfg)
 		section_t *s = (section_t *)m_buf(*sec_h);
 		out_section(s, cfg);
 	}
-	return 0;
 }
 
 void free_sections(int sections_h)
@@ -93,14 +80,10 @@ void free_sections(int sections_h)
 	m_foreach(sections_h, si, sec_h) {
 		section_t *s = (section_t *)m_buf(*sec_h);
 		m_free(s->title);
-		m_free(s->footer);
-		int ei;
-		entry_t *e;
-		m_foreach(s->entries, ei, e) {
-			m_free(e->title);
-			m_free(e->footer);
-			dt_free(e);
-			m_free(e->type_h);
+		int ei, *dh;
+		m_foreach(s->entries, ei, dh) {
+			free_data((const data_t *)m_buf(*dh));
+			m_free(*dh);
 		}
 		m_free(s->entries);
 		m_free(*sec_h);
@@ -115,13 +98,10 @@ void out_section(section_t *s, void *cfg)
 		printf("\n  ---- \033[1m%s\033[0m ----\n", m_str(s->title));
 
 	int i;
-	entry_t *e;
-	m_foreach(s->entries, i, e) {
-		dt_render(e, cfg);
+	int *dh;
+	m_foreach(s->entries, i, dh) {
+		out_data((const data_t *)m_buf(*dh), cfg);
 	}
-
-	if (s->footer)
-		printf("  %s\n", m_str(s->footer));
 }
 
 static const char *human_suffix(double *v)
@@ -198,33 +178,32 @@ void out_field(const field_t *f, void *cfg)
 	m_free(vh);
 }
 
-void out_table(int data_h, void *cfg)
+void out_table(const data_t *d, void *cfg)
 {
-	table_t *t = (table_t *)m_buf(data_h);
-	if (!t) return;
+	if (!d) return;
 
-	if (t->title_h)
-		printf("  %s\n", m_str(t->title_h));
+	if (d->title_h)
+		printf("  %s\n", m_str(d->title_h));
 
-	int ncols = (int)m_len(t->header);
+	int ncols = (int)m_len(d->header);
 	if (!ncols) return;
 
 	int *colw = (int *)calloc((size_t)ncols, sizeof(int));
-	field_t *h0 = (field_t *)mls(t->header, 0);
-	field_t *h1 = (field_t *)mls(t->header, 1);
+	field_t *h0 = (field_t *)mls(d->header, 0);
+	field_t *h1 = (field_t *)mls(d->header, 1);
 	int kv_header = (ncols == 2 && h0 && h1 && h0->str_h && h1->str_h
 			&& s_strcmp_c(h0->str_h, "Key") == 0
 			&& s_strcmp_c(h1->str_h, "Value") == 0);
 	int c;
 	field_t *hc;
-	m_foreach(t->header, c, hc) {
+	m_foreach(d->header, c, hc) {
 		int vw = hc->len ? hc->len : (hc->str_h ? (int)s_strlen(hc->str_h) : 0);
 		colw[c] = vw;
 	}
 
 	int r;
 	int *rh;
-	m_foreach(t->rows, r, rh) {
+	m_foreach(d->rows, r, rh) {
 		int row_h = *rh;
 		if (!row_h) continue;
 		int c2;
@@ -245,7 +224,7 @@ void out_table(int data_h, void *cfg)
 
 	if (!kv_header) {
 	printf("  ");
-	m_foreach(t->header, c, hc) {
+	m_foreach(d->header, c, hc) {
 		if (c) printf("  ");
 		field_t fh = *hc;
 		int orig = fh.len;
@@ -264,7 +243,7 @@ void out_table(int data_h, void *cfg)
 	printf("\n");
 	}
 
-	m_foreach(t->rows, r, rh) {
+	m_foreach(d->rows, r, rh) {
 		int row_h = *rh;
 		if (!row_h) continue;
 		printf("  ");
@@ -285,33 +264,31 @@ void out_table(int data_h, void *cfg)
 	free(colw);
 }
 
-void out_list(int data_h, void *cfg)
+void out_list(const data_t *d, void *cfg)
 {
-	list_t *l = (list_t *)m_buf(data_h);
-	if (!l) return;
+	if (!d) return;
 
-	if (l->title_h)
-		printf("  %s\n", m_str(l->title_h));
+	if (d->title_h)
+		printf("  %s\n", m_str(d->title_h));
 
 	int i;
 	field_t *f;
-	m_foreach(l->items, i, f) {
+	m_foreach(d->items, i, f) {
 		printf("  ");
 		out_field(f, cfg);
 		printf("\n");
 	}
 }
 
-void out_text(int data_h, void *cfg)
+void out_text(const data_t *d, void *cfg)
 {
 	(void)cfg;
-	text_t *t = (text_t *)m_buf(data_h);
-	if (!t) return;
+	if (!d) return;
 
-	if (t->text_h) {
-		const char *txt = m_str(t->text_h);
+	if (d->text_h) {
+		const char *txt = m_str(d->text_h);
 		printf("  %s\n", txt);
 	}
-	if (t->footer_h)
-		printf("  %s\n", m_str(t->footer_h));
+	if (d->footer_h)
+		printf("  %s\n", m_str(d->footer_h));
 }

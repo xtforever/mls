@@ -13,8 +13,7 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 	if (STRTAB_EMPTY(lines)) { m_free(lines); return; }
 
 	int th = table_new(2, (const char *[]){"Schedule", "Command"});
-	table_t *t = (table_t *)m_buf(th);
-	t->rows = m_create((size_t)(max_lines + 1), sizeof(int));
+	data_t *t = (data_t *)m_buf(th);
 	int count = 0;
 	int p, *d;
 	m_foreach(lines, p, d) {
@@ -40,18 +39,18 @@ static void add_cron_table(int entries, const char *title, int lines, int max_li
 			while (*cmd == ' ' || *cmd == '\t') cmd++;
 			char saved = *cmd;
 			*cmd = 0;
-			FIELD_ADD(row, s, ALIGN_LEFT);
+			FIELD_ADD(row, s);
 			*cmd = saved;
-			FIELD_ADD(row, cmd, ALIGN_LEFT);
+			FIELD_ADD(row, cmd);
 		} else {
-			FIELD_ADD(row, "", ALIGN_LEFT);
-			FIELD_ADD(row, s, ALIGN_LEFT);
+			FIELD_ADD(row, "");
+			FIELD_ADD(row, s);
 		}
 		m_put(t->rows, &row);
 		count++;
 	}
 	if (count > 0) {
-		add_entry(entries, "table", th);
+		add_entry(entries, th);
 	} else {
 		m_free(th);
 	}
@@ -76,7 +75,7 @@ static void add_cron_list_line(int entries, const char *label, const char *dir)
 
 	if (!off) { m_free(line); return; }
 
-	add_entry(entries, "text", text_new(line));
+	add_entry(entries, text_new(line));
 }
 
 int gather_cron(cfg_t cfg)

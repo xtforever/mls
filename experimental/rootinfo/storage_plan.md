@@ -79,14 +79,14 @@ int gather_storage(cfg_t cfg)
     int lsblk_lines = subproc_lines("LC_ALL=C lsblk -P -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE 2>/dev/null");
     // build a mountpoint → {TYPE, FSTYPE} lookup map from lsblk
 
-    // 3. Parse df lines, build table_t
+    // 3. Parse df lines, build a `table_new(...)` table
     //    - Parse 6 columns: source, size_kb, used_kb, avail_kb, pcent, mount
     //    - Humanize size/used/avail (÷1024² for GB, ÷1024³ for TB)
     //    - Add USE% field with is_bar=1 + frac
     //    - Look up TYPE/FSTYPE from lsblk map
     //    - Filter out skip_fstypes
 
-    // 4. Build section_t → return
+    // 4. Build section_t (section_new + add_entry) → return
 }
 ```
 

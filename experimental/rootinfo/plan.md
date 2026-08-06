@@ -173,9 +173,9 @@ the current `if (cpuinfo)` pattern.
 
 ## Type system (`lib/m_types.c` / `m_types.h`)
 
-A separate, reusable module (alongside `m_tool`, `m_hdf`, ...). Three
-composable primitives built on one basic value type. No separate `bar_t` —
-a bar is just a `field_t` with `is_bar=1`.
+A separate, reusable module (alongside `m_tool`, `m_hdf`, ...). One value
+type plus one block type. No separate `bar_t` — a bar is just a `field_t`
+with `is_bar=1`.
 
 ### Field — the atomic type
 
@@ -206,161 +206,99 @@ The renderer reuses printf-style formatting for numbers: `FMT_INT`/`FMT_FLOAT`/
 renderer builds each value string with `s_printf` (`lib/m_tool.h`) and
 prints it with `%*s`/`%-*s`.
 
-### List — ordered array of fields
+### Block — one struct for every entry kind
+
+All section entries (table, list, text, bar) are one `data_t` struct. A
+`dt_type_t` tag selects which slots are live; `title_h`/`footer_h` work on
+any kind. Blocks are MLS handles; `section_t.entries` is a list of data
+handles.
 
 ```c
-typedef struct {
-    int  title_h;       /* MLS string handle — list title, or 0           */
-    int  items;         /* MLS list handle of field_t                     */
-} list_t;
-```
-
-### Table — list of lists
-
-A table is a list of lists: a header row (MLS list of `field_t`) plus body
-rows, each an MLS list with exactly the same number of columns.
-
-```c
-typedef struct {
-    int  title_h;       /* MLS string handle — table caption, or 0        */
-    int  header;        /* MLS list handle of field_t (column labels)      */
-    int  rows;          /* MLS list handle of list_t                       */
-} table_t;
-```
-
-### Text — free-form block
-
-```c
-typedef struct {
-    int text_h;         /* MLS string handle for text content              */
-    int footer_h;       /* optional footer (MLS string) or 0               */
-} text_t;
-```
-
-### Entry and section (unchanged contract with registry)
-
-```c
-typedef struct {
-    int  title;         /* MLS string handle (section header)              */
-    int  footer;        /* MLS string handle or 0                          */
-    int  type_h;        /* MLS string handle: "table", "list", "text", …   */
-    int  data_h;        /* MLS handle to payload (m_alloc'd table_t*, ...) */
-} entry_t;
-
-typedef struct { int title; int footer; int entries; } section_t;  /* entries = MLS list handle of entry_t */
-```
-
-### How gather sections use these
-
-| Gather output    | Uses              |
-|------------------|-------------------|
-| LVM table        | `table_t` header = `{Device, VG, LV, Size, Free, Mount}`, rows = list per PV |
-| ZFS datasets     | `table_t` with an `is_bar` field for Used% column |
-| open ports       | `table_t` — ip:port + service                                   |
-| cron             | `table_t` — schedule + command, truncated per cfg               |
-| system info      | `list_t` of fields (hostname, kernel, …) or `text_t`            |
-| memory           | `list_t` with `human=1` + `unit_h="kB"` fields                  |
-| installed stacks | `list_t` with `fmt=FT_NONE` comma-separated                     |
-| firewall status  | `text_t` (`ENABLED` / `DISABLED`)                               |
-| bargraph         | just a `field_t` with `is_bar=1` + `frac` inside any list/table |
-
-Nothing special about bars — the renderer sees `is_bar`, draws `cfg->bar_width`
-characters, no separate datatype registration needed.
-
-### Example: LVM table as data
-
-```c
-field_t f;
-int header = m_create(6, sizeof(field_t));
-
-f = (field_t){ .str_h = s_cstrc("Device"), .fmt = FMT_NONE };
-m_put(header, &f);
-f = (field_t){ .str_h = s_cstrc("VG"), .fmt = FMT_NONE };
-m_put(header, &f);
-f = (field_t){ .str_h = s_cstrc("LV"), .fmt = FMT_NONE };
-m_put(header, &f);
-f = (field_t){ .str_h = s_cstrc("Size"), .fmt = FMT_INT,
-              .human = 1, .unit_h = s_cstrc("GB") };
-m_put(header, &f);
-f = (field_t){ .str_h = s_cstrc("Free"), .fmt = FMT_INT,
-              .human = 1, .unit_h = s_cstrc("GB"),
-              .is_bar = 1, .frac = .08 };
-m_put(header, &f);
-f = (field_t){ .str_h = s_cstrc("Mount"), .fmt = FMT_NONE };
-m_put(header, &f);
-
-/* rows: MLS list-of-lists built from `subproc_lines("lvs ...")` */
-int rows = m_create(10, sizeof(int));
-/* ... for each parsed LVM line, m_create a list of field_t, m_put into rows ... */
-
-table_t t = { .title_h = 0, .header = header, .rows = rows };
-```
-
-### Datatype registry
-
-A section entry is `{ type-name, void *data }`. The **registry** maps a
-datatype name to its render + free functions, so adding a datatype never
-touches a `switch` or an enum.
-
-```c
-/* m_types.h */
-typedef void (*dt_render_fn)(int data_h, void *cfg);
-typedef void (*dt_free_fn)(int data_h);
+typedef enum { DT_TABLE, DT_LIST, DT_TEXT, DT_BAR } dt_type_t;
 
 typedef struct {
-    const char *name;       /* "table", "list", "text", ...               */
-    dt_render_fn render;
-    dt_free_fn   free;
-} datatype_t;
+    dt_type_t type;     /* discriminator, selects the live slots below   */
+    int  title_h;       /* optional title for any block                  */
+    int  footer_h;      /* optional footer for any block                 */
+    int  header;        /* DT_TABLE: MLS list handle of field_t          */
+    int  rows;          /* DT_TABLE: MLS list of row handles             */
+    int  items;         /* DT_LIST:  MLS list handle of field_t          */
+    int  text_h;        /* DT_TEXT:  MLS string handle                   */
+    int  bar_h;         /* DT_BAR:   MLS handle to a field_t             */
+} data_t;
 
-void dt_register(const datatype_t *dt);          /* one call to add a datatype */
-const datatype_t *dt_lookup(const char *name);
-void dt_render(const entry_t *e, void *cfg);     /* registry dispatch */
+typedef struct {
+    int  title;         /* MLS string handle (section header)            */
+    int  entries;       /* MLS list handle of data_t handles             */
+} section_t;
 ```
 
-```c
-/* m_types.c — registry lives in an MLS list handle, not a raw C array */
-static int reg = 0;                       /* MLS list of datatype_t, lazy-init */
+A table is a list of lists: `header` (column labels) plus `rows`, each row an
+MLS list of `field_t` with the same column count.  A list is `items` (a list
+of `field_t`).  A text block is one string.  A bar block holds a single
+`field_t` with `is_bar=1` + `frac`.
 
-void dt_register(const datatype_t *dt)
+### How gather sections build these
+
+`gather.h` exposes small helpers — no hand-built structs in the gather code:
+
+```c
+int  section_new(const char *title, int cap);   /* section + empty entries */
+int  data_new(dt_type_t type);                  /* one data_t handle       */
+void add_entry(int entries, int data_h);        /* append a data handle    */
+int  table_new(int ncols, const char **cols);   /* table + header + rows   */
+int  table_new_a(int ncols, const char **cols, const align_t *aligns);
+int  text_new(int text_h);                      /* text block owns string  */
+int  bar_new(int str_h, double frac);           /* bar block owns field    */
+```
+
+`FIELD_ADD(list, str)` / `FIELD_ADD_R(list, str)` append a left/right-aligned
+field; `FIELD_ADD_H`/`FIELD_ADD_H_R` take ownership of an existing handle.
+
+| Gather output    | Builds                               |
+|------------------|--------------------------------------|
+| LVM table        | `table_new(7, ...)` + one row per LV |
+| ZFS datasets     | `table_new(5, ...)`                  |
+| open ports       | `table_new(ncols, ...)`              |
+| cron             | `table_new(2, ...)` + `text_new` for the `cron.*` dirs |
+| system info      | `table_new(2, {"Key","Value"})` (hostname/os, cpu, mem) |
+| process count    | `data_new(DT_LIST)` + one field      |
+| stacks           | `data_new(DT_LIST)` + one field per runtime |
+| users / network  | `text_new(s_printf(...))`            |
+| firewall status  | `text_new(s_dup(status))`            |
+| disk summary     | `bar_new(s_printf(...), frac)`       |
+
+Nothing special about bars — inline `is_bar` fields work inside any table
+row; standalone bars are `DT_BAR` blocks.
+
+### Dispatch
+
+Each backend provides one renderer per kind plus a generic `free_data`.
+`out_data` dispatches on the tag:
+
+```c
+void out_data(const data_t *d, void *cfg)
 {
-    if (!reg) reg = m_create(4, sizeof(datatype_t));
-    m_put(reg, dt);                       /* bounds-checked, auto-grows via MLS */
-}
-
-const datatype_t *dt_lookup(const char *name)
-{
-    if (!reg) return NULL;
-    datatype_t dt;
-    for (int i = 0; i < m_len(reg); i++) {
-        m_read(reg, i, &dt, 1);           /* bounds-checked */
-        if (!strcmp(dt.name, name))
-            return (const datatype_t *)m_buf(reg) + i; /* stable: init-time only */
+    switch (d->type) {
+    case DT_TABLE: out_table(d, cfg); break;
+    case DT_LIST:  out_list(d, cfg);  break;
+    case DT_TEXT:  out_text(d, cfg);  break;
+    case DT_BAR:   out_bar(d, cfg);   break;
     }
-    return NULL;
-}
-
-void dt_render(const entry_t *e, void *cfg)
-{
-    const datatype_t *dt = dt_lookup(m_str(e->type_h));
-    if (dt) dt->render(e->data_h, cfg);
 }
 ```
-
-Built-ins (`table`, `list`, `text`) are registered by `out_init()`.
-Adding e.g. a `tree` datatype = write `render`+`free` for a `tree_t`,
-`dt_register`, done — gather and renderer dispatch untouched.
 
 Contract (per goal 3): all memory and strings are MLS handles.  Every
-collection — `list_t.items`, `table_t.header`/`rows`, `section_t.entries` —
-is an MLS list handle, so access is bounds-checked via `m_read`/`m_write`
-and the count is `m_len(handle)` (no raw `.n` / `.n_rows` fields to drift).
-`m_alloc` for single structs, `m_create` for lists, `s_dup`/`s_printf`/
-`s_cstr` for strings.  Renderers read strings via `m_str`, lists via `m_len`
-+ `m_read`; each datatype's `free` fn releases handles with `m_free`.
-`free_sections()` calls `dt_free_fn` per entry.  No bare `malloc`/`free`/
-`strdup` in gather or render code (only inside `m_subproc.c`, where `popen`
-reads need a raw buffer for `s_printf`).
+collection — `data_t.header`/`rows`/`items`, `section_t.entries` — is an MLS
+list handle, so access is bounds-checked via `m_read`/`m_write` and the count
+is `m_len(handle)` (no raw `.n` / `.n_rows` fields to drift).  `m_alloc` for
+single structs, `m_create` for lists, `s_dup`/`s_printf`/`s_cstr` for
+strings.  Renderers read strings via `m_str`, lists via `m_len` + `m_read`;
+`free_data` releases whatever slots the tag selects and the caller frees the
+block/section handles.  `free_sections()` walks sections → entries →
+`free_data`, then frees each block and section handle.  No bare `malloc`/
+`free`/`strdup` in gather or render code (only inside `m_subproc.c`, where
+`popen` reads need a raw buffer for `s_printf`).
 
 ## Data gathering — one file per section
 
@@ -402,22 +340,22 @@ m_destruct();
 `out.h` is the porting seam:
 
 ```c
-void out_init(void *cfg);                     /* register this backend's renderers */
-int  out_render(int sections_h, void *cfg);   /* out_section for each section     */
-void out_section(section_t *s, void *cfg);    /* dt_render per entry              */
+void out_render(int sections_h, void *cfg);   /* out_section for each section */
+void out_section(section_t *s, void *cfg);    /* out_data per entry           */
+void out_data(const data_t *d, void *cfg);    /* dispatch on d->type          */
 
-/* one render function per built-in datatype (registered via dt_register)
-   — each casts void *cfg back to cfg_t internally */
-void out_table(int data_h, void *cfg);       /* list-of-list + header     */
-void out_list(int data_h, void *cfg);         /* fields, comma-sep or vert */
-void out_text(int data_h, void *cfg);
+/* one render function per block kind — each casts void *cfg back to cfg_t */
+void out_table(const data_t *d, void *cfg);   /* list-of-list + header     */
+void out_list(const data_t *d, void *cfg);    /* fields, vertical          */
+void out_text(const data_t *d, void *cfg);
+void out_bar(const data_t *d, void *cfg);
 void out_field(const field_t *f, void *cfg);  /* helper: string+mods+bar (field is a value, not a handle) */
+void free_sections(int sections_h);
 ```
 
-`out_section` iterates entries via `m_len`+`m_read` (bounds-checked), calling
-`dt_render` per entry — no `switch` to extend.  Each renderer retrieves its
-payload via `m_buf(data_h)` (e.g. `table_t *t = m_buf(data_h)`) and iterates
-sub-lists the same way via MLS handles.
+`out_section` iterates the entries list via `m_len`+`m_read` (bounds-checked),
+calling `out_data` per entry.  Each renderer reads its payload from the
+`data_t` pointer and iterates sub-lists the same way via MLS handles.
 
 - `out_term.c` renders tables, lists and text. `out_field` draws one field
   — format (int/hex/float), human-readable suffix, unit, and an inline bar
@@ -433,7 +371,7 @@ sub-lists the same way via MLS handles.
 `makefile` (extends the current one):
 
 ```
-DEPS   = mls.od m_tool.od m_table.od m_hdf.od m_types.od m_subproc.od cfg.od \
+DEPS   = mls.od m_tool.od m_table.od m_hdf.od m_subproc.od cfg.od \
          gather/*.od out/out_term.od
 ```
 
@@ -450,11 +388,11 @@ sections one by one.  `make check` must be green after every step.
 
 0. **`lib/m_subproc.c` + `m_subproc.h`** — reusable subprocess runner (plain ANSI C). `subproc_run`, `subproc_read`, `subproc_lines` — each wraps `popen`/`pclose`, captures output into MLS handles. No external deps beyond `mls`/`m_tool`. `make check` in `lib/` verifies a trivial `subproc_read("echo ok")`.
 
-1. **`lib/m_types.c` + `m_types.h`** — reusable type system: `field_t`/`list_t`/`table_t`/`text_t`, registry (`dt_register`/`dt_lookup`/`dt_render`), `section_t`/`entry_t`; built-in entry types (`table`, `list`, `text`). No gather yet.
+1. **`lib/m_types.h`** — reusable type system: `field_t`/`data_t`/`section_t` with the `dt_type_t` tag. Pure data — no registry, no render code. No gather yet.
 
 2. **`cfg.h` + `cfg.c`** — `cfg_load` (search `./rootinfo.hdf` → `~/.config/rootinfo/rootinfo.hdf` → embedded default written via `hdf_write_file`), `cfg_int`/`cfg_bool`/`cfg_str` — one-liners over `hdf_find_node` + `hdf_get_*`. `make check` runs (no-op, just verifies no crash on cfg load/free).
 
-3. **`out/out_term.c`** + **`out/out.h`** — `out_init` registers terminal renderers; `out_section` dispatches via `dt_render`. Hardcode one entry (`text` type, "scaffold works") → compile and run → verifies registry + render pipeline.
+3. **`out/out_term.c`** + **`out/out.h`** — four renderers (`table`/`list`/`text`/`bar`) + `free_data`; `out_data` dispatches on the tag. Hardcode one entry (`text` kind, "scaffold works") → compile and run → verifies dispatch + free pipeline.
 
 4. **`gather/sec_system.c`** — port the existing `system/cpu/memory/disk/processes/uptime/user` code into a `gather_system(cfg)` that returns a `section_t`. Uses the `subproc` module for `/proc` reads. `gather.h` with `gather_all()` (only `gather_system` for now). **This is the first section that matches the draft.** `make check` runs the full pipeline: cfg → gather → render → free. Output matches the current `rootinfo.c`.
 
@@ -476,7 +414,7 @@ Each step adds one `gather/sec_xxx.c`, registers it in `gather_all`, verifies wi
 
 11. **`sec_stack.c`** — `python --version`, `php --version`, `php-fpm --version` via `subproc_read`, produces `list` (comma-separated versions). Installed runtimes only; missing ones are omitted. Verify.
 
-12. **Final** — remove the hardcoded scaffold entry from step 3; all three
-    built-in types (`table`, `list`, `text`) render correctly end-to-end;
-    config `(section ...)` block honored (`gather_all` skips disabled
-    sections). `make check` green with all eight sections.
+12. **Final** — remove the hardcoded scaffold entry from step 3; all four
+    block kinds (`table`, `list`, `text`, `bar`) render correctly
+    end-to-end; config `(section ...)` block honored (`gather_all` skips
+    disabled sections). `make check` green with all eight sections.

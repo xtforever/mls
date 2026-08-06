@@ -7,7 +7,7 @@
 static int section_with_text(const char *title, const char *text)
 {
 	int sec_h = section_new(title, 2);
-	add_entry(((section_t *)m_buf(sec_h))->entries, "text", text_new(s_dup(text)));
+	add_entry(((section_t *)m_buf(sec_h))->entries, text_new(s_dup(text)));
 	return sec_h;
 }
 

@@ -16,7 +16,7 @@ static void add_version(int items, const char *label, const char *cmd)
 	s_trim(outbuf);
 	if (!m_len(outbuf)) { m_free(outbuf); return; }
 
-	FIELD_ADD_H(items, s_printf(0, 0, "%s: %s", label, m_str(outbuf)), ALIGN_LEFT);
+	FIELD_ADD_H(items, s_printf(0, 0, "%s: %s", label, m_str(outbuf)));
 	m_free(outbuf);
 }
 
@@ -32,7 +32,7 @@ static void add_service(int items, const char *label, const char *name)
 	m_free(line);
 
 	if (count > 0)
-		FIELD_ADD_H(items, s_printf(0, 0, "%s: running (%ld)", label, count), ALIGN_LEFT);
+		FIELD_ADD_H(items, s_printf(0, 0, "%s: running (%ld)", label, count));
 }
 
 int gather_stack(cfg_t cfg)
@@ -41,9 +41,8 @@ int gather_stack(cfg_t cfg)
 	int sec_h = section_new("SOFTWARE STACKS", 2);
 	section_t *sec = (section_t *)m_buf(sec_h);
 
-	int lh = m_alloc(1, sizeof(list_t), 0);
-	list_t *l = (list_t *)m_buf(lh);
-	*l = (list_t){0};
+	int lh = data_new(DT_LIST);
+	data_t *l = (data_t *)m_buf(lh);
 	l->items = m_create(10, sizeof(field_t));
 
 	add_version(l->items, "Python", "python3 --version 2>&1");
@@ -55,7 +54,7 @@ int gather_stack(cfg_t cfg)
 	add_service(l->items, "Nginx", "nginx");
 	add_service(l->items, "HAProxy", "haproxy");
 
-	add_entry(sec->entries, "list", lh);
+	add_entry(sec->entries, lh);
 
 	return sec_h;
 }

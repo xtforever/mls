@@ -167,8 +167,7 @@ int gather_lvm(cfg_t cfg)
 	section_t *sec = (section_t *)m_buf(sec_h);
 
 	int th = table_new(7, (const char *[]){"PV", "VG", "LV", "Size", "Free", "Mount", ""});
-	table_t *t = (table_t *)m_buf(th);
-	t->rows = m_create((size_t)n_rows, sizeof(int));
+	data_t *t = (data_t *)m_buf(th);
 
 	int prev_pv = 0;
 	int prev_vg = 0;
@@ -182,30 +181,30 @@ int gather_lvm(cfg_t cfg)
 		const char *pv_show = r->pv_name ? m_str(r->pv_name) : "";
 		if (ri > 0 && r->pv_name && prev_pv && s_cmp(r->pv_name, prev_pv) == 0)
 			pv_show = "\"";
-		FIELD_ADD(free_row, pv_show, ALIGN_LEFT);
+		FIELD_ADD(free_row, pv_show);
 		prev_pv = r->pv_name;
 
 		/* VG */
 		const char *vg_show = r->vg_name ? m_str(r->vg_name) : "";
 		if (ri > 0 && prev_vg && s_cmp(r->vg_name, prev_vg) == 0)
 			vg_show = "\"";
-		FIELD_ADD(free_row, vg_show, ALIGN_LEFT);
+		FIELD_ADD(free_row, vg_show);
 		prev_vg = r->vg_name;
 
 		/* LV */
-		FIELD_ADD(free_row, r->lv_name ? m_str(r->lv_name) : "", ALIGN_LEFT);
+		FIELD_ADD(free_row, r->lv_name ? m_str(r->lv_name) : "");
 
 		/* Size */
-		FIELD_ADD_H(free_row, human_size(r->lv_size), ALIGN_RIGHT);
+		FIELD_ADD_H_R(free_row, human_size(r->lv_size));
 
 		/* Free */
 		if (r->vg_free)
-			FIELD_ADD_H(free_row, human_size(r->vg_free), ALIGN_RIGHT);
+			FIELD_ADD_H_R(free_row, human_size(r->vg_free));
 		else
-			FIELD_ADD(free_row, "-", ALIGN_RIGHT);
+			FIELD_ADD_R(free_row, "-");
 
 		/* Mount */
-		FIELD_ADD(free_row, r->mount ? m_str(r->mount) : "-", ALIGN_LEFT);
+		FIELD_ADD(free_row, r->mount ? m_str(r->mount) : "-");
 
 		/* Bar column */
 		{
@@ -241,7 +240,7 @@ int gather_lvm(cfg_t cfg)
 	m_free(pv_names);
 	m_free(pv_vgs);
 
-	add_entry(sec->entries, "table", th);
+	add_entry(sec->entries, th);
 
 	return sec_h;
 }

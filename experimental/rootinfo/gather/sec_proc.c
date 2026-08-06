@@ -21,8 +21,7 @@ int gather_proc(cfg_t cfg)
 	const char *cols[] = {"USER", "PID", "%CPU", "%MEM", "COMMAND"};
 	align_t aligns[] = {ALIGN_LEFT, ALIGN_RIGHT, ALIGN_RIGHT, ALIGN_RIGHT, ALIGN_LEFT};
 	int th = table_new_a(5, cols, aligns);
-	table_t *t = (table_t *)m_buf(th);
-	t->rows = m_create((size_t)(top + 1), sizeof(int));
+	data_t *t = (data_t *)m_buf(th);
 	int count = 0;
 	int p, *d;
 	int toks = m_alloc(16, sizeof(char *), MFREE_STR);
@@ -50,8 +49,9 @@ int gather_proc(cfg_t cfg)
 		const char *cols2[] = {fields[0], fields[1], fields[2], fields[3],
 				       m_str(cmd_h)};
 		for (int j = 0; j < 5; j++) {
-			align_t a = (j >= 1 && j <= 3) ? ALIGN_RIGHT : ALIGN_LEFT;
-			FIELD_ADD(row, cols2[j], a);
+			field_t f_ = { .str_h = s_dup(cols2[j]),
+				       .align = (j >= 1 && j <= 3) ? ALIGN_RIGHT : ALIGN_LEFT };
+			m_put(row, &f_);
 		}
 		m_free(cmd_h);
 		m_put(t->rows, &row);
@@ -59,7 +59,7 @@ int gather_proc(cfg_t cfg)
 	}
 	m_free(toks);
 
-	add_entry(sec->entries, "table", th);
+	add_entry(sec->entries, th);
 	m_free(lines);
 
 	return sec_h;
