@@ -37,33 +37,34 @@ int gather_lvm(cfg_t cfg)
 
 	if (STRTAB_EMPTY(lvs_out)) { m_free(lvs_out); m_free(vgs_out); m_free(pvs_out); return 0; }
 
-	int nl_h = s_dup("\n");
-	int lv_lines = s_msplit(0, lvs_out, nl_h);
+	int lv_lines = s_msplit(0, lvs_out, s_cstr("\n"));
 	m_free(lvs_out);
-	m_free(nl_h);
 
 	int n_lv = (int)m_len(lv_lines);
 	if (!n_lv) { m_free(lv_lines); return 0; }
 
-	int toks = m_alloc(10, sizeof(char *), MFREE_STR);
+	int toks = m_alloc(10, sizeof(int), MFREE_EACH);
 	int vg_names = m_create(8, sizeof(int));
 	int vg_sizes = m_create(8, sizeof(unsigned long long));
 	int vg_frees = m_create(8, sizeof(unsigned long long));
 	if (vgs_out) {
-		nl_h = s_dup("\n");
-		int vg_lines = s_msplit(0, vgs_out, nl_h);
+		int vg_lines = s_msplit(0, vgs_out, s_cstr("\n"));
 		m_free(vgs_out);
-		m_free(nl_h);
 		int vgp, *vgd;
 		m_foreach(vg_lines, vgp, vgd) {
-			s_split(toks, m_buf(*vgd), '|', 1);
-			if (m_len(toks) >= 3) {
-				int nh = s_dup(STR(toks, 0));
+			s_msplit(toks, *vgd, s_cstr("|"));
+			int keep0 = m_len(toks) >= 3;
+			if (keep0) {
+				int nh = INT(toks, 0);
 				m_put(vg_names, &nh);
-				unsigned long long sz = strtoull(STR(toks, 1), NULL, 10);
+				unsigned long long sz = strtoull(m_str(INT(toks, 1)), NULL, 10);
 				m_put(vg_sizes, &sz);
-				unsigned long long fr = strtoull(STR(toks, 2), NULL, 10);
+				unsigned long long fr = strtoull(m_str(INT(toks, 2)), NULL, 10);
 				m_put(vg_frees, &fr);
+			}
+			for (int j = 0; j < (int)m_len(toks); j++) {
+				if (!(j == 0 && keep0)) m_free(INT(toks, j));
+				INT(toks, j) = 0;
 			}
 		}
 		m_free(vg_lines);
@@ -72,17 +73,20 @@ int gather_lvm(cfg_t cfg)
 	int pv_names = m_create(8, sizeof(int));
 	int pv_vgs = m_create(8, sizeof(int));
 	if (pvs_out) {
-		nl_h = s_dup("\n");
-		int pv_lines = s_msplit(0, pvs_out, nl_h);
+		int pv_lines = s_msplit(0, pvs_out, s_cstr("\n"));
 		m_free(pvs_out);
-		m_free(nl_h);
 		int pvp, *pvd;
 		m_foreach(pv_lines, pvp, pvd) {
-			s_split(toks, m_buf(*pvd), '|', 1);
-			int nh = m_len(toks) >= 1 ? s_dup(STR(toks, 0)) : s_dup("");
+			s_msplit(toks, *pvd, s_cstr("|"));
+			int keep0 = m_len(toks) >= 1, keep1 = m_len(toks) >= 2;
+			int nh = keep0 ? INT(toks, 0) : s_dup("");
 			m_put(pv_names, &nh);
-			int vh = m_len(toks) >= 2 ? s_dup(STR(toks, 1)) : s_dup("");
+			int vh = keep1 ? INT(toks, 1) : s_dup("");
 			m_put(pv_vgs, &vh);
+			for (int j = 0; j < (int)m_len(toks); j++) {
+				if ((j == 0 && keep0) || (j == 1 && keep1)) { INT(toks, j) = 0; }
+				else { m_free(INT(toks, j)); INT(toks, j) = 0; }
+			}
 		}
 		m_free(pv_lines);
 	}
@@ -90,14 +94,21 @@ int gather_lvm(cfg_t cfg)
 	int rows = m_create(16, sizeof(lv_row_t));
 	int lvp, *lvd;
 	m_foreach(lv_lines, lvp, lvd) {
-		s_split(toks, m_buf(*lvd), '|', 1);
-		if (m_len(toks) < 4) continue;
+		s_msplit(toks, *lvd, s_cstr("|"));
+		if (m_len(toks) < 4) {
+			for (int j = 0; j < (int)m_len(toks); j++) { m_free(INT(toks, j)); INT(toks, j) = 0; }
+			continue;
+		}
 
 		lv_row_t r = {0};
-		r.lv_name = s_dup(STR(toks, 0));
-		r.vg_name = s_dup(STR(toks, 1));
-		r.lv_size = strtoull(STR(toks, 2), NULL, 10);
-		r.lv_path = s_dup(STR(toks, 3));
+		r.lv_name = INT(toks, 0);
+		r.vg_name = INT(toks, 1);
+		r.lv_size = strtoull(m_str(INT(toks, 2)), NULL, 10);
+		r.lv_path = INT(toks, 3);
+		for (int j = 0; j < (int)m_len(toks); j++) {
+			if (j == 0 || j == 1 || j == 3) { INT(toks, j) = 0; }
+			else { m_free(INT(toks, j)); INT(toks, j) = 0; }
+		}
 
 		/* lookup VG free/size */
 		int vp;
@@ -128,28 +139,39 @@ int gather_lvm(cfg_t cfg)
 					    m_str(r.vg_name), m_str(r.lv_name));
 			int mounts = m_str_from_file("/proc/mounts");
 			if (mounts >= 0) {
-				nl_h = s_dup("\n");
-				int mlines = s_msplit(0, mounts, nl_h);
-				m_free(nl_h);
+				int mlines = s_msplit(0, mounts, s_cstr("\n"));
 				m_free(mounts);
-				int toks2 = m_alloc(8, sizeof(char *), MFREE_STR);
+				int toks2 = m_alloc(8, sizeof(int), MFREE_EACH);
 				int mp;
 				int *md;
 				m_foreach(mlines, mp, md) {
-				s_split(toks2, m_buf(*md), ' ', 1);
-				if (m_len(toks2) < 2) continue;
-				if (s_strcmp_c(r.lv_path, STR(toks2, 0)) == 0 ||
-				    s_strcmp_c(dm_h, STR(toks2, 0)) == 0) {
-					m_free(r.mount);
-					r.mount = s_dup(STR(toks2, 1));
-					break;
+					s_msplit(toks2, *md, s_cstr(" "));
+					int dev = 0, mnt = 0, k = 0;
+					for (int j = 0; j < (int)m_len(toks2); j++) {
+						int h = INT(toks2, j);
+						if (mstr_empty(h)) { m_free(h); INT(toks2, j) = 0; continue; }
+						if (k == 0) { dev = h; INT(toks2, j) = 0; }
+						else if (k == 1) { mnt = h; INT(toks2, j) = 0; }
+						else { m_free(h); INT(toks2, j) = 0; }
+						k++;
 					}
+					if (!mnt) { m_free(dev); continue; }
+					if (s_cmp(r.lv_path, dev) == 0 ||
+					    s_cmp(dm_h, dev) == 0) {
+						m_free(r.mount);
+						r.mount = mnt;
+						m_free(dev);
+						break;
+					}
+					m_free(dev);
+					m_free(mnt);
 				}
 				m_free(toks2);
 				m_free(mlines);
 			}
 			m_free(dm_h);
 		}
+		m_free(r.lv_path);
 
 		m_put(rows, &r);
 	}
@@ -174,21 +196,39 @@ int gather_lvm(cfg_t cfg)
 		int free_row = m_create(7, sizeof(field_t));
 
 		/* PV */
-		const char *pv_show = r->pv_name ? m_str(r->pv_name) : "";
-		if (ri > 0 && r->pv_name && prev_pv && s_cmp(r->pv_name, prev_pv) == 0)
-			pv_show = "\"";
-		FIELD_ADD(free_row, pv_show);
-		prev_pv = r->pv_name;
+		if (ri > 0 && r->pv_name && prev_pv && s_cmp(r->pv_name, prev_pv) == 0) {
+			FIELD_ADD(free_row, "\"");
+			m_free(r->pv_name);
+			r->pv_name = 0;
+		} else {
+			prev_pv = r->pv_name;
+			if (r->pv_name) {
+				FIELD_ADD_H(free_row, r->pv_name);
+				r->pv_name = 0;
+			} else
+				FIELD_ADD(free_row, "");
+		}
 
 		/* VG */
-		const char *vg_show = r->vg_name ? m_str(r->vg_name) : "";
-		if (ri > 0 && prev_vg && s_cmp(r->vg_name, prev_vg) == 0)
-			vg_show = "\"";
-		FIELD_ADD(free_row, vg_show);
-		prev_vg = r->vg_name;
+		if (ri > 0 && r->vg_name && prev_vg && s_cmp(r->vg_name, prev_vg) == 0) {
+			FIELD_ADD(free_row, "\"");
+			m_free(r->vg_name);
+			r->vg_name = 0;
+		} else {
+			prev_vg = r->vg_name;
+			if (r->vg_name) {
+				FIELD_ADD_H(free_row, r->vg_name);
+				r->vg_name = 0;
+			} else
+				FIELD_ADD(free_row, "");
+		}
 
 		/* LV */
-		FIELD_ADD(free_row, r->lv_name ? m_str(r->lv_name) : "");
+		if (r->lv_name) {
+			FIELD_ADD_H(free_row, r->lv_name);
+			r->lv_name = 0;
+		} else
+			FIELD_ADD(free_row, "");
 
 		/* Size */
 		FIELD_ADD_H_R(free_row, human_size(r->lv_size));
@@ -200,7 +240,11 @@ int gather_lvm(cfg_t cfg)
 			FIELD_ADD_R(free_row, "-");
 
 		/* Mount */
-		FIELD_ADD(free_row, r->mount ? m_str(r->mount) : "-");
+		if (r->mount) {
+			FIELD_ADD_H(free_row, r->mount);
+			r->mount = 0;
+		} else
+			FIELD_ADD(free_row, "-");
 
 		/* Bar column */
 		{
@@ -212,16 +256,6 @@ int gather_lvm(cfg_t cfg)
 		m_put(t->rows, &free_row);
 	}
 
-	/* free per-row string handles */
-	int fi;
-	lv_row_t *fr;
-	m_foreach(rows, fi, fr) {
-		m_free(fr->pv_name);
-		m_free(fr->lv_name);
-		m_free(fr->vg_name);
-		m_free(fr->mount);
-		m_free(fr->lv_path);
-	}
 	m_free(rows);
 
 	/* free vg/pv name handles */

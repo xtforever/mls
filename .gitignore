@@ -9,3 +9,4 @@ tests/error-handler
 *.hdf
 *.save
 nohup.out
+__pycache__/

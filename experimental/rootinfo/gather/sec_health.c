@@ -60,7 +60,7 @@ int gather_health(cfg_t cfg)
 		m_free(aa);
 	}
 	if (access("/sys/module/selinux", F_OK) == 0)
-		add_entry(sec->entries, text_new(s_dup("selinux: enabled")));
+		add_entry(sec->entries, text_new_c("selinux: enabled"));
 
 	/* GPU */
 	int lspci = subproc_read("lspci 2>/dev/null | grep -iE 'vga|3d|display'");
@@ -90,7 +90,7 @@ int gather_health(cfg_t cfg)
 			if (CHAR(failed, p) == '\n') nf++;
 		add_entry(sec->entries, text_new(s_printf(0, 0, "systemd: %d failed units", nf)));
 	} else {
-		add_entry(sec->entries, text_new(s_dup("systemd: no failed units")));
+		add_entry(sec->entries, text_new_c("systemd: no failed units"));
 	}
 	m_free(failed);
 
@@ -103,7 +103,7 @@ int gather_health(cfg_t cfg)
 		if (nup < 0) nup = 0;
 		add_entry(sec->entries, text_new(s_printf(0, 0, "updates: %d pending", nup)));
 	} else {
-		add_entry(sec->entries, text_new(s_dup("updates: none pending")));
+		add_entry(sec->entries, text_new_c("updates: none pending"));
 	}
 	m_free(up);
 

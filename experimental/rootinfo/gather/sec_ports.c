@@ -23,7 +23,7 @@ int gather_ports(cfg_t cfg)
 
 	int th = table_new(ncols, (const char *[]){"Address", "Port", "Process"});
 	data_t *t = (data_t *)m_buf(th);
-	int toks = m_alloc(8, sizeof(char *), MFREE_STR);
+	int toks = m_alloc(8, sizeof(int), MFREE_EACH);
 	int count = 0;
 	int p, *d;
 	m_foreach(lines, p, d) {
@@ -31,27 +31,22 @@ int gather_ports(cfg_t cfg)
 		int line = *d;
 		if (s_has_prefix(line, "State") || s_has_prefix(line, "Netid")) continue;
 
-		s_split(toks, m_buf(line), ' ', 1);
-		int tok = m_alloc(8, sizeof(int), MFREE_EACH);
-		int n = 0;
-		for (int j = 0; j < (int)m_len(toks) && n < 8; j++)
-			if (STR(toks, j)[0]) {
-				int h = s_dup(STR(toks, j));
-				m_put(tok, &h);
-				n++;
-			}
-		if (n < 5) { m_free(tok); continue; }
+		s_msplit(toks, line, s_cstr(" "));
+		int n = 0, local = 0;
+		for (int j = 0; j < (int)m_len(toks); j++) {
+			int h = INT(toks, j);
+			if (mstr_empty(h)) { m_free(h); INT(toks, j) = 0; continue; }
+			n++;
+			if (n == 4) { local = h; INT(toks, j) = 0; }
+			else { m_free(h); INT(toks, j) = 0; }
+		}
+		if (n < 5) { m_free(local); continue; }
 
-		char *local = m_str(INT(tok, 3));
-		char *colon = strrchr(local, ':');
-		if (!colon || !colon[1]) { m_free(tok); continue; }
-
-		int ah = s_dup(local);
-		int a2 = s_left(ah, (int)(colon - local));
-		m_free(ah);
-		ah = a2;
-		int ph = s_dup(colon + 1);
-		m_free(tok);
+		int colon = s_rchr(local, ':');
+		if (colon < 0 || colon + 1 >= s_strlen(local)) { m_free(local); continue; }
+		int ah = s_left(local, colon);
+		int ph = s_slice(0, 0, local, colon + 1, -1);
+		m_free(local);
 
 		int proc_h = 0;
 		if (is_root) {

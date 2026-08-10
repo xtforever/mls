@@ -139,32 +139,43 @@ static void gather_disk(int entries)
 
 	int th = table_new(6, (const char *[]){"Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"});
 	data_t *t = (data_t *)m_buf(th);
-	int toks = m_alloc(16, sizeof(char *), MFREE_STR);
+	int toks = m_alloc(16, sizeof(int), MFREE_EACH);
 	int p, *d;
 	m_foreach(lines, p, d) {
 		if (s_has_prefix(*d, "Filesystem")) continue;
-		s_split(toks, m_buf(*d), ' ', 1);
-		int tok = m_alloc(16, sizeof(int), MFREE_EACH);
-		int n = 0;
-		for (int j = 0; j < (int)m_len(toks) && n < 16; j++)
-			if (STR(toks, j)[0]) {
-				int h = s_dup(STR(toks, j));
-				m_put(tok, &h);
-				n++;
-			}
-		if (n < 6) { m_free(tok); continue; }
-
+		s_msplit(toks, *d, s_cstr(" "));
 		int row = m_create(6, sizeof(field_t));
-		FIELD_ADD_H(row, s_mdup(INT(tok, 0)));
-		for (int c = 1; c < 5; c++)
-			FIELD_ADD_H_R(row, s_mdup(INT(tok, c)));
-		int mnt = s_new();
-		for (int j = 5; j < n; j++) {
-			if (j > 5) s_cat(mnt, " ");
-			s_mcat(mnt, INT(tok, j));
+		int n = 0, mnt = 0;
+		for (int j = 0; j < (int)m_len(toks); j++) {
+			int h = INT(toks, j);
+			if (mstr_empty(h)) { m_free(h); INT(toks, j) = 0; continue; }
+			if (n >= 1 && n <= 3) {
+				int gb = s_printf(0, 0, "%.2fG",
+						(double)s_to_long(h) / (1024.0 * 1024.0));
+				m_free(h);
+				h = gb;
+			}
+			if (n < 5) {
+				field_t f_ = { .str_h = h, .align = n ? ALIGN_RIGHT : ALIGN_LEFT };
+				m_put(row, &f_);
+				INT(toks, j) = 0;
+			} else {
+				if (mnt) s_cat(mnt, " ");
+				else mnt = s_new();
+				s_mcat(mnt, h);
+				m_free(h);
+				INT(toks, j) = 0;
+			}
+			n++;
+		}
+		if (n < 6) {
+			for (int j = 0; j < (int)m_len(row); j++)
+				m_free(((field_t *)m_buf(row) + j)->str_h);
+			m_free(row);
+			m_free(mnt);
+			continue;
 		}
 		FIELD_ADD_H(row, mnt);
-		m_free(tok);
 		m_put(t->rows, &row);
 	}
 	m_free(toks);

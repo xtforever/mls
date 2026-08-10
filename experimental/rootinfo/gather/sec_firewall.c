@@ -14,7 +14,7 @@ int gather_firewall(cfg_t cfg)
 	int ufw_h = subproc_read("ufw status 2>/dev/null");
 	if (ufw_h > 0 && s_find(ufw_h, "Status: active") >= 0) {
 		m_free(ufw_h);
-		add_entry(sec->entries, text_new(s_dup("ufw: active")));
+		add_entry(sec->entries, text_new_c("ufw: active"));
 		return sec_h;
 	}
 	m_free(ufw_h);
@@ -23,7 +23,7 @@ int gather_firewall(cfg_t cfg)
 	m_free(out);
 
 	if (!is_root) {
-		add_entry(sec->entries, text_new(s_dup("ENABLED (requires root to list rules)")));
+		add_entry(sec->entries, text_new_c("ENABLED (requires root to list rules)"));
 		return sec_h;
 	}
 
@@ -32,9 +32,9 @@ int gather_firewall(cfg_t cfg)
 		int has_nft = nft_h > 0 && !s_isempty(nft_h);
 		m_free(nft_h);
 		if (has_nft)
-			add_entry(sec->entries, text_new(s_dup("nftables: ENABLED")));
+			add_entry(sec->entries, text_new_c("nftables: ENABLED"));
 		else
-			add_entry(sec->entries, text_new(s_dup("DISABLED")));
+			add_entry(sec->entries, text_new_c("DISABLED"));
 		return sec_h;
 	}
 

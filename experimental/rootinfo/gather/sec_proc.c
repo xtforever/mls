@@ -24,39 +24,40 @@ int gather_proc(cfg_t cfg)
 	data_t *t = (data_t *)m_buf(th);
 	int count = 0;
 	int p, *d;
-	int toks = m_alloc(16, sizeof(char *), MFREE_STR);
+	int toks = m_alloc(16, sizeof(int), MFREE_EACH);
 	m_foreach(lines, p, d) {
 		if (count >= top) break;
 		if (s_has_prefix(*d, "USER") || s_has_prefix(*d, "PID")) continue;
 
-		s_split(toks, m_buf(*d), ' ', 1);
-		int n = m_len(toks);
-		int fields = m_alloc(4, sizeof(int), MFREE_EACH);
-		int fcnt = 0;
-		int cmd_h = s_new();
-		for (int j = 0; j < n; j++) {
-			if (!STR(toks, j)[0]) continue;
+		s_msplit(toks, *d, s_cstr(" "));
+		int row = m_create(5, sizeof(field_t));
+		int fcnt = 0, cmd_h = 0;
+		for (int j = 0; j < (int)m_len(toks); j++) {
+			int h = INT(toks, j);
+			if (mstr_empty(h)) { m_free(h); INT(toks, j) = 0; continue; }
 			if (fcnt < 4) {
-				int h = s_dup(STR(toks, j));
-				m_put(fields, &h);
+				field_t f_ = { .str_h = h,
+					       .align = (fcnt >= 1 && fcnt <= 3) ? ALIGN_RIGHT : ALIGN_LEFT };
+				m_put(row, &f_);
+				INT(toks, j) = 0;
 				fcnt++;
 			} else {
-				if (s_strlen(cmd_h)) s_cat(cmd_h, " ");
-				s_cat(cmd_h, STR(toks, j));
+				if (cmd_h) s_cat(cmd_h, " ");
+				else cmd_h = s_new();
+				s_mcat(cmd_h, h);
+				m_free(h);
+				INT(toks, j) = 0;
 			}
 		}
-		if (fcnt < 4) { m_free(fields); m_free(cmd_h); continue; }
-
-		int row = m_create(5, sizeof(field_t));
-		for (int j = 0; j < 4; j++) {
-			field_t f_ = { .str_h = s_mdup(INT(fields, j)),
-				       .align = (j >= 1 && j <= 3) ? ALIGN_RIGHT : ALIGN_LEFT };
-			m_put(row, &f_);
+		if (fcnt < 4) {
+			for (int j = 0; j < (int)m_len(row); j++)
+				m_free(((field_t *)m_buf(row) + j)->str_h);
+			m_free(row);
+			m_free(cmd_h);
+			continue;
 		}
-		field_t f_ = { .str_h = s_mdup(cmd_h), .align = ALIGN_LEFT };
+		field_t f_ = { .str_h = cmd_h, .align = ALIGN_LEFT };
 		m_put(row, &f_);
-		m_free(fields);
-		m_free(cmd_h);
 		m_put(t->rows, &row);
 		count++;
 	}

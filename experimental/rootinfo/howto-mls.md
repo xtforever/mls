@@ -77,7 +77,8 @@ freeing. The only `char *` that ever appears is a *read-only* view via
   the terminator). For strings, use `s_strlen`.
 - `s_msplit` (handles) vs `s_split` (`char *`) differ in element type. Use
   `s_split` for fixed-width column parsing (see the LVM pattern), `s_msplit`
-  when the parts feed other handle APIs.
+  when the parts feed other handle APIs — and **transfer** the handles
+  instead of copying them (see the `s_msplit` section below).
 - `cmp_mstr`, `cmp_mstr_fast`, `cmp_mstr_cstr_fast`, and `compare_int` are
   declared in `m_tool.h` but **not implemented** — using them is a link error.
   Use `_cmp_mstr` from `gather.h`, or `cmp_int` (defined in `mls.c`).
@@ -233,6 +234,43 @@ How it works:
 - Read the line via `m_buf(*d)` directly — no 512-byte `STR_COPY`
   intermediate, so no truncation.
 
+## s_msplit — handle split, transfer instead of copy
+
+When split tokens feed other handle APIs (table rows, `field_t`, lists),
+prefer `s_msplit()` over `s_split()` + `s_dup`/`s_mdup`. `s_split` returns
+`char *` tokens, so each one must be copied into a handle again (`s_dup`)
+and yet again into the destination (`s_mdup`) — three copies per token.
+`s_msplit` returns owned string handles directly (`MFREE_EACH`), so
+non-empty tokens are **transferred** into the destination with zero extra
+copies:
+
+```
+s_msplit(toks, *d, s_cstr(" "));        // split into owned handles (1 copy)
+for (int j = 0; j < (int)m_len(toks); j++) {
+    int h = INT(toks, j);
+    if (mstr_empty(h)) { m_free(h); INT(toks, j) = 0; continue; }
+    field_t f_ = { .str_h = h, .align = ... };    // transfer, no copy
+    m_put(row, &f_);
+    INT(toks, j) = 0;                             // zero the source slot
+}
+```
+
+This is the `gather_disk()` pattern (df parsing): fixed columns go straight
+into the row by handle, and only the mount-point join (several tokens glued
+with spaces) copies — that one genuinely needs a new string.
+
+Ownership rules:
+- Every token is consumed exactly once: either transferred into a container
+  that now owns it, or `m_free`d (empties, join leftovers).
+- **After a transfer, zero the source slot** (`INT(toks, j) = 0;`). Then the
+  array no longer references the handle, so the final `m_free(toks)` frees
+  nothing and can never double-free a transferred handle.
+- `s_msplit` itself clears the array with `m_clear` on reuse, so you can
+  reuse one `toks` handle across lines; `m_free(toks)` once at the end is
+  enough.
+- Variable whitespace is fine: split on a single `' '` and drop the empty
+  tokens. There is no `trimws` mode, but each empty costs one `m_free`.
+
 ## str_dup_h / str_line / STR_COPY — CHAR-based copies
 
 Three ways to copy a handle, all reading through `CHAR()` and writing
@@ -358,6 +396,7 @@ fixed-size arrays.
 | `strcmp(m_str(a), m_str(b))` | `_cmp_mstr(&a, &b)` |
 | `const char *v = m_str(h); sscanf(v, "%s", buf)` | `buf = copy_word(buf, h)` |
 | `strdup(line)` + `strtok_r` + trim loop + `free` | `s_split(toks, m_buf(h), '|', 1)` |
+| `s_split` + `s_dup` + `s_mdup` (3 copies/token) | `s_msplit` + transfer handles (1 copy/token) |
 | `char line[512]; memcpy(line, m_str(h), ...)` | `str_dup_h(h)` / `str_line(h)` / `STR_COPY(buf, sz, h)` |
 | `*(int *)m_buf(h) + i` / pointer arithmetic | `INT(h,i)` (checked) / `INT_SAFE(h,i)` (safe) |
 | `memcpy(dst, src, n)` into/out of the array | `m_write(m,p,data,n)` / `m_read_safe(h,p,&data,n)` |

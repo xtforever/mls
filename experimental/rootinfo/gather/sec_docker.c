@@ -17,16 +17,22 @@ int gather_docker(cfg_t cfg)
 
 	int th = table_new(4, (const char *[]){"Name", "Image", "Ports", "Status"});
 	data_t *t = (data_t *)m_buf(th);
-	int toks = m_alloc(8, sizeof(char *), MFREE_STR);
+	int toks = m_alloc(8, sizeof(int), MFREE_EACH);
 	int p, *d;
 	m_foreach(lines, p, d) {
 		if (s_isempty(*d)) continue;
-		s_split(toks, m_buf(*d), '|', 0);
-		int ncols = (int)m_len(toks);
-		if (ncols > 4) ncols = 4;
+		s_msplit(toks, *d, s_cstr("|"));
 		int row = m_create(4, sizeof(field_t));
-		for (int c = 0; c < 4; c++)
-			FIELD_ADD(row, c < ncols ? STR(toks, c) : "");
+		for (int c = 0; c < (int)m_len(toks); c++) {
+			if (c < 4) {
+				field_t f_ = { .str_h = INT(toks, c) };
+				m_put(row, &f_);
+			} else {
+				m_free(INT(toks, c));
+			}
+			INT(toks, c) = 0;
+		}
+		while ((int)m_len(row) < 4) FIELD_ADD(row, "");
 		m_put(t->rows, &row);
 	}
 	m_free(toks);

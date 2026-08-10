@@ -91,6 +91,11 @@ static inline int text_new(int text_h)
 	return dh;
 }
 
+static inline int text_new_c(const char *s)
+{
+	return text_new(s_dup(s));
+}
+
 static inline int bar_new(int str_h, double frac)
 {
 	int dh = data_new(DT_BAR);

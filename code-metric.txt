@@ -1,0 +1,53 @@
+# metric: "nesting + pointer indirection" score for a function
+
+Let f be a function. Two raw counters are computed over f's lines and pointers.
+
+## nesting level
+
+A line is "code" if it is not blank, not comment-only, and not a lone brace
+line (the line contains no code besides its `{` or `}`).
+
+For a code line L, let d(L) = the nesting level of L:
+  count opening braces { before L and closing braces } before L
+  (i.e. the brace depth of the enclosing block when L is reached, ignoring
+  braces inside string/char literals). This is real nesting, not whitespace:
+  a line's indentation width is irrelevant.
+
+c(i) = #{ code lines L in f : d(L) = i }        for i >= 1
+
+Only code lines count; lines at depth 0 (signature, braces, top-level body)
+are ignored.
+
+## pointer indirection
+
+For every pointer-typed object o in scope of f (parameters + local declarations),
+let lvl(o) = its indirection level:  `int *s` -> 1, `int **s` -> 2, `int ***p` -> 3.
+Count each distinct object once.
+
+p(k) = #{ objects o in f : lvl(o) = k }         for k >= 1
+
+(If you want usage instead of declaration, count occurrences of o in the body;
+the definition is otherwise identical.)
+
+## score
+
+score(f) = ( sum_{i=1..n} c(i) * 2^(i-1) ) * 2^p(1) * 3^p(2) * 4^p(3) * ...
+
+  n = max depth with c(n) > 0
+  the pointer product runs to max indirection level k with p(k) > 0.
+
+Line count enters linearly, depth enters exponentially: a 10-line loop body
+at depth 2 adds 10 * 2^1 = 20, not 10^2 = 100. Deep lines are still the
+dominant factor (10 lines at depth 6 add 10 * 2^5 = 320) but the score no
+longer explodes with line count.
+
+## edge cases
+
+- empty body, no code lines: sum is 0 -> score 0.
+- no pointers: empty product = 1, so score = sum term only.
+- pointer factor is (k+1)^p(k): each `int *` multiplies by 2, `**` by 3^count,
+  etc. Every pointer raises the score, deeper ones more.
+- nesting term c(i)*2^(i-1): one line at depth 5 adds 16; 10 lines at depth 5
+  add 320. Pain grows exponentially with depth, only linearly with line count.
+- values are far smaller than the old c(i)^i metric: use uint64 and you are
+  safe in practice. For size-independent comparison, divide by code-line count.
