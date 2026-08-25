@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sys/wait.h>
+#include <sys/syscall.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <time.h>
@@ -45,7 +46,12 @@ static pid_t subproc_fork (const char *cmd, int out_pipe[2], int err_pipe[2])
 			dup2 (err_pipe[1], STDERR_FILENO);
 			close (err_pipe[1]);
 		}
-		close_range (3, ~0U, 0);
+#ifdef SYS_close_range
+			syscall (SYS_close_range, 3, ~0U, 0);
+#else
+			for (int fd = 3; fd < 1024; fd++)
+				close (fd);
+#endif
 		execl ("/bin/sh", "sh", "-c", cmd, (char *)NULL);
 		_exit (127);
 	}

@@ -5,7 +5,9 @@
 #include "m_table.h"
 #include <errno.h>
 #include <fcntl.h>
+#ifdef __GLIBC__
 #include <printf.h>
+#endif
 #include <regex.h>
 #include <search.h>
 #include <stdarg.h>
@@ -1127,7 +1129,9 @@ void s_write (int m, int n)
 	}
 }
 
-/* Custom printf support */
+/* Custom printf support (glibc only: musl has no printf.h and nothing
+   in rootinfo uses the %M specifier) */
+#ifdef __GLIBC__
 
 /**
  * Internal handler for the %M specifier in printf.
@@ -1162,6 +1166,8 @@ void m_register_printf ()
 		ERR ("Failed to register printf specifier 'M'\n");
 	}
 }
+
+#endif /* __GLIBC__ */
 
 
 
