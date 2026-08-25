@@ -495,8 +495,16 @@ static void gather_network (int entries)
 	}
 	m_free (gw);
 
+	/* with systemd-resolved, resolv.conf only holds the 127.0.0.53 stub,
+	   so ask resolvectl for the real upstream servers first */
 	int dns = subproc_read (
-		"sed -n 's/^nameserver //p' /etc/resolv.conf 2>/dev/null");
+		"resolvectl dns 2>/dev/null | sed -n 's/^[^:]*: //p' | "
+		"tr ' ' '\\n' | sed '/^$/d' | sort -u");
+	if (dns <= 0 || s_isempty (dns)) {
+		m_free (dns);
+		dns = subproc_read (
+			"sed -n 's/^nameserver //p' /etc/resolv.conf 2>/dev/null");
+	}
 	if (dns > 0 && !s_isempty (dns)) {
 		int dns_line = s_printf (0, 0, "DNS: %s", m_str (dns));
 		s_trim (dns_line);
