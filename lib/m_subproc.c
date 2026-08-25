@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 
 static int exit_code (int status)
 {
@@ -82,7 +83,18 @@ int subproc_run (const char *cmd, int *stdout_h, int *stderr_h, int timeout_ms)
 		}
 		if (ret == 0) {
 			kill (pid, SIGKILL);
-			waitpid (pid, NULL, 0);
+			/* ponytail: a child stuck in D state (e.g. statvfs on a hard
+			   NFS mount whose server is gone) ignores SIGKILL, so a
+			   blocking waitpid would hang us too. Give it a 500 ms
+			   grace period and, if it is still around, abandon it:
+			   rootinfo is short-lived and init reaps the leftover
+			   child after we exit. */
+			for (int i = 0; i < 50; i++) {
+				if (waitpid (pid, NULL, WNOHANG) == pid)
+					break;
+				struct timespec ts = { .tv_nsec = 10000000 }; /* 10 ms */
+				nanosleep (&ts, NULL);
+			}
 			pid = -1;
 			rc = -1;
 			goto done;

@@ -7,6 +7,7 @@
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
@@ -122,34 +123,69 @@ static void gather_meminfo (int rows)
 	m_free (meminfo);
 }
 
-static void gather_disk (int entries)
+/* filesystem types df itself ignores plus the ones the old `df -x ...`
+   call filtered out */
+static int skip_fs_type (const char *type)
 {
-	struct statvfs vf;
-	if (statvfs ("/", &vf) != 0)
-		return;
+	static const char *skip[] = {
+		"autofs", "binfmt_misc", "bpf", "cgroup", "cgroup2",
+		"configfs", "debugfs", "devpts", "devtmpfs", "efivarfs",
+		"fusectl", "hugetlbfs", "mqueue", "nsfs", "nfsd",
+		"overlay", "proc", "pstore", "ramfs", "rpc_pipefs",
+		"securityfs", "selinuxfs", "squashfs", "sysfs", "tmpfs",
+		"tracefs",
+	};
+	for (size_t i = 0; i < sizeof (skip) / sizeof (skip[0]); i++)
+		if (strcmp (type, skip[i]) == 0)
+			return 1;
+	return 0;
+}
 
-	double total = (double)vf.f_blocks * vf.f_frsize;
-	double avail = (double)vf.f_bavail * vf.f_frsize;
-	double used = total - avail;
-	double frac = total > 0 ? used / total : 0.0;
-
-	add_entry (entries,
-		   bar_new (s_printf (0, 0, "Disk: %.1fG/%.1fG used (%.0f%%)",
-				      used / (1024.0 * 1024.0 * 1024.0),
-				      total / (1024.0 * 1024.0 * 1024.0),
-				      frac * 100.0),
-			    frac));
-
-	int lines = subproc_lines ("LC_ALL=C df -kP -x tmpfs -x devtmpfs -x "
-				   "overlay -x squashfs 2>/dev/null");
-	if (STRTAB_EMPTY (lines)) {
-		m_free (lines);
-		return;
+/* /proc/mounts escapes spaces and friends as \ooo */
+static int mount_unescape (int h)
+{
+	int out = s_new ();
+	for (int i = 0;; i++) {
+		char c = CHAR (h, i);
+		if (!c)
+			break;
+		if (c == '\\' && isdigit ((unsigned char)CHAR (h, i + 1))
+		    && isdigit ((unsigned char)CHAR (h, i + 2))
+		    && isdigit ((unsigned char)CHAR (h, i + 3))) {
+			int v = (CHAR (h, i + 1) - '0') * 64 +
+				(CHAR (h, i + 2) - '0') * 8 +
+				(CHAR (h, i + 3) - '0');
+			m_putc (out, (char)v);
+			i += 3;
+		} else {
+			m_putc (out, c);
+		}
 	}
+	m_putc (out, 0);
+	return out;
+}
 
-	int th = table_new (6, (const char *[]){"Filesystem", "Size", "Used",
-						"Avail", "Use%", "Mounted on"});
-	data_t *t = (data_t *)m_buf (th);
+static int shell_quote (int h)
+{
+	int q = s_new ();
+	m_putc (q, '\'');
+	for (int i = 0;; i++) {
+		char c = CHAR (h, i);
+		if (!c)
+			break;
+		if (c == '\'')
+			s_cat (q, "'\\''");
+		else
+			m_putc (q, c);
+	}
+	m_putc (q, '\'');
+	m_putc (q, 0);
+	return q;
+}
+
+static void df_add_rows (int rows, int out_h)
+{
+	int lines = s_msplit (0, out_h, s_cstr ("\n"));
 	int toks = m_alloc (16, sizeof (int), MFREE_EACH);
 	int p, *d;
 	m_foreach (lines, p, d)
@@ -198,10 +234,80 @@ static void gather_disk (int entries)
 			continue;
 		}
 		FIELD_ADD_H (row, mnt);
-		m_put (t->rows, &row);
+		m_put (rows, &row);
 	}
 	m_free (toks);
 	m_free (lines);
+}
+
+static void gather_disk (int entries)
+{
+	struct statvfs vf;
+	if (statvfs ("/", &vf) != 0)
+		return;
+
+	double total = (double)vf.f_blocks * vf.f_frsize;
+	double avail = (double)vf.f_bavail * vf.f_frsize;
+	double used = total - avail;
+	double frac = total > 0 ? used / total : 0.0;
+
+	add_entry (entries,
+		   bar_new (s_printf (0, 0, "Disk: %.1fG/%.1fG used (%.0f%%)",
+					      used / (1024.0 * 1024.0 * 1024.0),
+					      total / (1024.0 * 1024.0 * 1024.0),
+					      frac * 100.0),
+			    frac));
+
+	int mounts = m_str_from_file ("/proc/mounts");
+	if (mounts < 0)
+		return;
+
+	int rows = m_create (16, sizeof (int));
+	int lines = s_msplit (0, mounts, s_cstr ("\n"));
+	m_free (mounts);
+	int toks = m_alloc (8, sizeof (int), MFREE_EACH);
+	int p, *d;
+	m_foreach (lines, p, d)
+	{
+		s_msplit (toks, *d, s_cstr (" "));
+		int skip = 1, out = 0;
+		if (m_len (toks) >= 3
+		    && !skip_fs_type (m_str (INT (toks, 2)))) {
+			int path = mount_unescape (INT (toks, 1));
+			int q = shell_quote (path);
+			int cmd = s_printf (0, 0, "LC_ALL=C df -kP %s 2>/dev/null",
+					    m_str (q));
+			m_free (q);
+			m_free (path);
+			/* one df per mountpoint: an unreachable NFS server
+			   costs only this row, not the whole section */
+			skip = (subproc_run (m_str (cmd), &out, NULL, 3000) != 0);
+			m_free (cmd);
+		}
+		for (int j = 0; j < (int)m_len (toks); j++) {
+			m_free (INT (toks, j));
+			INT (toks, j) = 0;
+		}
+		if (skip || !out || s_isempty (out)) {
+			m_free (out);
+			continue;
+		}
+		df_add_rows (rows, out);
+		m_free (out);
+	}
+	m_free (toks);
+	m_free (lines);
+
+	if (m_len (rows) == 0) {
+		m_free (rows);
+		return;
+	}
+
+	int th = table_new (6, (const char *[]){ "Filesystem", "Size", "Used",
+						 "Avail", "Use%", "Mounted on" });
+	data_t *t = (data_t *)m_buf (th);
+	m_free (t->rows);
+	t->rows = rows;
 
 	add_entry (entries, th);
 }

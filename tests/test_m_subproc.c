@@ -80,6 +80,14 @@ T (test_run_failure)
 	check (rc != 0, "subproc_run false returns non-zero exit");
 }
 
+T (test_timeout)
+{
+	int out = 0;
+	int rc = subproc_run ("sleep 5", &out, NULL, 300);
+	check (rc != 0, "subproc_run timeout returns non-zero");
+	check (out == 0, "timeout frees stdout buffer");
+}
+
 int main (void)
 {
 	m_init ();
@@ -92,6 +100,7 @@ int main (void)
 	test_empty_output ();
 	test_lines_empty ();
 	test_run_failure ();
+	test_timeout ();
 
 	printf ("subproc: %d passed, %d failed\n", passed, failed);
 	m_destruct ();
