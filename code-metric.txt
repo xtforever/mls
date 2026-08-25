@@ -4,25 +4,33 @@ Let f be a function. Two raw counters are computed over f's lines and pointers.
 
 ## nesting level
 
-A line is "code" if it is not blank, not comment-only, and not a lone brace
-line (the line contains no code besides its `{` or `}`).
+The unit is a *statement*, not a physical line: a statement is a token run
+ending at a top-level `;` or at a block opener (the `{` of an `if`/`for`/
+`while`/`switch`/`else`/`do`/`try`, or a bare compound block). It is counted
+once no matter how many physical lines it spans, so line-wrapped calls and
+conditions do not inflate the score, and `{ a; b; }` on one line counts as
+two statements.
 
-For a code line L, let d(L) = the nesting level of L:
-  count opening braces { before L and closing braces } before L
-  (i.e. the brace depth of the enclosing block when L is reached, ignoring
-  braces inside string/char literals). This is real nesting, not whitespace:
-  a line's indentation width is irrelevant.
+For a statement S, let d(S) = the nesting level of S:
+  count opening braces { before S and closing braces } before S
+  (i.e. the brace depth of the enclosing block when S is reached, ignoring
+  braces inside string/char literals). Initializer and compound-literal braces
+  (`= { ... }`, `(T){ ... }`) are tracked but do not open a nesting level.
+  This is real nesting, not whitespace: indentation width is irrelevant.
 
-c(i) = #{ code lines L in f : d(L) = i }        for i >= 1
+c(i) = #{ statements S in f : d(S) = i }        for i >= 1
 
-Only code lines count; lines at depth 0 (signature, braces, top-level body)
-are ignored.
+Only statements count; braces, signature lines and depth-0 body lines are
+ignored.
 
 ## pointer indirection
 
 For every pointer-typed object o in scope of f (parameters + local declarations),
 let lvl(o) = its indirection level:  `int *s` -> 1, `int **s` -> 2, `int ***p` -> 3.
-Count each distinct object once.
+Count each distinct object once. Function-pointer parameters such as
+`int (*cb)(void *ctx, int n)` are scored by their own star (level 1), not by
+the stars inside the argument list. Declarations with leading qualifiers
+(`static`, `const`, `register`, ...) still count their pointer objects.
 
 p(k) = #{ objects o in f : lvl(o) = k }         for k >= 1
 

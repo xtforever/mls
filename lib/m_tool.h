@@ -85,6 +85,7 @@ int s_trim (int m);
 int s_lower (int m);
 int s_upper (int m);
 int s_msplit (int dest, int src, int pattern);
+int s_msplit_trim (int dest, int src, int pattern, int trim);
 int s_implode (int dest, int srcs, int seperator);
 
 void m_map (int m, int (*fn) (int m, int p, void *ctx), void *ctx);

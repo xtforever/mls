@@ -12,6 +12,18 @@ into an MLS string handle (`s_printf`).
     ./rootinfo.exed
     make check    # run with output to /dev/null
 
+## Colors and config
+
+Output is colorized when stdout is a terminal (section titles bold cyan,
+table headers bold, key/value keys bold, usage bars green/yellow/red with
+dim empty cells). Piped output stays plain. Override in `rootinfo.hdf`:
+
+    (style (color on))    # always colorize
+    (style (color off))   # never colorize
+    (style (color auto))  # only on a terminal (default)
+
+On first run a default `rootinfo.hdf` is written next to the binary.
+
 ## Layout
 
 The report is accumulated in one MLS string handle (`out`); `kv()` appends

@@ -29,7 +29,7 @@ static void *freer_worker (void *arg)
 {
 	range_t *r = arg;
 	for (int i = r->start; i < r->end; i++)
-		m_free_safe (handles[i]);
+		m_free (handles[i]);
 	return NULL;
 }
 

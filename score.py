@@ -9,8 +9,10 @@ pointer-indirection histogram, the two score factors, and the final score.
 
     score(f) = ( sum_{i>=1} c(i) * 2^(i-1) ) * ( prod_{k>=1} (k+1)^p(k) )
 
-c(i) = number of code lines of f at nesting (brace) depth i.
-       Blank/comment-only/lone-brace lines are excluded; depth-0 lines are
+c(i) = number of statements of f at nesting (brace) depth i. A statement is
+       counted once no matter how many physical lines it spans (line-wrapped
+       calls or conditions do not inflate the score); compound-literal and
+       initializer braces are not counted as nesting. Depth-0 lines are
        ignored (the sum starts at i=1).
 p(k) = number of pointer objects in f (params + locals) with indirection
        level k: `int *s` -> 1, `int **s` -> 2, `int ***p` -> 3.
@@ -147,6 +149,25 @@ def split_top(toks, sep):
 def param_pointers(param_toks):
     levels = []
     for part in split_top(param_toks, ','):
+        if not part:
+            continue
+        # function-pointer/function declarator: '(' '*'* NAME ( ... )
+        # scored as NAME's own star level, not all stars before the last id
+        # (which is inside the argument list).
+        handled = False
+        for i, t in enumerate(part):
+            if t[0] != 'op' or t[1] != '(':
+                continue
+            j = i + 1
+            while j < len(part) and part[j][0] == 'op' and part[j][1] == '*':
+                j += 1
+            if j < len(part) and part[j][0] == 'id' and part[j][1] not in KEYWORDS:
+                if j - i - 1:
+                    levels.append(j - i - 1)
+                handled = True
+                break
+        if handled:
+            continue
         ids = [(i, t[1]) for i, t in enumerate(part) if t[0] == 'id']
         if not ids:
             continue
@@ -162,7 +183,12 @@ def param_pointers(param_toks):
 def is_declaration(stmt):
     if not stmt:
         return False
-    k, v = stmt[0][0], stmt[0][1]
+    i = 0
+    while i < len(stmt) and stmt[i][0] == 'id' and stmt[i][1] in QUALIFIERS:
+        i += 1  # skip storage-class / qualifier prefix (static, const, ...)
+    if i >= len(stmt):
+        return False
+    k, v = stmt[i][0], stmt[i][1]
     if k != 'id':
         return False
     if v in TYPE_TOKENS:
@@ -172,8 +198,8 @@ def is_declaration(stmt):
     # ponytail: unknown leading id treated as a typedef'd type name, unless it
     # looks like a call/assignment. Ceiling: typedef'd function-pointer types
     # are still missed; the fix is a real C parser.
-    if len(stmt) >= 2:
-        v2 = stmt[1][1]
+    if len(stmt) >= i + 2:
+        v2 = stmt[i + 1][1]
         if v2 in ('=', '(', ')', '[', ']', '{'):
             return False
     return True
@@ -208,30 +234,59 @@ def local_pointers(body_toks):
     return levels
 
 
+BLOCK_STARTERS = frozenset(") else do try".split())
+
+
+def nesting_counts(body_toks):
+    """c(i): number of statements at brace depth i. Counts one unit per
+    statement (token run ending at ';' or a block opener), so line-wrapped
+    calls/conditions don't inflate the depth-weighted sum. Initializer /
+    compound-literal braces are tracked but not counted as nesting."""
+    c = {}
+    depth = 1  # body is inside the function's opening brace
+    paren = 0
+    stmt_open = True
+    prev = None
+    braces = []  # stack of brace tags: 1 = block, 0 = initializer/literal
+    for k, v, _ in body_toks:
+        if v == '(':
+            paren += 1
+            continue
+        if v == ')':
+            paren -= 1
+            if paren == 0:
+                prev = v  # ')' closes a control-flow condition; '{' after it is a block
+            continue
+        if paren != 0:
+            continue
+        if v == '{':
+            if prev is None or prev in BLOCK_STARTERS or prev in ';}':
+                braces.append(1)
+                depth += 1
+                stmt_open = True
+            else:
+                braces.append(0)  # = { ... } / compound literal: mid-statement
+        elif v == '}':
+            if braces and braces.pop():
+                depth -= 1
+                stmt_open = True
+            # initializer close: still mid-statement, stmt_open unchanged
+        elif v == ';':
+            stmt_open = True
+        elif stmt_open:
+            if depth >= 1:
+                c[depth] = c.get(depth, 0) + 1
+            stmt_open = False
+        prev = v
+    return c
+
+
 def metric(name, line, param_toks, body_toks):
     p = {}
     for lvl in param_pointers(param_toks) + local_pointers(body_toks):
         p[lvl] = p.get(lvl, 0) + 1
 
-    lines = {}
-    for k, v, ln in body_toks:
-        lines.setdefault(ln, []).append((k, v))
-
-    c = {}
-    depth = 1  # body is inside the function's opening brace
-    for ln in sorted(lines):
-        toks = lines[ln]
-        if all(t[1] in '{}' for t in toks):  # lone-brace line
-            for _, tv in toks:
-                depth += 1 if tv == '{' else -1
-            continue
-        if depth >= 1:
-            c[depth] = c.get(depth, 0) + 1
-        for _, tv in toks:
-            if tv == '{':
-                depth += 1
-            elif tv == '}':
-                depth -= 1
+    c = nesting_counts(body_toks)
 
     sum_part = sum(v * (2 ** (i - 1)) for i, v in c.items())
     prod_part = 1
@@ -293,6 +348,60 @@ def selftest():
     assert sp == 6, sp            # 4*2^0 + 1*2^1
     assert pp == 18, pp           # 2^1 * 3^2
     assert score == 108, score
+
+    # function-pointer params are level-1 (their own star), and the real
+    # params are not dropped in favour of the innermost arg
+    FP = r"""
+int fp(int (*cb)(void *ctx, int n, void *data), void *ctx) {
+    return cb(ctx, 0, 0);
+}
+"""
+    funcs = find_functions(tokenize(FP))
+    c, p, sp, pp, score = metric(*funcs[0])
+    assert p == {1: 2}, p        # cb + ctx, both level-1 (not level-3)
+    assert pp == 4, pp           # 2^2
+    assert sp == 1, sp
+    assert score == 4, score
+
+    # a line-wrapped call must not inflate the nesting term
+    WRAPPED = r"""
+int w(char **s) {
+    if (a) {
+        if (b) {
+            foo (s,
+                 STR (x,
+                      i +
+                          1),
+                 0);
+        }
+    }
+    return 0;
+}
+"""
+    COMPACT = r"""
+int w(char **s) {
+    if (a) {
+        if (b) {
+            foo (s, STR (x, i + 1), 0);
+        }
+    }
+    return 0;
+}
+"""
+    c1 = metric(*find_functions(tokenize(WRAPPED))[0])[2]
+    c2 = metric(*find_functions(tokenize(COMPACT))[0])[2]
+    assert c1 == c2 == 8, (c1, c2)  # 2 + 2 + 4, same for both layouts
+
+    # static/const local pointers are counted too
+    Q = r"""
+int q(void) {
+    static char *s;
+    const char *t;
+    return 0;
+}
+"""
+    p = metric(*find_functions(tokenize(Q))[0])[1]
+    assert p == {1: 2}, p
     print("selftest ok")
 
 

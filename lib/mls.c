@@ -4,7 +4,6 @@
 #include "mls.h"
 #include "mls_internal.h"
 
-
 #include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -21,10 +20,10 @@ MLS_THREAD_LOCAL const char *mls_errfile = "";
 MLS_THREAD_LOCAL int mls_errline = 0;
 static int error_occurred = 0;
 /* this could be a define but that is not easy to debug */
-static inline int REAL_HDL( int m ) { return (m &  0xffffff); }
-static inline int REAL_UAF( int m ) { return (m>>24) & 0x7f; }
+static inline int REAL_HDL (int m) { return (m & 0xffffff); }
+static inline int REAL_UAF (int m) { return (m >> 24) & 0x7f; }
 static int UAF_PROTECTION = 0;
-static struct ls_st ML = { 0 }; // stack allocated vars
+static struct ls_st ML = {0}; // stack allocated vars
 #ifdef MLS_THREAD_SAFE
 static pthread_mutex_t ml_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t cs_map_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -40,13 +39,12 @@ static int freeing_handle = 0;
 #define CS_MAP_LOCK() ((void)0)
 #define CS_MAP_UNLOCK() ((void)0)
 #endif
-static int CS_MAP  = 0;
+static int CS_MAP = 0;
 static int CS_ZERO = 0;
-static int FH      = 0;
-
+static int FH = 0;
 
 /* prototypes */
-static int get_free_hdl(void);
+static int get_free_hdl (void);
 int m_binsert (int buf, const void *data,
 	       int (*cmpf) (const void *data, const void *buf_elem),
 	       int with_duplicates);
@@ -93,7 +91,8 @@ static inline lst_t get_list_locked (int m)
 	lst_t l = lst (&ML, idx);
 
 	if (l->uaf_protection != uaf) {
-		ERR ("uaf protection pattern does not match, expected:%d, got:%d",
+		ERR ("uaf protection pattern does not match, expected:%d, "
+		     "got:%d",
 		     l->uaf_protection, uaf);
 	}
 
@@ -101,12 +100,36 @@ static inline lst_t get_list_locked (int m)
 	return l;
 }
 
-static lst_t lock_handle (int m, int write)
+/* One locking core for both paths.
+   die=1: invalid handle, UAF mismatch, unallocated/freed list -> ERR()+exit.
+   die=0: same conditions set mls_errno and return NULL (used only by
+          m_is_freed, the query that must answer "is this handle dead?"
+          without exiting). */
+static lst_t lock_handle_core (int m, int write, int die)
 {
-	lst_t lp;
+	int idx = REAL_HDL (m);
+	int uaf = REAL_UAF (m);
 
 	MLS_MASTER_LOCK ();
-	lp = get_list_locked (m);
+	if (idx < 0 || idx >= ML.l) {
+		MLS_MASTER_UNLOCK ();
+		if (die)
+			ERR ("Invalid Handle %d", idx);
+		mls_errno = MLS_EINVAL;
+		return NULL;
+	}
+	lst_t lp = lst (&ML, idx);
+
+	if (lp->uaf_protection != uaf) {
+		MLS_MASTER_UNLOCK ();
+		if (die)
+			ERR ("uaf protection pattern does not match, expected:%d, got:%d",
+			     lp->uaf_protection, uaf);
+		mls_errno = MLS_EUAF;
+		return NULL;
+	}
+
+	init_handle_lock (lp);
 #ifdef MLS_THREAD_SAFE
 	if (write)
 		pthread_rwlock_wrlock (lp->lock);
@@ -118,22 +141,27 @@ static lst_t lock_handle (int m, int write)
 	/* ponytail: data+free_hdl checks moved here from get_list_locked
 	   so reads happen under per-handle rwlock, matching the writes
 	   in lst_resize/m_free — eliminates TSAN data races */
-	if (lp->data == NULL) {
+	if (lp->data == NULL ||
+	    (lp->free_hdl == 255 &&
+	     (!die || REAL_HDL (freeing_handle) != REAL_HDL (m)))) {
 #ifdef MLS_THREAD_SAFE
 		pthread_rwlock_unlock (lp->lock);
 #endif
 		MLS_MASTER_UNLOCK ();
-		ERR ("List %d not allocated", REAL_HDL (m));
-	}
-	if (lp->free_hdl == 255 && REAL_HDL (freeing_handle) != REAL_HDL (m)) {
-#ifdef MLS_THREAD_SAFE
-		pthread_rwlock_unlock (lp->lock);
-#endif
-		MLS_MASTER_UNLOCK ();
-		ERR ("List %d is being freed", REAL_HDL (m));
+		if (die)
+			ERR (lp->data == NULL ? "List %d not allocated"
+					     : "List %d is being freed",
+			     REAL_HDL (m));
+		mls_errno = MLS_EUAF;
+		return NULL;
 	}
 	MLS_MASTER_UNLOCK ();
 	return lp;
+}
+
+static lst_t lock_handle (int m, int write)
+{
+	return lock_handle_core (m, write, 1);
 }
 
 static void unlock_handle (lst_t lp)
@@ -145,54 +173,18 @@ static void unlock_handle (lst_t lp)
 #endif
 }
 
-/* Like lock_handle but returns NULL instead of calling ERR on failure.
-   Sets mls_errno so the caller can inspect the error reason. */
+/* Non-dying lock used only by m_is_freed(): never exits, sets mls_errno. */
 static lst_t lock_handle_safe (int m, int write)
 {
-	lst_t lp;
-	int idx = REAL_HDL (m);
-	int uaf = REAL_UAF (m);
-
-	MLS_MASTER_LOCK ();
-	if (idx < 0 || idx >= ML.l) {
-		MLS_MASTER_UNLOCK ();
-		mls_errno = MLS_EINVAL;
-		return NULL;
-	}
-	lp = lst (&ML, idx);
-	if (lp->uaf_protection != uaf) {
-		MLS_MASTER_UNLOCK ();
-		mls_errno = MLS_EUAF;
-		return NULL;
-	}
-	init_handle_lock (lp);
-#ifdef MLS_THREAD_SAFE
-	if (write)
-		pthread_rwlock_wrlock (lp->lock);
-	else
-		pthread_rwlock_rdlock (lp->lock);
-#else
-	(void)write;
-#endif
-	if (!lp->data || lp->free_hdl == 255) {
-#ifdef MLS_THREAD_SAFE
-		pthread_rwlock_unlock (lp->lock);
-#endif
-		MLS_MASTER_UNLOCK ();
-		mls_errno = MLS_EUAF;
-		return NULL;
-	}
-	MLS_MASTER_UNLOCK ();
-	return lp;
+	return lock_handle_core (m, write, 0);
 }
 
 /* Like lst_resize but returns -1 instead of calling ERR. */
 static int lst_resize_safe (lst_t lp, size_t new_size)
 {
-	if (lp->free_hdl & MFREE_NOALLOC) {
-		mls_errno = MLS_EINVAL;
-		return -1;
-	}
+	/* resizing foreign memory is a programmer error, not a handleable one */
+	if (lp->free_hdl & MFREE_NOALLOC)
+		ERR ("List is marked as NOALLOC, unable to resize");
 	size_t newSize = new_size * lp->w;
 	size_t oldSize = lp->max * lp->w;
 	if (new_size > 0 && newSize / new_size != lp->w) {
@@ -239,10 +231,7 @@ static int lst_put_safe (lst_t lp, const void *d)
 /* Like lst_write but returns -1 on error instead of calling ERR. */
 static int lst_write_safe (lst_t lp, size_t p, const void *data, size_t n)
 {
-	if (data == NULL) {
-		mls_errno = MLS_EINVAL;
-		return -1;
-	}
+	/* ponytail: NULL data is validated by the public wrappers via ERR. */
 	if (p + n > lp->max && lst_resize_safe (lp, p + n) != 0)
 		return -1;
 	if (p + n > lp->l)
@@ -274,9 +263,24 @@ static int lst_read_safe (lst_t l, size_t p, void **data, size_t n)
 	return 0;
 }
 
+/* Like lst_ins but reports OOM/overflow instead of dying.
+   p > l is a parameter error and always dies. */
+static void *lst_ins_safe (lst_t lp, size_t p, size_t n)
+{
+	if (p > lp->l)
+		ERR ("Wrong Arg p=%zu", p);
+	size_t cnt = lp->l - p;
+	if (lst_new_safe (lp, n) < 0)
+		return NULL;
+	if (cnt > 0)
+		memmove (lst (lp, p + n), lst (lp, p), cnt * lp->w);
+	memset (lst (lp, p), 0, n * lp->w);
+	return lst (lp, p);
+}
+
 /**
- * Prints an error message with file and line information and terminates the program.
- * Sets the error_occurred flag for post-mortem analysis.
+ * Prints an error message with file and line information and terminates the
+ * program. Sets the error_occurred flag for post-mortem analysis.
  *
  * @param line The line number where the error occurred.
  * @param file The source file where the error occurred.
@@ -325,7 +329,8 @@ void deb_warn (int line, const char *file, const char *function,
 }
 
 /**
- * Prints a trace message if the provided level is greater than or equal to trace_level.
+ * Prints a trace message if the provided level is greater than or equal to
+ * trace_level.
  *
  * @param l The trace level of this message.
  * @param line The line number where the trace occurred.
@@ -347,20 +352,35 @@ void deb_trace (int l, int line, const char *file, const char *function,
 const char *mls_errmsg (int code)
 {
 	switch (code) {
-	case MLS_OK:		return "Success";
-	case MLS_EINVAL:	return "Invalid handle";
-	case MLS_EBOUNDS:	return "Index out of bounds";
-	case MLS_ENOMEM:	return "Out of memory";
-	case MLS_EUAF:		return "Use-after-free detected";
-	case MLS_EOVERFLOW:	return "Integer overflow";
-	default:		return "Unknown error";
+	case MLS_OK:
+		return "Success";
+	case MLS_EINVAL:
+		return "Invalid handle";
+	case MLS_EBOUNDS:
+		return "Index out of bounds";
+	case MLS_ENOMEM:
+		return "Out of memory";
+	case MLS_EUAF:
+		return "Use-after-free detected";
+	case MLS_EOVERFLOW:
+		return "Integer overflow";
+	default:
+		return "Unknown error";
 	}
 }
 
-static void _mls_set_error (int code, const char *func)
+/**
+ * Report the pending mls_errno error with caller location and exit(1).
+ * Used by the mls_must() macro; never returns.
+ */
+void _mls_die (int line, const char *file, const char *function)
 {
-	mls_errno = code;
-	mls_errfunc = func;
+	fprintf (stderr, "[mls error] %s:%d %s(): %s", file, line, function,
+		 mls_errmsg (mls_errno));
+	if (mls_errfunc && mls_errfunc[0])
+		fprintf (stderr, " (in %s)", mls_errfunc);
+	fprintf (stderr, "\n");
+	exit (1);
 }
 
 // ********************************************
@@ -370,16 +390,12 @@ static void _mls_set_error (int code, const char *func)
 //
 // ********************************************
 
-
 /**
  * Returns the current size of the master list (stack of allocated handles).
  *
  * @return The number of handles in the master list.
  */
-int print_stacksize ()
-{
-	return ML.l;
-}
+int print_stacksize () { return ML.l; }
 
 /**
  * Returns a pointer to the element at the specified index in a list structure.
@@ -388,14 +404,12 @@ int print_stacksize ()
  * @param i The index of the element.
  * @return A pointer to the element data.
  */
-void *lst (lst_t l, size_t i) {
-	if(!l->data) ERR("Not init.");
+void *lst (lst_t l, size_t i)
+{
+	if (!l->data)
+		ERR ("Not init.");
 	return &l->data[l->w * i];
 }
-
-
-
-
 
 struct lst_owner_st {
 	int allocated;
@@ -422,7 +436,8 @@ static struct debug_info_st debi;
  * @param ln The line number of the call.
  * @param fn The filename of the call.
  * @param fun The function name of the caller.
- * @param args Bitmask indicating which arguments are valid (1:handle, 2:index, 4:data).
+ * @param args Bitmask indicating which arguments are valid (1:handle, 2:index,
+ * 4:data).
  * @param handle The MLS handle involved in the operation.
  * @param index The index involved in the operation.
  * @param data Pointer to data involved in the operation.
@@ -466,37 +481,39 @@ static int _mlsdb_check_handle ()
 	lst_t lp;
 	lst_owner *o;
 	int orig = debi.handle;
-	int h = REAL_HDL(orig);
-	int uaf = REAL_UAF(orig);
+	int h = REAL_HDL (orig);
+	int uaf = REAL_UAF (orig);
 
-	perr ("  Handle:    %d (UAF protection: %d)", h, uaf );
+	perr ("  Handle:    %d (UAF protection: %d)", h, uaf);
 
 	if (h < 0 || h >= m_len (DEB)) {
 		perr ("  Status:    Handle out of range (max=%d)", m_len (DEB));
 		return -1;
 	}
 
-	lp = (lst_t) lst ( &ML, h );
+	lp = (lst_t)lst (&ML, h);
 	if (lp->data == NULL) {
-		perr ("  Status:    List base address for handle %d is not allocated",
+		perr ("  Status:    List base address for handle %d is not "
+		      "allocated",
 		      h);
 	} else {
-		if ((*lp).uaf_protection != uaf ) {
-			perr ("  Status:    uaf protection pattern does not match, expected:%d, got:%d",
-			      (*lp).uaf_protection, uaf );
+		if ((*lp).uaf_protection != uaf) {
+			perr ("  Status:    uaf protection pattern does not "
+			      "match, expected:%d, got:%d",
+			      (*lp).uaf_protection, uaf);
 			return -1;
 		}
 	}
 
-	o = (lst_owner *)mls (DEB, h );
+	o = (lst_owner *)mls (DEB, h);
 	if (!o || o->allocated != 42) {
 		perr ("  Status:    Array was not allocated");
 		return -1;
 	}
 
 	if (o->ln < 0) {
-		perr ("  Status:    Previously removed by %s() at %s:%d", o->fun,
-		      o->fn, -o->ln);
+		perr ("  Status:    Previously removed by %s() at %s:%d",
+		      o->fun, o->fn, -o->ln);
 		return -1;
 	}
 
@@ -526,7 +543,8 @@ static int _mlsdb_check_index ()
 	}
 
 	if (i >= m_len (h)) {
-		perr ("  Index:     %d is out of bounds (len=%d)", i, m_len (h));
+		perr ("  Index:     %d is out of bounds (len=%d)", i,
+		      m_len (h));
 		return -1;
 	}
 
@@ -569,31 +587,15 @@ void exit_error ()
 
 /**
  * Resizes a list structure to a new maximum size.
+ * Dies on error; lst_resize_safe() reports the error instead.
  *
  * @param lp Pointer to the list structure pointer.
  * @param new_size The new maximum number of elements.
  */
 void lst_resize (lst_t lp, size_t new_size)
 {
-	if( lp->free_hdl & MFREE_NOALLOC ) {
-		ERR("List is marked as NOALLOC, unable to resize");		
-	}
-	size_t w = lp->w;
-	size_t newSize = new_size * w;
-	size_t oldSize = lp->max * w;
-	
-	if (new_size > 0 && newSize / new_size != w) {
-		ERR("Integer overflow in resize");
-	}
-
-	char *newData = realloc ( lp->data, newSize );
-	if (! newData )
-		ERR ("Out of Memory");
-	lp->data = newData;
-	if ( newSize > oldSize ) {
-		memset ( lp->data + oldSize, 0, newSize - oldSize);
-	}
-	lp->max = new_size;
+	if (lst_resize_safe (lp, new_size) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 }
 
 /**
@@ -605,18 +607,20 @@ void lst_resize (lst_t lp, size_t new_size)
  */
 void lst_create (lst_t l, size_t max, size_t w)
 {
-	if( max == 0 ) max = 1;
-	if( w == 0 )     w = 1;
-	
+	if (max == 0)
+		max = 1;
+	if (w == 0)
+		w = 1;
+
 	size_t alloc_size = max * w;
 	if (max > 0 && alloc_size / max != w) {
-		ERR("Integer overflow in allocation");
+		ERR ("Integer overflow in allocation");
 	}
 
 	l->max = max;
 	l->l = 0;
 	l->w = w;
-	l->data = calloc(max, w);
+	l->data = calloc (max, w);
 	if (!l->data)
 		ERR ("Out of Memory");
 }
@@ -631,15 +635,10 @@ void lst_create (lst_t l, size_t max, size_t w)
  */
 int lst_new (lst_t lp, size_t n)
 {
-	size_t p = lp->l;
-	size_t max = lp->max;
-	if (p + n > max) {
-		size_t newsiz = max + n;
-		newsiz = increase_by_percent (newsiz, 50);
-		lst_resize (lp, newsiz);
-	}
-	lp->l += n;
-	return (int)p;
+	int p = lst_new_safe (lp, n);
+	if (p < 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
+	return p;
 }
 
 /**
@@ -651,16 +650,19 @@ int lst_new (lst_t lp, size_t n)
  */
 int lst_put (lst_t lp, const void *d)
 {
-	int p = lst_new (lp, 1);
-	memcpy (lst (lp, p), d, lp->w);
+	int p = lst_put_safe (lp, d);
+	if (p < 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return p;
 }
 
 /**
- * Returns a pointer to the element at the specified index without using allocated bounds checking
- * this function allows to access all elementes in the array. normaly the length (l) value
- * is compared to the index, you need to call m_setlen or use m_put which automatically increases
- * the array length value. lst_peek gives you access to all allocated memory postion in this array
+ * Returns a pointer to the element at the specified index without using
+ * allocated bounds checking this function allows to access all elementes in the
+ * array. normaly the length (l) value is compared to the index, you need to
+ * call m_setlen or use m_put which automatically increases the array length
+ * value. lst_peek gives you access to all allocated memory postion in this
+ * array
  *
  * @param l The list structure.
  * @param i The index of the element.
@@ -669,8 +671,23 @@ int lst_put (lst_t lp, const void *d)
 void *lst_peek (lst_t l, size_t i)
 {
 	if (i >= l->max)
-		ERR("index out of bound max=%zu index=%zu", l->max, i );
+		ERR ("index out of bound max=%zu index=%zu", l->max, i);
 	return lst (l, i);
+}
+
+/* Like lst_del but reports a bounds error instead of dying. */
+static int lst_del_safe (lst_t l, size_t p)
+{
+	if (p >= l->l) {
+		mls_errno = MLS_EBOUNDS;
+		return -1;
+	}
+	size_t w = l->w;
+	size_t n = l->l - p - 1;
+	if (n > 0)
+		memmove (lst (l, p), lst (l, p + 1), n * w);
+	l->l--;
+	return 0;
 }
 
 /**
@@ -681,13 +698,8 @@ void *lst_peek (lst_t l, size_t i)
  */
 void lst_del (lst_t l, size_t p)
 {
-	if (p >= l->l)
-		ERR ("Wrong Arg p=%zu", p);
-	size_t w = l->w;
-	size_t n = l->l - p - 1;
-	if (n > 0)
-		memmove (lst (l, p), lst (l, p + 1), n * w);
-	l->l--;
+	if (lst_del_safe (l, p) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 }
 
 /**
@@ -718,15 +730,10 @@ void lst_remove (lst_t lp, size_t p, size_t n)
  */
 void *lst_ins (lst_t lp, size_t p, size_t n)
 {
-	size_t cnt;
-	if (p > lp->l)
-		return 0;
-	cnt = lp->l - p;
-	lst_new (lp, n);
-	if (cnt > 0)
-		memmove (lst (lp, p + n), lst (lp, p), cnt * lp->w);
-	memset (lst (lp, p), 0, n * lp->w);
-	return lst (lp, p);
+	void *r = lst_ins_safe (lp, p, n);
+	if (!r)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
+	return r;
 }
 
 /**
@@ -758,24 +765,15 @@ int lst_next (lst_t l, int *p, void *data)
  *
  * @param l The list structure.
  * @param p The starting index.
- * @param data Pointer to the destination buffer pointer. If *data is 0, a buffer is allocated.
+ * @param data Pointer to the destination buffer pointer. If *data is 0, a
+ * buffer is allocated.
  * @param n The number of elements to read.
  * @return 0 on success.
  */
 int lst_read (lst_t l, size_t p, void **data, size_t n)
 {
-	if (p + n > l->l || data == NULL) {
-		ERR ("Wrong arguments: Len: %d", l->l );
-	}
-	
-	if (*data == 0) {
-		size_t alloc_size = l->w * n;
-		if (n > 0 && alloc_size / n != l->w) ERR("Overflow");
-		*data = malloc (alloc_size);
-	}
-	if (!*data)
-		ERR ("Out of Memory");
-	memcpy (*data, lst (l, p), n * l->w);
+	if (lst_read_safe (l, p, data, n) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return 0;
 }
 
@@ -790,26 +788,21 @@ int lst_read (lst_t l, size_t p, void **data, size_t n)
  */
 int lst_write (lst_t lp, size_t p, const void *data, size_t n)
 {
-	if (data == NULL)
-		ERR ("Wrong arguments");
-	if (p + n > lp->max)
-		lst_resize (lp, p + n);
-	if (p + n > lp->l)
-		lp->l = p + n;
-	memcpy (lst (lp, p), data, n * lp->w);
+	if (lst_write_safe (lp, p, data, n) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return 0;
 }
 
-
-
 /**
- * Internal function to retrieve a pointer to the list structure associated with a handle.
- * Performs validation checks for handle range, existence, and UAF protection.
+ * Internal function to retrieve a pointer to the list structure associated with
+ * a handle. Performs validation checks for handle range, existence, and UAF
+ * protection.
  * @param m The handle to look up.
  * @return A pointer to the list structure pointer in the master list.
  */
 
-static inline lst_t get_list(int m) {
+static inline lst_t get_list (int m)
+{
 	lst_t lp;
 
 	MLS_MASTER_LOCK ();
@@ -834,7 +827,7 @@ static inline lst_t get_list(int m) {
  */
 lst_t exported_get_list (int r) { return get_list (r); }
 lst_t mls_lock_handle (int m, int write) { return lock_handle (m, write); }
-void  mls_unlock_handle (lst_t lp) { unlock_handle (lp); }
+void mls_unlock_handle (lst_t lp) { unlock_handle (lp); }
 
 extern void m_free_strings (int list, int CLEAR_ONLY);
 
@@ -845,8 +838,10 @@ extern void m_free_strings (int list, int CLEAR_ONLY);
  */
 static void free_strings_wrap (int h)
 {
-	int p; char **d;
-	m_foreach(h,p,d) {
+	int p;
+	char **d;
+	m_foreach (h, p, d)
+	{
 		if (*d) {
 			free (*d);
 			*d = NULL;
@@ -861,98 +856,97 @@ static void free_strings_wrap (int h)
  */
 static void free_list_wrap (int h)
 {
-	TRACE(1,"HDL:%d", REAL_HDL(h));
+	TRACE (1, "HDL:%d", REAL_HDL (h));
 	int p, *d;
-	m_foreach(h,p,d) {
-		/* what happens when a list is inserted twice ? 
+	m_foreach (h, p, d)
+	{
+		/* what happens when a list is inserted twice ?
 		   can we check if we freed the list? then it is not an error.
 		   right now, we just ignore double-free error
 		 */
-		if(  m_is_freed(*d) ) {
-			TRACE(1,"not freeing list %d allready freed", *d );
-		}
-		else {	
-		#ifdef MLS_DEBUG
+		if (m_is_freed (*d)) {
+			TRACE (1, "not freeing list %d allready freed", *d);
+		} else {
+#ifdef MLS_DEBUG
 			_m_free (__LINE__, __FILE__, __FUNCTION__, (*d));
-		#else
+#else
 			m_free (*d);
-		#endif
+#endif
 		}
 	}
 }
-void set_free_protection(int h, int p)
+void set_free_protection (int h, int p)
 {
-	lst_t lp = lock_handle(h, 1);
+	lst_t lp = lock_handle (h, 1);
 	lp->free_hdl |= p;
 	unlock_handle (lp);
 }
-void unset_free_protection(int h, int p)
+void unset_free_protection (int h, int p)
 {
-	lst_t lp = lock_handle(h, 1);
+	lst_t lp = lock_handle (h, 1);
 	lp->free_hdl &= ~(p);
 	unlock_handle (lp);
 }
 
-static int
-mscmpc(const void *a, const void *b)
+static int mscmpc (const void *a, const void *b)
 {
-	const char *s0= a;
+	const char *s0 = a;
 	const int *d = b;
-	const char *s1 = m_str(*d);		
-	return strncmp(s0,s1,m_len(*d) );
+	const char *s1 = m_str (*d);
+	return strncmp (s0, s1, m_len (*d));
 }
 
-
-
-static int new_list(const char *buf, size_t len, size_t max, size_t w, int hdl )
+static int new_list (const char *buf, size_t len, size_t max, size_t w, int hdl)
 {
 	MLS_MASTER_LOCK ();
-	int h=get_free_hdl();
-	lst_t lp = (lst_t) lst (&ML, h);
+	int h = get_free_hdl ();
+	lst_t lp = (lst_t)lst (&ML, h);
 	init_handle_lock (lp);
 	lp->w = w;
-	lp->data = (char*)buf;
+	lp->data = (char *)buf;
 	lp->max = max;
 	lp->l = len;
 	lp->free_hdl = hdl;
-	lp->uaf_protection =  UAF_PROTECTION;
-	TRACE(1,"Created: %d  %s", h, (hdl & MFREE_NOALLOC) ? "" : "+BUF" );
+	lp->uaf_protection = UAF_PROTECTION;
+	TRACE (1, "Created: %d  %s", h, (hdl & MFREE_NOALLOC) ? "" : "+BUF");
 	int ret = (h) | (((int)(lp->uaf_protection) << 24));
 	MLS_MASTER_UNLOCK ();
 	return ret;
 }
 
 int m_binsert2 (int buf, const void *data,
-	       int (*cmpf) (const void *data, const void *buf_elem),
-	       int with_duplicates, int with_copy);
+		int (*cmpf) (const void *data, const void *buf_elem),
+		int with_duplicates, int with_copy);
 
 /**
  * Looks up or creates a constant string from a C-style string.
  *
  * @param s The C-style string.
- * @param copy_string If non-zero, duplicates the string; if zero, uses zero-copy interning.
+ * @param copy_string If non-zero, duplicates the string; if zero, uses
+ * zero-copy interning.
  * @return The handle of the constant string.
  */
-int conststr_lookup_c (const char *s, int copy_string )
+int conststr_lookup_c (const char *s, int copy_string)
 {
 	if (!s || !*s)
 		return CS_ZERO;
 
 	CS_MAP_LOCK ();
-	int p = m_binsert2(CS_MAP, s, mscmpc, 0, 0);
+	int p = m_binsert2 (CS_MAP, s, mscmpc, 0, 0);
 	if (p < 0) {
 		CS_MAP_UNLOCK ();
-		return INT(CS_MAP, (-p) - 1);
+		return INT (CS_MAP, (-p) - 1);
 	}
 
 	int hdl;
-	int len = strlen(s) +1;
-	if( copy_string ) {
-		s=strdup(s);
+	int len = strlen (s) + 1;
+	if (copy_string) {
+		s = strdup (s);
 		hdl = MFREE_NODESTRUCT;
-	} else  hdl = MFREE_NODESTRUCT | MFREE_NOALLOC;
+	} else
+		hdl = MFREE_NODESTRUCT | MFREE_NOALLOC;
 
-	int ret = INT(CS_MAP,p) = new_list( s, len, len,1, hdl );
+	int ret = INT (CS_MAP, p) = new_list (s, len, len, 1, hdl);
 	CS_MAP_UNLOCK ();
 	return ret;
 }
@@ -963,7 +957,7 @@ int conststr_lookup_c (const char *s, int copy_string )
  * @param s Handle of the source string buffer.
  * @return The handle of the constant string.
  */
-int conststr_lookup (int s) { return conststr_lookup_c (m_str (s) , 1); }
+int conststr_lookup (int s) { return conststr_lookup_c (m_str (s), 1); }
 
 /**
  * Formatted creation of a constant string.
@@ -976,49 +970,45 @@ int cs_printf (const char *format, ...)
 {
 	int p;
 	char *s;
-	va_list ap;	
+	va_list ap;
 	va_start (ap, format);
 	int len = vasprintf (&s, format, ap);
 	va_end (ap);
 
-	p = m_binsert(CS_MAP, s, mscmpc, 0);
+	p = m_binsert (CS_MAP, s, mscmpc, 0);
 	if (p < 0) {
-		free(s);
-		return INT(CS_MAP, (-p) - 1);
+		free (s);
+		return INT (CS_MAP, (-p) - 1);
 	}
-	return new_list( s, len+1, len+1,1,  MFREE_NODESTRUCT | MFREE_NOALLOC );
+	return new_list (s, len + 1, len + 1, 1,
+			 MFREE_NODESTRUCT | MFREE_NOALLOC);
 }
 
 /* make a constant string handle from a constant c string */
-int s_ccstr(const char *s) {
-	return conststr_lookup_c(s, 0); 	
-}
+int s_ccstr (const char *s) { return conststr_lookup_c (s, 0); }
 
 /* make a constant string handle from a c string */
-int s_cstrdup(const char *s) {
-	return conststr_lookup_c(s, 1); 
-}
+int s_cstrdup (const char *s) { return conststr_lookup_c (s, 1); }
 
 /* wrap a string  list into a mls string list */
-int m_wrapstrings( char **list, int nelem )
+int m_wrapstrings (char **list, int nelem)
 {
-	return new_list( (char*)list, nelem, nelem, sizeof(char*),  MFREE_NOALLOC );
+	return new_list ((char *)list, nelem, nelem, sizeof (char *),
+			 MFREE_NOALLOC);
 }
 
 /* wrap a int  list into a mls string list */
-int m_wrapints( int *list, int nelem )
+int m_wrapints (int *list, int nelem)
 {
-	return new_list(  (char*)list, nelem, nelem, sizeof(int),  MFREE_NOALLOC );
+	return new_list ((char *)list, nelem, nelem, sizeof (int),
+			 MFREE_NOALLOC);
 }
 
-int m_wrapcstr( char *s ) {
-	int len = strlen(s)+1;
-	return new_list( s, len, len, 1, MFREE_NOALLOC );
+int m_wrapcstr (char *s)
+{
+	int len = strlen (s) + 1;
+	return new_list (s, len, len, 1, MFREE_NOALLOC);
 }
-
-
-
-
 
 /**
  * Initializes the MLS library system.
@@ -1031,29 +1021,29 @@ int m_init ()
 	// Free List FR : 0
 	// Conststr  CS : 1
 	// Custom Freefn: 2
-	
+
 	MLS_MASTER_LOCK ();
-	if( ML.data ) {
+	if (ML.data) {
 		MLS_MASTER_UNLOCK ();
 		return 0;
 	}
-	
-	srand((unsigned int)time(NULL));
-	UAF_PROTECTION = rand() & 0x7f;
+
+	srand ((unsigned int)time (NULL));
+	UAF_PROTECTION = rand () & 0x7f;
 
 	lst_create (&ML, 100, sizeof (struct ls_st));
-	lst_t lp = lst(&ML,lst_new (&ML, 1));
+	lst_t lp = lst (&ML, lst_new (&ML, 1));
 	lst_create (lp, 100, sizeof (int));
 	init_handle_lock (lp);
 	MLS_MASTER_UNLOCK ();
 
-	CS_MAP  = m_alloc (100, sizeof (int), 0 ); /* create list 1 */
+	CS_MAP = m_alloc (100, sizeof (int), 0); /* create list 1 */
 	/* system up and running, now some specials */
-	CS_ZERO	= new_list("",1,1,1, MFREE_NOALLOC | MFREE_NODESTRUCT );
-	m_puti(CS_MAP,CS_ZERO);       
-	set_free_protection(CS_MAP, MFREE_NODESTRUCT );
+	CS_ZERO = new_list ("", 1, 1, 1, MFREE_NOALLOC | MFREE_NODESTRUCT);
+	m_puti (CS_MAP, CS_ZERO);
+	set_free_protection (CS_MAP, MFREE_NODESTRUCT);
 
-	FH = m_alloc (10, sizeof (void*), 0 ); 
+	FH = m_alloc (10, sizeof (void *), 0);
 	free_fn_t f = NULL;
 	m_put (FH, &f);
 	f = free_strings_wrap;
@@ -1065,34 +1055,32 @@ int m_init ()
 
 /**
  * Frees the constant string system.
- * this function does nothing, freeing a constant does not make sense while program
- * is running.
- * instead m_destruct() will free allocated memory for us
+ * this function does nothing, freeing a constant does not make sense while
+ * program is running. instead m_destruct() will free allocated memory for us
  */
-void conststr_free (void)
-{
-	return;
-}
+void conststr_free (void) { return; }
 
 /**
  * Destroys the MLS library system.
  * Explicitly frees all remaining allocated handles and their contents.
- * Policy: Do not call user registered free_handler functions 
+ * Policy: Do not call user registered free_handler functions
  */
 void m_destruct ()
 {
 	int idx;
 	lst_t d;
 	MLS_MASTER_LOCK ();
-	if (!ML.data) ERR ("Not Init.");
-	((lst_t)lst(&ML, REAL_HDL(CS_MAP)))->free_hdl = 0;
+	if (!ML.data)
+		ERR ("Not Init.");
+	((lst_t)lst (&ML, REAL_HDL (CS_MAP)))->free_hdl = 0;
 	idx = -1;
-	while (lst_next (&ML, &idx, &d)) {		
-		if( d && d->data && !(d->free_hdl & MFREE_NOALLOC)  ) {
-			TRACE(1,"%d Free", idx );
-			free(d->data);
-			d->data=0;
-		} else TRACE(1,"%d", idx );
+	while (lst_next (&ML, &idx, &d)) {
+		if (d && d->data && !(d->free_hdl & MFREE_NOALLOC)) {
+			TRACE (1, "%d Free", idx);
+			free (d->data);
+			d->data = 0;
+		} else
+			TRACE (1, "%d", idx);
 		if (d)
 			destroy_handle_lock (d);
 	}
@@ -1101,15 +1089,15 @@ void m_destruct ()
 		free (ML.data);
 		ML.data = 0;
 	}
-	UAF_PROTECTION=0;
+	UAF_PROTECTION = 0;
 	MLS_MASTER_UNLOCK ();
 }
 
 static int last_created_hdl = -1;
 /* find free handle slot or create a new slot and return slot number */
-static int get_free_hdl(void)
+static int get_free_hdl (void)
 {
-	lst_t lp = lst(&ML,0);
+	lst_t lp = lst (&ML, 0);
 	if (lp->l > 0) {
 		last_created_hdl = *(int *)lst (lp, lp->l - 1);
 		lp->l--;
@@ -1121,49 +1109,65 @@ static int get_free_hdl(void)
 }
 
 /**
- * Allocates a new MLS handle with a specific free handler.
+ * Non-aborting version of m_alloc(): returns -1 and sets mls_errno on
+ * OOM or size overflow. A bad free-handler ID is a parameter error and
+ * still exits.
  *
  * @param max Initial maximum elements.
  * @param w Width of each element in bytes.
  * @param hfree The ID of the registered free handler to use.
- * @return A new 1-based MLS handle with UAF protection pattern.
+ * @return A new 1-based MLS handle, or -1 on error.
  */
-int m_alloc (size_t max, size_t w, uint8_t hfree)
+int m_alloc_safe (size_t max, size_t w, uint8_t hfree)
 {
-	char *data;
-	if( max == 0 ) max = 1;
-	if( w == 0 )     w = 1;
-	int hdl =  hfree & MFREE_MASK;
-	if( hdl && (size_t)hdl >= m_len(FH) ) {
-		ERR("no such handler: %d", hfree );
-	}
-	if( hfree & MFREE_NOALLOC )  {
-		data  = "";
-	} else {
+	if (max == 0)
+		max = 1;
+	if (w == 0)
+		w = 1;
+	int hdl = hfree & MFREE_MASK;
+	if (hdl && (size_t)hdl >= m_len (FH))
+		ERR ("no such handler: %d", hfree);
+
+	char *data = "";
+	if (!(hfree & MFREE_NOALLOC)) {
 		size_t alloc_size = max * w;
-		if (max > 0 && alloc_size / max != w) ERR("Overflow");
-		data = calloc(max,w);
-		if (!data)
-			ERR ("Out of Memory");
+		if (max > 0 && alloc_size / max != w) {
+			mls_errno = MLS_EOVERFLOW;
+			return -1;
+		}
+		data = calloc (max, w);
+		if (!data) {
+			mls_errno = MLS_ENOMEM;
+			return -1;
+		}
 	}
-	return new_list(data,0,max,w, hfree );
+	return new_list (data, 0, max, w, hfree);
 }
 
-int m_set_data(int m, size_t len, size_t w, const void *data)
+int m_alloc (size_t max, size_t w, uint8_t hfree)
 {
-	if( m <= 0 ) {
-		return  new_list(data,len,len, w,  MFREE_NOALLOC  );
+	int h = m_alloc_safe (max, w, hfree);
+	if (h < 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
+	return h;
+}
+
+int m_set_data (int m, size_t len, size_t w, const void *data)
+{
+	if (m <= 0) {
+		return new_list (data, len, len, w, MFREE_NOALLOC);
 	}
 	lst_t lp = lock_handle (m, 1);
-	if(! (lp->free_hdl & MFREE_NOALLOC) ) {
-		ERR("List %d is not marked MFREE_NOALLOC", m );
+	if (!(lp->free_hdl & MFREE_NOALLOC)) {
+		ERR ("List %d is not marked MFREE_NOALLOC", m);
 	}
-	lp->l = len; lp->max=len; lp->w = w;
-	lp->data = (char*)data;
+	lp->l = len;
+	lp->max = len;
+	lp->w = w;
+	lp->data = (char *)data;
 	unlock_handle (lp);
 	return m;
 }
-
 
 /**
  * Creates a new MLS handle with the default free handler (MFREE).
@@ -1174,37 +1178,42 @@ int m_set_data(int m, size_t len, size_t w, const void *data)
  */
 int m_create (size_t max, size_t w) { return m_alloc (max, w, MFREE); }
 
+int m_create_safe (size_t max, size_t w) { return m_alloc_safe (max, w, MFREE); }
+
 /**
  * Frees an MLS handle and its associated list data.
  * The handle is marked as freed and returned to the free list for reuse.
- * Handles with MFREE_NODESTRUCT will not be touched - useful if you want to make
- * sure that the memory stays allocated forever and the list never gets destroyed
+ * Handles with MFREE_NODESTRUCT will not be touched - useful if you want to
+ * make sure that the memory stays allocated forever and the list never gets
+ * destroyed
  *
  * @param m The handle to free.
  * @return 0 on success.
  */
 int m_free (int m)
 {
-	int realh =  REAL_HDL(m);
-	TRACE(1, "RH: %d, Hdl: %d", realh, m );
-	if( m == 0 ) return 0;
+	int realh = REAL_HDL (m);
+	TRACE (1, "RH: %d, Hdl: %d", realh, m);
+	if (m == 0)
+		return 0;
 retry:
 	lst_t lp = lock_handle (m, 1);
-	int freehdl = lp->free_hdl;	
+	int freehdl = lp->free_hdl;
 	int hdl = freehdl & MFREE_MASK;
 
-	if( freehdl == 255 || (freehdl & MFREE_NODESTRUCT) ) {
+	if (freehdl == 255 || (freehdl & MFREE_NODESTRUCT)) {
 		unlock_handle (lp);
 		return 0;
 	}
-	if( hdl == 0   ) goto simple_free;
-	
+	if (hdl == 0)
+		goto simple_free;
+
 	/* special free handler */
 	unlock_handle (lp);
-	if( hdl >= m_len(FH) ) {
-		ERR("no such handler: %d, List:%d", hdl, realh );
+	if (hdl >= m_len (FH)) {
+		ERR ("no such handler: %d, List:%d", hdl, realh);
 	}
-	free_fn_t xfree = *(free_fn_t *)mls( FH, hdl );
+	free_fn_t xfree = *(free_fn_t *)mls (FH, hdl);
 	lp = lock_handle (m, 1);
 	if (lp->free_hdl != freehdl) {
 		unlock_handle (lp);
@@ -1222,79 +1231,43 @@ retry:
 		lp = lock_handle (m, 1);
 	}
 
-	
 simple_free:
-	if(! (freehdl & MFREE_NOALLOC) ) {
-		if (lp->data && lp->max > 0) {
-			memset(lp->data, 0, lp->max * lp->w);
-		}
-		free(lp->data);
-	}
-	lp->data=0;
-	lp->free_hdl = 255;
-	unlock_handle (lp);
-	MLS_MASTER_LOCK ();
-	lst_put( (lst_t)ML.data, &realh);
-	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
-	MLS_MASTER_UNLOCK ();
-	TRACE(1, "freed: %d, Hdl: %d", realh, m );
-	return 0;
-}
-
-/**
- * Non-aborting version of m_free(). Returns -1 on error and sets mls_errno.
- * For simplicity, skips custom free handlers (MFREE_STR, MFREE_EACH)
- * and frees the data directly.
- *
- * @param m The handle to free.
- * @return 0 on success, -1 on error.
- */
-int m_free_safe (int m)
-{
-	int realh = REAL_HDL (m);
-	if (m <= 0) {
-		mls_errno = MLS_EINVAL;
-		return -1;
-	}
-	lst_t lp = lock_handle_safe (m, 1);
-	if (!lp)
-		return -1;
-	int freehdl = lp->free_hdl;
-	if (freehdl == 255 || (freehdl & MFREE_NODESTRUCT)) {
-		unlock_handle (lp);
-		return 0;
-	}
 	if (!(freehdl & MFREE_NOALLOC)) {
-		if (lp->data && lp->max > 0)
+		if (lp->data && lp->max > 0) {
 			memset (lp->data, 0, lp->max * lp->w);
+		}
 		free (lp->data);
 	}
-	lp->data = NULL;
+	lp->data = 0;
 	lp->free_hdl = 255;
 	unlock_handle (lp);
 	MLS_MASTER_LOCK ();
 	lst_put ((lst_t)ML.data, &realh);
 	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
 	MLS_MASTER_UNLOCK ();
+	TRACE (1, "freed: %d, Hdl: %d", realh, m);
 	return 0;
 }
 
 /**
- * @brief Registers a  a cleanup callback for managed arrays 
+ * @brief Registers a  a cleanup callback for managed arrays
  * The @p free_fn is triggered automatically when m_free() is called.
  * This allows for custom iteration and deallocation of array elements
  * before the array container itself is removed.
  *
- * @param free_fn The function to be called when freeing handles with this handler ID.
- * @return The handler ID on success, -1 if handler is invalid or too many handlers registered.
+ * @param free_fn The function to be called when freeing handles with this
+ * handler ID.
+ * @return The handler ID on success, -1 if handler is invalid or too many
+ * handlers registered.
  */
-int m_reg_freefn ( free_fn_t  free_fn )
+int m_reg_freefn (free_fn_t free_fn)
 {
-	if( m_len(FH) >= MFREE_MASK ) ERR("Too many free-fn registered");
-	if( !free_fn ) ERR("custom free funtion is null");
-	return m_put(FH, & free_fn );
+	if (m_len (FH) >= MFREE_MASK)
+		ERR ("Too many free-fn registered");
+	if (!free_fn)
+		ERR ("custom free funtion is null");
+	return m_put (FH, &free_fn);
 }
-
 
 /**
  * Checks if an MLS handle is valid and hasn't been freed.
@@ -1304,10 +1277,7 @@ int m_reg_freefn ( free_fn_t  free_fn )
  * @param h The handle to check.
  * @return 1 if the handle is valid, 0 if it is not valid.
  */
-int m_is_valid(int h)
-{
-	return !m_is_freed(h);
-}
+int m_is_valid (int h) { return !m_is_freed (h); }
 
 /**
  * Checks if an MLS handle is valid and hasn't been freed.
@@ -1362,9 +1332,10 @@ int m_dub (int m)
 	size_t width = src->w;
 	int free_hdl = src->free_hdl;
 	size_t max = len > 0 ? len : 1;
-	
+
 	size_t alloc_size = max * width;
-	if (max > 0 && alloc_size / max != width) ERR("Overflow");
+	if (max > 0 && alloc_size / max != width)
+		ERR ("Overflow");
 
 	char *data = calloc (max, width);
 	if (!data)
@@ -1383,7 +1354,6 @@ int m_dub (int m)
 	return ret;
 }
 
-
 /**
  * Returns the number of elements in the list associated with a handle.
  *
@@ -1401,7 +1371,8 @@ size_t m_len (int m)
 }
 
 /**
- * Returns a pointer to the raw data buffer of the list associated with a handle.
+ * Returns a pointer to the raw data buffer of the list associated with a
+ * handle.
  *
  * @param m The handle.
  * @return A pointer to the data buffer, or NULL if handle is invalid.
@@ -1424,13 +1395,9 @@ void *mls (int m, size_t i)
 {
 	if (m <= 0)
 		return NULL;
-	lst_t lp = lock_handle (m, 0);
-	if( i >= lp->l ) {
-		ERR ("Index %zu out of bounds for handle %d (len %zu)", i, m,
-		     lp->l);
-	}
-	void *ret = lst (lp, i);
-	unlock_handle (lp);
+	void *ret = mls_safe (m, i);
+	if (!ret)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return ret;
 }
 
@@ -1447,9 +1414,7 @@ void *mls_safe (int m, size_t i)
 		mls_errno = MLS_EINVAL;
 		return NULL;
 	}
-	lst_t lp = lock_handle_safe (m, 0);
-	if (!lp)
-		return NULL;
+	lst_t lp = lock_handle (m, 0);
 	if (i >= lp->l) {
 		mls_errno = MLS_EBOUNDS;
 		unlock_handle (lp);
@@ -1467,13 +1432,25 @@ void *mls_safe (int m, size_t i)
  * @param n The number of elements to reserve.
  * @return The index of the first newly reserved element.
  */
+int m_new_safe (int m, size_t n)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_new_safe (lp, n);
+	unlock_handle (lp);
+	return p;
+}
+
 int m_new (int m, size_t n)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = lock_handle (m, 1);
-	int p = lst_new (lp, n);
-	unlock_handle (lp);
+	int p = m_new_safe (m, n);
+	if (p < 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return p;
 }
 
@@ -1483,14 +1460,26 @@ int m_new (int m, size_t n)
  * @param m The handle.
  * @return A pointer to the new element.
  */
+void *m_add_safe (int m)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return NULL;
+	}
+	lst_t lp = lock_handle (m, 1);
+	int p = lst_new_safe (lp, 1);
+	void *ret = p < 0 ? NULL : lst (lp, p);
+	unlock_handle (lp);
+	return ret;
+}
+
 void *m_add (int m)
 {
 	if (m <= 0)
 		return NULL;
-	lst_t lp = lock_handle (m, 1);
-	int p = lst_new (lp, 1);
-	void *ret = lst (lp, p);
-	unlock_handle (lp);
+	void *ret = m_add_safe (m);
+	if (!ret)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return ret;
 }
 
@@ -1523,9 +1512,9 @@ int m_put (int m, const void *data)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = lock_handle (m, 1);
-	int p = lst_put (lp, data);
-	unlock_handle (lp);
+	int p = m_put_safe (m, data);
+	if (p < 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return p;
 }
 
@@ -1542,9 +1531,9 @@ int m_put_safe (int m, const void *data)
 		mls_errno = MLS_EINVAL;
 		return -1;
 	}
-	lst_t lp = lock_handle_safe (m, 1);
-	if (!lp)
-		return -1;
+	if (!data)
+		ERR ("Wrong arguments");
+	lst_t lp = lock_handle (m, 1);
 	int p = lst_put_safe (lp, data);
 	unlock_handle (lp);
 	return p;
@@ -1561,11 +1550,8 @@ int m_setlen (int m, size_t len)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = lock_handle (m, 1);
-	if (len > lp->max)
-		lst_resize (lp, len);
-	lp->l = len;
-	unlock_handle (lp);
+	if (m_setlen_safe (m, len) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return 0;
 }
 
@@ -1582,9 +1568,7 @@ int m_setlen_safe (int m, size_t len)
 		mls_errno = MLS_EINVAL;
 		return -1;
 	}
-	lst_t lp = lock_handle_safe (m, 1);
-	if (!lp)
-		return -1;
+	lst_t lp = lock_handle (m, 1);
 	if (len > lp->max && lst_resize_safe (lp, len) != 0) {
 		unlock_handle (lp);
 		return -1;
@@ -1611,7 +1595,8 @@ size_t m_bufsize (int m)
 }
 
 /**
- * Returns a pointer to the element at the specified index without bounds checking.
+ * Returns a pointer to the element at the specified index without bounds
+ * checking.
  *
  * @param m The handle.
  * @param i The index.
@@ -1641,13 +1626,9 @@ int m_write (int m, size_t p, const void *data, size_t n)
 {
 	if (m <= 0)
 		return -1;
-	lst_t lp = lock_handle (m, 1);
-	
-	// Overflow check for p + n
-	if (p + n < p) ERR("Overflow in write index");
-
-	int ret = lst_write (lp, p, data, n);
-	unlock_handle (lp);
+	int ret = m_write_safe (m, p, data, n);
+	if (ret != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return ret;
 }
 
@@ -1666,13 +1647,13 @@ int m_write_safe (int m, size_t p, const void *data, size_t n)
 		mls_errno = MLS_EINVAL;
 		return -1;
 	}
+	if (!data)
+		ERR ("Wrong arguments");
 	if (p + n < p) {
 		mls_errno = MLS_EOVERFLOW;
 		return -1;
 	}
-	lst_t lp = lock_handle_safe (m, 1);
-	if (!lp)
-		return -1;
+	lst_t lp = lock_handle (m, 1);
 	int ret = lst_write_safe (lp, p, data, n);
 	unlock_handle (lp);
 	return ret;
@@ -1691,13 +1672,9 @@ int m_read (int h, size_t p, void **data, size_t n)
 {
 	if (h <= 0)
 		return -1;
-	lst_t lp = lock_handle (h, 0);
-	
-	// Overflow check for p + n
-	if (p + n < p) ERR("Overflow in read index");
-
-	int ret = lst_read (lp, p, data, n);
-	unlock_handle (lp);
+	int ret = m_read_safe (h, p, data, n);
+	if (ret != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 	return ret;
 }
 
@@ -1716,13 +1693,13 @@ int m_read_safe (int h, size_t p, void **data, size_t n)
 		mls_errno = MLS_EINVAL;
 		return -1;
 	}
+	if (!data)
+		ERR ("Wrong arguments");
 	if (p + n < p) {
 		mls_errno = MLS_EOVERFLOW;
 		return -1;
 	}
-	lst_t lp = lock_handle_safe (h, 0);
-	if (!lp)
-		return -1;
+	lst_t lp = lock_handle (h, 0);
 	int ret = lst_read_safe (lp, p, data, n);
 	unlock_handle (lp);
 	return ret;
@@ -1753,9 +1730,8 @@ void m_del (int m, size_t p)
 {
 	if (m <= 0)
 		return;
-	lst_t lp = lock_handle (m, 1);
-	lst_del (lp, p);
-	unlock_handle (lp);
+	if (m_del_safe (m, p) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 }
 
 /**
@@ -1771,21 +1747,10 @@ int m_del_safe (int m, size_t p)
 		mls_errno = MLS_EINVAL;
 		return -1;
 	}
-	lst_t lp = lock_handle_safe (m, 1);
-	if (!lp)
-		return -1;
-	if (p >= lp->l) {
-		mls_errno = MLS_EBOUNDS;
-		unlock_handle (lp);
-		return -1;
-	}
-	size_t w = lp->w;
-	size_t n = lp->l - p - 1;
-	if (n > 0)
-		memmove (lst (lp, p), lst (lp, p + 1), n * w);
-	lp->l--;
+	lst_t lp = lock_handle (m, 1);
+	int ret = lst_del_safe (lp, p);
 	unlock_handle (lp);
-	return 0;
+	return ret;
 }
 
 /**
@@ -1810,21 +1775,33 @@ void *m_pop (int m)
 }
 
 /**
- * Inserts n empty (zero-initialized) elements at a specific index in a handle's list.
+ * Inserts n empty (zero-initialized) elements at a specific index in a handle's
+ * list.
  *
  * @param m The handle.
  * @param p The insertion index.
  * @param n The number of elements to insert.
  * @return 1 on success, 0 on failure.
  */
+int m_ins_safe (int m, size_t p, size_t n)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return 0;
+	}
+	lst_t lp = lock_handle (m, 1);
+	int ret = lst_ins_safe (lp, p, n) != NULL;
+	unlock_handle (lp);
+	return ret;
+}
+
 int m_ins (int m, size_t p, size_t n)
 {
 	if (m <= 0)
 		return 0;
-	lst_t lp = lock_handle (m, 1);
-	int ret = (lst_ins (lp, p, n) != NULL);
-	unlock_handle (lp);
-	return ret;
+	if (!m_ins_safe (m, p, n))
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
+	return 1;
 }
 
 /**
@@ -1849,26 +1826,39 @@ size_t m_width (int m)
  * @param m The handle.
  * @param new_size The new maximum number of elements.
  */
+int m_resize_safe (int m, size_t new_size)
+{
+	if (m <= 0) {
+		mls_errno = MLS_EINVAL;
+		return -1;
+	}
+	lst_t lp = lock_handle (m, 1);
+	int ret = lst_resize_safe (lp, new_size);
+	unlock_handle (lp);
+	return ret;
+}
+
 void m_resize (int m, size_t new_size)
 {
 	if (m <= 0)
 		return;
-	lst_t lp = lock_handle (m, 1);
-	lst_resize (lp, new_size);
-	unlock_handle (lp);
+	if (m_resize_safe (m, new_size) != 0)
+		_mls_die (__LINE__, __FILE__, __FUNCTION__);
 }
 
 #ifdef MLS_DEBUG
-#define m_create_internal(n, w) _m_create (__LINE__, __FILE__, __FUNCTION__, (n), (w))
-#define m_alloc_internal(n, w, h) _m_alloc (__LINE__, __FILE__, __FUNCTION__, (n), (w), (h))
+#define m_create_internal(n, w)                                                \
+	_m_create (__LINE__, __FILE__, __FUNCTION__, (n), (w))
+#define m_alloc_internal(n, w, h)                                              \
+	_m_alloc (__LINE__, __FILE__, __FUNCTION__, (n), (w), (h))
 #else
 #define m_create_internal(n, w) m_create (n, w)
 #define m_alloc_internal(n, w, h) m_alloc (n, w, h)
 #endif
 
 /**TODO
- * Extracts a sub-range of elements from one list and appends or writes them into another.
- * Supports negative indices (relative to end of list).
+ * Extracts a sub-range of elements from one list and appends or writes them
+ * into another. Supports negative indices (relative to end of list).
  *
  * @param dest The destination handle. If <= 0, a new handle is created.
  * @param offs The offset in the destination list to start writing.
@@ -1896,22 +1886,24 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		if (a < 0)
 			a = 0;
 		cnt = (b >= a) ? (size_t)(b - a + 1) : 0;
-		width = m_width (m); 
+		width = m_width (m);
 	}
 	if (dest <= 0) {
-                #ifdef MLS_DEBUG
-		dest = _m_create (__LINE__, __FILE__, __FUNCTION__, cnt + offs, width );
-		#else
-		dest = m_create (cnt + offs, width );		
-		#endif
+#ifdef MLS_DEBUG
+		dest = _m_create (__LINE__, __FILE__, __FUNCTION__, cnt + offs,
+				  width);
+#else
+		dest = m_create (cnt + offs, width);
+#endif
 	}
 	m_setlen (dest, offs);
-	if ( m && cnt > 0) {
+	if (m && cnt > 0) {
 		size_t nbytes = cnt * width;
 		if (cnt > 0 && nbytes / cnt != width)
 			ERR ("Integer overflow in slice");
 		/* ponytail: copy src to temp and release src lock before
-		   locking dest — avoids lock-order-inversion (rwlock → master) */
+		   locking dest — avoids lock-order-inversion (rwlock → master)
+		 */
 		lst_t src_lp = lock_handle (m, 0);
 		void *tmp = malloc (nbytes);
 		if (!tmp)
@@ -1943,7 +1935,6 @@ void m_remove (int m, size_t p, size_t n)
 	lst_remove (lp, p, n);
 	unlock_handle (lp);
 }
-
 
 /**
  * Zeroes out the entire data buffer of a handle's list.
@@ -1984,7 +1975,8 @@ int m_fscan2 (int m, char delim, FILE *fp)
  * @param m The handle.
  * @param delim The delimiter character.
  * @param fp The file pointer.
- * @return The number of characters scanned, or EOF if no characters were read before EOF.
+ * @return The number of characters scanned, or EOF if no characters were read
+ * before EOF.
  */
 int m_fscan (int m, char delim, FILE *fp)
 {
@@ -2005,8 +1997,8 @@ int m_cmp (int a, int b)
 {
 	if (a == b)
 		return 0;
-	if( m_width(a) != m_width(b) )
-		return -1;	
+	if (m_width (a) != m_width (b))
+		return -1;
 	int len_a = m_len (a);
 	int len_b = m_len (b);
 	int min_len = len_a < len_b ? len_a : len_b;
@@ -2029,9 +2021,7 @@ int m_lookup (int m, int key)
 	int p, *d;
 	if (m_len (key) == 0)
 		ERR ("Key of zero size");
-	m_foreach (m, p, d)
-		if (m_cmp (*d, key) == 0)
-			return *d;
+	m_foreach (m, p, d) if (m_cmp (*d, key) == 0) return *d;
 	m_put (m, &key);
 	return key;
 }
@@ -2049,9 +2039,7 @@ int m_lookup_obj (int m, void *obj, int size)
 {
 	int p;
 	void *d;
-	m_foreach (m, p, d)
-		if (memcmp (d, obj, size) == 0)
-			return p;
+	m_foreach (m, p, d) if (memcmp (d, obj, size) == 0) return p;
 	p = m_new (m, 1);
 	memcpy (mls (m, p), obj, size);
 	return p;
@@ -2129,27 +2117,27 @@ int m_puti (int m, int c)
 		return 0xFFFD;                                                 \
 	if ((c & 0x20) == 0) {                                                 \
 		len = 1;                                                       \
-		c &= 0x1F;                                                       \
+		c &= 0x1F;                                                     \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x10) == 0) {                                                 \
 		len = 2;                                                       \
-		c &= 0x0F;                                                       \
+		c &= 0x0F;                                                     \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x08) == 0) {                                                 \
 		len = 3;                                                       \
-		c &= 0x07;                                                       \
+		c &= 0x07;                                                     \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x04) == 0) {                                                 \
 		len = 4;                                                       \
-		c &= 0x03;                                                       \
+		c &= 0x03;                                                     \
 		goto read;                                                     \
 	}                                                                      \
 	if ((c & 0x02) == 0) {                                                 \
 		len = 5;                                                       \
-		c &= 0x01;                                                       \
+		c &= 0x01;                                                     \
 		goto read;                                                     \
 	}                                                                      \
 	return 0xFFFD;                                                         \
@@ -2214,7 +2202,8 @@ int utf8char (char **s)
  * Reads a single UTF-8 character from a file pointer.
  *
  * @param fp The file pointer.
- * @param buf Buffer to store the UTF-8 byte sequence (null-terminated if len < 6).
+ * @param buf Buffer to store the UTF-8 byte sequence (null-terminated if len <
+ * 6).
  * @return The number of bytes in the UTF-8 character, or EOF.
  */
 int utf8_getchar (FILE *fp, utf8_char_t buf)
@@ -2273,14 +2262,16 @@ int cmp_int (const void *a0, const void *b0)
  * @param data Pointer to the element to insert.
  * @param cmpf Comparison function pointer.
  * @param with_duplicates If non-zero, allows duplicate elements.
- * @return The index where the element was inserted, or -index if it exists and duplicates are not allowed.
- * @bugs if data is not allocated or its alloced size if less the m_width(buf) this will crash!
+ * @return The index where the element was inserted, or -index if it exists and
+ * duplicates are not allowed.
+ * @bugs if data is not allocated or its alloced size if less the m_width(buf)
+ * this will crash!
  */
 int m_binsert (int buf, const void *data,
-               int (*cmpf) (const void *data, const void *buf_elem),
-               int with_duplicates )
+	       int (*cmpf) (const void *data, const void *buf_elem),
+	       int with_duplicates)
 {
-	return m_binsert2( buf,data,cmpf,with_duplicates, 1);
+	return m_binsert2 (buf, data, cmpf, with_duplicates, 1);
 }
 
 /**
@@ -2296,11 +2287,12 @@ int m_binsert (int buf, const void *data,
  * @param with_duplicates If non-zero, allows duplicate elements.
  * @param with_copy If non-zero, data is copied into the array; if zero,
  *        an empty (zeroed) slot is inserted instead.
- * @return The index where the element was inserted, or -index if it exists and duplicates are not allowed.
+ * @return The index where the element was inserted, or -index if it exists and
+ * duplicates are not allowed.
  */
 int m_binsert2 (int buf, const void *data,
-	       int (*cmpf) (const void *data, const void *buf_elem),
-	       int with_duplicates, int with_copy )
+		int (*cmpf) (const void *data, const void *buf_elem),
+		int with_duplicates, int with_copy)
 {
 	int left = 0;
 	int right = m_len (buf) + 1;
@@ -2337,12 +2329,14 @@ int m_binsert2 (int buf, const void *data,
 	}
 	cur--;
 	m_ins (buf, cur, 1);
-	if( with_copy ) m_write (buf, cur, data, 1);
+	if (with_copy)
+		m_write (buf, cur, data, 1);
 	return cur;
 }
 
 /**
- * Looks up an integer in a sorted list using binary search and inserts it if not found.
+ * Looks up an integer in a sorted list using binary search and inserts it if
+ * not found.
  *
  * @param buf The handle of the sorted list.
  * @param key The integer to look for.
@@ -2441,12 +2435,14 @@ size_t m_count_allocated (void)
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
 #ifdef MLS_THREAD_SAFE
-		if (l->lock) pthread_rwlock_rdlock (l->lock);
+		if (l->lock)
+			pthread_rwlock_rdlock (l->lock);
 #endif
 		if (l->data && l->free_hdl != 255)
 			count++;
 #ifdef MLS_THREAD_SAFE
-		if (l->lock) pthread_rwlock_unlock (l->lock);
+		if (l->lock)
+			pthread_rwlock_unlock (l->lock);
 #endif
 	}
 	MLS_MASTER_UNLOCK ();
@@ -2470,13 +2466,15 @@ size_t m_total_bytes (void)
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
 #ifdef MLS_THREAD_SAFE
-		if (l->lock) pthread_rwlock_rdlock (l->lock);
+		if (l->lock)
+			pthread_rwlock_rdlock (l->lock);
 #endif
-		if (l->data && l->free_hdl != 255
-		    && !(l->free_hdl & MFREE_NOALLOC))
+		if (l->data && l->free_hdl != 255 &&
+		    !(l->free_hdl & MFREE_NOALLOC))
 			total += l->max * l->w;
 #ifdef MLS_THREAD_SAFE
-		if (l->lock) pthread_rwlock_unlock (l->lock);
+		if (l->lock)
+			pthread_rwlock_unlock (l->lock);
 #endif
 	}
 	MLS_MASTER_UNLOCK ();
@@ -2514,22 +2512,24 @@ void m_debug_print (FILE *fp)
 		return;
 	}
 	fprintf (fp, "[mls] slots=%zu\n", (size_t)ML.l);
-	fprintf (fp, "%-6s  %-10s  %-5s %-8s %-8s %s\n",
-		 "Idx", "Handle", "Type", "Len", "Cap", "Data");
+	fprintf (fp, "%-6s  %-10s  %-5s %-8s %-8s %s\n", "Idx", "Handle",
+		 "Type", "Len", "Cap", "Data");
 	for (int idx = 0; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
 #ifdef MLS_THREAD_SAFE
-		if (l->lock) pthread_rwlock_rdlock (l->lock);
+		if (l->lock)
+			pthread_rwlock_rdlock (l->lock);
 #endif
 		if (l->data && l->free_hdl != 255) {
-			int h = (int)((unsigned int)idx)
-				| ((int)(l->uaf_protection) << 24);
+			int h = (int)((unsigned int)idx) |
+				((int)(l->uaf_protection) << 24);
 			fprintf (fp, "%-6d  0x%08X  0x%02X %-8zu %-8zu %p\n",
 				 idx, h, l->free_hdl, l->l, l->max,
 				 (void *)l->data);
 		}
 #ifdef MLS_THREAD_SAFE
-		if (l->lock) pthread_rwlock_unlock (l->lock);
+		if (l->lock)
+			pthread_rwlock_unlock (l->lock);
 #endif
 	}
 	MLS_MASTER_UNLOCK ();
@@ -2566,7 +2566,8 @@ void _m_destruct ()
 
 	for (i = -1; m_next (DEB, &i, &o);) {
 		if (o->allocated == 42 && o->ln > 0) {
-			WARN ("[%s:%d] [%s]: %d still allocated", o->fn,o->ln, o->fun, i );
+			WARN ("[%s:%d] [%s]: %d still allocated", o->fn, o->ln,
+			      o->fun, i);
 		}
 	}
 	m_free (DEB);
@@ -2575,21 +2576,23 @@ void _m_destruct ()
 	debi.me = NULL;
 }
 
-static void _debug_create_list( int m_uaf, const char *dfunc, int ln, const char *fn, const char *fun )
+static void _debug_create_list (int m_uaf, const char *dfunc, int ln,
+				const char *fn, const char *fun)
 {
-	_mlsdb_caller ( dfunc, ln, fn, fun, 0, 0, 0, 0);
-	int m = REAL_HDL(m_uaf);
+	_mlsdb_caller (dfunc, ln, fn, fun, 0, 0, 0, 0);
+	int m = REAL_HDL (m_uaf);
 	int len = m_len (DEB);
 	if (m >= len) {
 		m_new (DEB, m - len + 1);
 	}
-	
+
 	lst_owner *lo = (lst_owner *)mls (DEB, m);
 	lo->ln = ln;
 	lo->fn = fn;
 	lo->fun = fun;
 	lo->allocated = 42;
-	TRACE (1, "[%s:%d] [%s] %s(): New: %d (real: %d)", fn,ln, fun, dfunc, m_uaf, m );
+	TRACE (1, "[%s:%d] [%s] %s(): New: %d (real: %d)", fn, ln, fun, dfunc,
+	       m_uaf, m);
 }
 
 /**
@@ -2603,10 +2606,11 @@ static void _debug_create_list( int m_uaf, const char *dfunc, int ln, const char
  * @param w Element width.
  * @return The new handle.
  */
-int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w, uint8_t hfree)
+int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w,
+	      uint8_t hfree)
 {
 	int m_uaf = m_alloc (n, w, hfree);
-	_debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	_debug_create_list (m_uaf, __FUNCTION__, ln, fn, fun);
 	return m_uaf;
 }
 
@@ -2622,26 +2626,26 @@ int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w, uint8
  */
 int _m_free (int ln, const char *fn, const char *fun, int m)
 {
-	int h = REAL_HDL(m);
+	int h = REAL_HDL (m);
 
-	TRACE (1, "[DEBUG] Free List %d", h );
-	
+	TRACE (1, "[DEBUG] Free List %d", h);
+
 	if (!h)
 		return 0;
 
 	_mlsdb_caller (__FUNCTION__, ln, fn, fun, 1, m, 0, 0);
 	m_free (m);
 
-	if( (size_t)h >= m_len(DEB) ) {
-		WARN("h=%d not in debug list", h );
+	if ((size_t)h >= m_len (DEB)) {
+		WARN ("h=%d not in debug list", h);
 		return 0;
 	}
-	
+
 	lst_owner *o = (lst_owner *)mls (DEB, h);
 	o->ln = -ln;
 	o->fun = fun;
 	o->fn = fn;
-	
+
 	return 0;
 }
 
@@ -2742,52 +2746,52 @@ void *_m_buf (int ln, const char *fn, const char *fun, int m)
  * @param hfree The free handler ID.
  * @return The new handle.
  */
-int _m_create (int ln, const char *fn, const char *fun, size_t n, size_t w )
+int _m_create (int ln, const char *fn, const char *fun, size_t n, size_t w)
 {
-	return _m_alloc (ln, fn, fun, n, w, MFREE );
+	return _m_alloc (ln, fn, fun, n, w, MFREE);
 }
 
-int _s_ccstr(int ln, const char *fn, const char *fun,const char *s)
+int _s_ccstr (int ln, const char *fn, const char *fun, const char *s)
 {
 	last_created_hdl = -1;
-	int m_uaf = s_ccstr(s);
-	if( last_created_hdl != -1 ) {
+	int m_uaf = s_ccstr (s);
+	if (last_created_hdl != -1) {
 		// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
 	}
-	return  m_uaf;
+	return m_uaf;
 }
 
-int _s_cstrdup(int ln, const char *fn, const char *fun,const char *s)
+int _s_cstrdup (int ln, const char *fn, const char *fun, const char *s)
 {
 	last_created_hdl = -1;
-	int m_uaf = s_cstrdup(s);
-	if( last_created_hdl != -1 ) {
-		_debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	int m_uaf = s_cstrdup (s);
+	if (last_created_hdl != -1) {
+		_debug_create_list (m_uaf, __FUNCTION__, ln, fn, fun);
 	}
-	return  m_uaf;	
+	return m_uaf;
 }
 
-int _m_wrapstrings(int ln, const char *fn, const char *fun, char **list, int nelem )
+int _m_wrapstrings (int ln, const char *fn, const char *fun, char **list,
+		    int nelem)
 {
-	int m_uaf = m_wrapstrings(list,nelem);
+	int m_uaf = m_wrapstrings (list, nelem);
 	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
-	return  m_uaf;	
+	return m_uaf;
 }
 
-int _m_wrapints(int ln, const char *fn, const char *fun, int *list, int nelem )
+int _m_wrapints (int ln, const char *fn, const char *fun, int *list, int nelem)
 {
-	int m_uaf = m_wrapints(list,nelem);
+	int m_uaf = m_wrapints (list, nelem);
 	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
-	return  m_uaf;	
+	return m_uaf;
 }
 
-int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s )
+int _m_wrapcstr (int ln, const char *fn, const char *fun, char *s)
 {
-	int m_uaf = m_wrapcstr(s);
+	int m_uaf = m_wrapcstr (s);
 	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
-	return  m_uaf;	
+	return m_uaf;
 }
 #endif
 
-
-int conststr_init() { return 0;      }
+int conststr_init () { return 0; }

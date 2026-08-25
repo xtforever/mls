@@ -162,11 +162,11 @@ static int test_concurrent_read_write (void)
  *  After m_free, verify that:
  *    - m_is_freed   returns 1
  *    - m_is_valid   returns 0
- *    - m_free_safe  returns -1 with mls_errno == MLS_EUAF
  *
  *  Proves: the UAF protection protocol (free_hdl=255, uaf_protection
- *  mismatch) correctly invalidates freed handles for all three query
- *  paths (shared-lock, master-lock, and safe-lock variants).
+ *  mismatch) correctly invalidates freed handles for the query paths.
+ *  Accessing the handle afterwards would exit(1) — that is tested in
+ *  experimental/ex_fuzzy/test_error_api.c via a fork()ed child.
  * ====================================================================
  */
 static int test_uaf_detection (void)
@@ -181,73 +181,12 @@ static int test_uaf_detection (void)
 	m_free (h);
 
 	/* Post-free: handle is invalid */
-	int freed   = m_is_freed (h);
-	int valid   = m_is_valid (h);
-	int safe_rc = m_free_safe (h);
-	int err     = mls_errno;
+	int freed = m_is_freed (h);
+	int valid = m_is_valid (h);
 
-	int ok = (freed == 1 && valid == 0 && safe_rc == -1 && err == MLS_EUAF);
-	printf ("  UAF detection: freed=%d valid=%d m_free_safe=%d err=%d  %s\n",
-		freed, valid, safe_rc, err, ok ? "OK" : "FAIL");
-	return ok;
-}
-
-/*
- * ====================================================================
- *  Test 4 — Two threads race to free the same handle via m_free_safe
- *
- *  Both threads start at a barrier, then call m_free_safe on the same
- *  handle.  m_free_safe must not abort on double-free (unlike m_free
- *  which ERR()s).  After both threads finish the handle must be freed.
- *
- *  Proves: the lock_handle_safe → free_hdl check path is safe under
- *  true concurrency.  Does NOT prove m_free (which ERR()s on race)
- *  is safe — use m_free_safe when double-free is possible.
- * ====================================================================
- */
-static pthread_barrier_t df_barrier;
-
-typedef struct {
-	int handle;
-	int result;
-} df_arg_t;
-
-static void *df_worker (void *arg)
-{
-	df_arg_t *a = arg;
-	pthread_barrier_wait (&df_barrier);
-	a->result = m_free_safe (a->handle);
-	return NULL;
-}
-
-static int test_double_free_safe (void)
-{
-	int h = m_alloc (4, sizeof (int), MFREE);
-	assert (h > 0);
-
-	assert (pthread_barrier_init (&df_barrier, NULL, 2) == 0);
-
-	df_arg_t  args[2] = { {h, -99}, {h, -99} };
-	pthread_t t[2];
-	for (int i = 0; i < 2; i++)
-		assert (pthread_create (&t[i], NULL, df_worker, &args[i]) == 0);
-
-	for (int i = 0; i < 2; i++)
-		pthread_join (t[i], NULL);
-
-	pthread_barrier_destroy (&df_barrier);
-
-	/* Both must return >= 0 (free succeeded / already freed) or -1
-	   (lock_handle_safe detected free_hdl==255 before acquiring rwlock).
-	   Neither outcome is an error — the invariant is no crash + handle freed. */
-	int both_ok = (args[0].result == 0 || args[0].result == -1) &&
-	              (args[1].result == 0 || args[1].result == -1);
-	int freed   = m_is_freed (h);
-
-	int ok = (both_ok && freed);
-	printf ("  double-free safe: results=%d,%d freed=%d  %s\n",
-		args[0].result, args[1].result, freed,
-		ok ? "OK" : "FAIL");
+	int ok = (freed == 1 && valid == 0);
+	printf ("  UAF detection: freed=%d valid=%d  %s\n",
+		freed, valid, ok ? "OK" : "FAIL");
 	return ok;
 }
 
@@ -269,7 +208,6 @@ int main (void)
 	RUN (test_concurrent_alloc_free);
 	RUN (test_concurrent_read_write);
 	RUN (test_uaf_detection);
-	RUN (test_double_free_safe);
 
 	m_destruct ();
 

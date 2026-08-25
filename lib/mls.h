@@ -94,34 +94,31 @@ const char *mls_errmsg (int code);
 
 enum predefined_free_handler {
 	MFREE = 0,
-	MFREE_STR = 1,		/* iterate each element and call free() */
-	MFREE_EACH = 2,		/* iterate each element and call m_free() */
-	MFREE_NODESTRUCT = 64,	/* do not touch at all */
-	MFREE_NOALLOC = 128,		/* BITMAP: runtime protection against free/realloc */
-	NOHDL   = 255,		/* do not touch on m_free(), leave alone */
+	MFREE_STR = 1,	       /* iterate each element and call free() */
+	MFREE_EACH = 2,	       /* iterate each element and call m_free() */
+	MFREE_NODESTRUCT = 64, /* do not touch at all */
+	MFREE_NOALLOC =
+		128, /* BITMAP: runtime protection against free/realloc */
+	NOHDL = 255, /* do not touch on m_free(), leave alone */
 	MFREE_MASK = 63,
 };
-typedef void (*free_fn_t) ( int m );
-	
+typedef void (*free_fn_t) (int m);
+
 /* the function free_fn will be called if m_free(this array) is called
    the free_fn can now iterate and clean all elements of the array,
    before this array is removed.
    the returned value is the handle id that you supply to m_alloc.
 */
-int m_reg_freefn ( free_fn_t free_fn );
+int m_reg_freefn (free_fn_t free_fn);
 int m_alloc (size_t max, size_t w, uint8_t hfree);
+int m_alloc_safe (size_t max, size_t w, uint8_t hfree);
 int m_free (int m);
-int m_free_safe (int m);
-	
+
 int m_is_freed (int h);
 int m_is_valid (int h);
 int m_free_hdl (int h);
 int m_dub (int m);
 
-	
-
-
-	
 size_t m_len (int m);
 void *m_buf (int m);
 
@@ -130,7 +127,9 @@ void *m_buf (int m);
 void *mls (int m, size_t i);
 void *mls_safe (int m, size_t i);
 int m_new (int m, size_t n);
+int m_new_safe (int m, size_t n);
 void *m_add (int m);
+void *m_add_safe (int m);
 int m_next (int m, int *p, void *d);
 int m_init ();
 void m_destruct ();
@@ -138,9 +137,10 @@ void m_destruct ();
 size_t m_count_allocated (void);
 size_t m_total_bytes (void);
 size_t m_peak_handles (void);
-void   m_debug_print (FILE *fp);
+void m_debug_print (FILE *fp);
 
 int m_create (size_t max, size_t w);
+int m_create_safe (size_t max, size_t w);
 int m_set_data (int m, size_t len, size_t w, const void *data);
 int m_put (int m, const void *data);
 int m_put_safe (int m, const void *data);
@@ -157,8 +157,10 @@ void m_del (int m, size_t p);
 int m_del_safe (int m, size_t p);
 void *m_pop (int m);
 int m_ins (int m, size_t p, size_t n);
+int m_ins_safe (int m, size_t p, size_t n);
 size_t m_width (int m);
 void m_resize (int m, size_t new_size);
+int m_resize_safe (int m, size_t new_size);
 int m_slice (int dest, int offs, int m, int a, int b);
 void m_remove (int m, size_t p, size_t n);
 static inline char *m_str (int m)
@@ -184,15 +186,13 @@ void _m_clear (int ln, const char *fn, const char *fun, int h);
 void *_m_buf (int ln, const char *fn, const char *fun, int m);
 int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w,
 	      uint8_t hfree);
-	int _m_wrapcstr(int ln, const char *fn, const char *fun, char *s );
-	int _m_wrapints(int ln, const char *fn, const char *fun, int *list, int nelem );
-	int _m_wrapstrings(int ln, const char *fn, const char *fun, char **list, int nelem );
-	int _s_cstrdup(int ln, const char *fn, const char *fun,const char *s);
-	int _s_ccstr(int ln, const char *fn, const char *fun,const char *s);
-	
+int _m_wrapcstr (int ln, const char *fn, const char *fun, char *s);
+int _m_wrapints (int ln, const char *fn, const char *fun, int *list, int nelem);
+int _m_wrapstrings (int ln, const char *fn, const char *fun, char **list,
+		    int nelem);
+int _s_cstrdup (int ln, const char *fn, const char *fun, const char *s);
+int _s_ccstr (int ln, const char *fn, const char *fun, const char *s);
 
-
-	
 #define m_foreach(lst, index, ptr) for (index = -1; m_next (lst, &index, &ptr);)
 #define STR(x, i) (*(char **)mls ((x), (i)))
 #define INT(x, i) (*(int *)mls ((x), (i)))
@@ -217,18 +217,121 @@ int _m_alloc (int ln, const char *fn, const char *fun, size_t n, size_t w,
 #define UCHAR_UNCHECKED(x, i) (*(unsigned char *)m_peek ((x), (i)))
 #define STR_UNCHECKED(x, i) (*(char **)m_peek ((x), (i)))
 
-/* Safe variants — return 0/NULL on error instead of aborting.
-   Check mls_errno after calling to distinguish success from error. */
-#define INT_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(int *)_p : 0; })
-#define UINT_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(unsigned int *)_p : 0; })
-#define FLOAT_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(float *)_p : 0.0f; })
-#define DOUBLE_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(double *)_p : 0.0; })
-#define PTR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(void **)_p : NULL; })
-#define U32_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(uint32_t *)_p : 0; })
-#define U64_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(uint64_t *)_p : 0; })
-#define CHAR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(char *)_p : 0; })
-#define UCHAR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(unsigned char *)_p : 0; })
-#define STR_SAFE(x, i) ({ void *_p = mls_safe ((x), (i)); _p ? *(char **)_p : NULL; })
+/* Safe variants — report externally handleable errors (bounds, OOM,
+   overflow) via 0/NULL and mls_errno instead of aborting. UAF and invalid
+   handles (m > 0) are programmer errors and still exit(). */
+#define INT_SAFE(x, i)                                                         \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(int *)_p : 0;                                           \
+	})
+#define UINT_SAFE(x, i)                                                        \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(unsigned int *)_p : 0;                                  \
+	})
+#define FLOAT_SAFE(x, i)                                                       \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(float *)_p : 0.0f;                                      \
+	})
+#define DOUBLE_SAFE(x, i)                                                      \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(double *)_p : 0.0;                                      \
+	})
+#define PTR_SAFE(x, i)                                                         \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(void **)_p : NULL;                                      \
+	})
+#define U32_SAFE(x, i)                                                         \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(uint32_t *)_p : 0;                                      \
+	})
+#define U64_SAFE(x, i)                                                         \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(uint64_t *)_p : 0;                                      \
+	})
+#define CHAR_SAFE(x, i)                                                        \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(char *)_p : 0;                                          \
+	})
+#define UCHAR_SAFE(x, i)                                                       \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(unsigned char *)_p : 0;                                 \
+	})
+#define STR_SAFE(x, i)                                                         \
+	({                                                                     \
+		void *_p = mls_safe ((x), (i));                                \
+		_p ? *(char **)_p : NULL;                                      \
+	})
+
+/* Run a _safe() expression and handle its error, which it reports through
+   mls_errno. Both reset mls_errno first, because safe calls only set it,
+   never clear it. Use these instead of the raw _safe call unless you need
+   the call's own return value (e.g. mls_safe() results).
+
+   mls_try(expr)  -> returns MLS_OK (0) or the error code; error stays
+		     stored in mls_errno/mls_errfunc for later reporting.
+   mls_must(expr) -> reports the error with location info and exits(1). */
+#define mls_try(expr) (mls_errno = MLS_OK, (expr), mls_errno)
+
+#define mls_must(expr)                                                         \
+	do {                                                                   \
+		mls_errno = MLS_OK;                                            \
+		(expr);                                                        \
+		if (mls_errno != MLS_OK)                                       \
+			_mls_die (__LINE__, __FILE__, __FUNCTION__);           \
+	} while (0)
+
+void _mls_die (int line, const char *file, const char *function)
+	__attribute__ ((noreturn));
+
+/* One pair for every _safe() function:
+   X_try(...)   real function, returns MLS_OK (0) or the mls_errno code;
+		the error details stay stored for later reporting.
+   X_must(...)  reports the error with YOUR file:line and exits(1);
+		a macro because that is what captures the call site.
+   Element access: mls_safe() itself is the try form (returns NULL and
+   sets mls_errno); m_at_must() is the matching must form. */
+static inline int m_put_try (int m, const void *data)
+{
+	return mls_try (m_put_safe (m, data));
+}
+static inline int m_setlen_try (int m, size_t len)
+{
+	return mls_try (m_setlen_safe (m, len));
+}
+static inline int m_write_try (int m, size_t p, const void *data, size_t n)
+{
+	return mls_try (m_write_safe (m, p, data, n));
+}
+static inline int m_read_try (int h, size_t p, void **data, size_t n)
+{
+	return mls_try (m_read_safe (h, p, data, n));
+}
+static inline int m_del_try (int m, size_t p)
+{
+	return mls_try (m_del_safe (m, p));
+}
+
+#define m_put_must(m, d) mls_must (m_put_safe (m, d))
+#define m_setlen_must(m, len) mls_must (m_setlen_safe (m, len))
+#define m_write_must(m, p, data, n) mls_must (m_write_safe (m, p, data, n))
+#define m_read_must(h, p, data, n) mls_must (m_read_safe (h, p, data, n))
+#define m_del_must(m, p) mls_must (m_del_safe (m, p))
+#define m_at_must(m, i)                                                        \
+	({                                                                     \
+		void *_p = mls_safe ((m), (i));                                \
+		if (!_p)                                                       \
+			_mls_die (__LINE__, __FILE__, __FUNCTION__);           \
+		_p;                                                            \
+	})
 
 #define m_cat(h, s) m_write (h, m_len (h), (s), strlen ((s)))
 #define MSTR(x) ((char *)mls (x, 0))
@@ -254,14 +357,13 @@ void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),
 int m_binsert_int (int buf, int key);
 int m_bsearch_int (int buf, int key);
 
-	/* handle immuteable zero copy array */ 
-	int s_ccstr(const char *s);
-	int s_cstrdup(const char *s);
-	int m_wrapstrings( char **list, int nelem );
-	int m_wrapints( int *list, int nelem );
-	int m_wrapcstr( char *s );
+/* handle immuteable zero copy array */
+int s_ccstr (const char *s);
+int s_cstrdup (const char *s);
+int m_wrapstrings (char **list, int nelem);
+int m_wrapints (int *list, int nelem);
+int m_wrapcstr (char *s);
 
-	
 #ifdef __plusplus
 }
 #endif
@@ -282,19 +384,16 @@ int m_bsearch_int (int buf, int key);
 	_m_next (__LINE__, __FILE__, __FUNCTION__, (m), (i), (d))
 #define m_clear(m) _m_clear (__LINE__, __FILE__, __FUNCTION__, (m))
 
-#define m_wrapcstr(s)						\
-	_m_wrapcstr (__LINE__, __FILE__, __FUNCTION__, (s))
+#define m_wrapcstr(s) _m_wrapcstr (__LINE__, __FILE__, __FUNCTION__, (s))
 
-#define m_wrapints(s,n)							\
+#define m_wrapints(s, n)                                                       \
 	_m_wrapints (__LINE__, __FILE__, __FUNCTION__, (s), (n))
 
-#define m_wrapstrings(s,n)						\
+#define m_wrapstrings(s, n)                                                    \
 	_m_wrapstrings (__LINE__, __FILE__, __FUNCTION__, (s), (n))
 
-#define s_cstrdup(s)						\
-	_s_cstrdup (__LINE__, __FILE__, __FUNCTION__, (s))
+#define s_cstrdup(s) _s_cstrdup (__LINE__, __FILE__, __FUNCTION__, (s))
 
-#define s_ccstr(s)						\
-	_s_ccstr (__LINE__, __FILE__, __FUNCTION__, (s))
+#define s_ccstr(s) _s_ccstr (__LINE__, __FILE__, __FUNCTION__, (s))
 
 #endif

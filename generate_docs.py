@@ -132,7 +132,8 @@ def main():
         'lib/m_table.c',
         'lib/m_extra.c'
     ]
-    
+    os.makedirs('docs/api', exist_ok=True)
+
     all_docs = {}
     for file_path in source_files:
         if os.path.exists(file_path):
@@ -143,15 +144,15 @@ def main():
 
     # Generate Markdown
     markdown_content = generate_markdown(all_docs)
-    with open('API.md', 'w', encoding='utf-8') as f:
+    with open('docs/api/API.md', 'w', encoding='utf-8') as f:
         f.write(markdown_content)
-    print("Documentation generated in API.md")
+    print("Documentation generated in docs/api/API.md")
 
     # Generate HTML
     html_content = generate_html(all_docs)
-    with open('API.html', 'w', encoding='utf-8') as f:
+    with open('docs/api/API.html', 'w', encoding='utf-8') as f:
         f.write(html_content)
-    print("Documentation generated in API.html")
+    print("Documentation generated in docs/api/API.html")
 
 if __name__ == "__main__":
     main()

@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static int failed = 0;
 
@@ -50,10 +52,16 @@ static void test_mls_safe_uaf(void)
     printf("[test_mls_safe_uaf]\n");
     int h = m_alloc(1, sizeof(int), MFREE);
     m_free(h);
-    mls_errno = 0;
-    void *p = mls_safe(h, 0);
-    CHECK(p == NULL, "mls_safe(freed_h, 0) returns NULL");
-    CHECK(mls_errno == MLS_EUAF, "mls_errno == MLS_EUAF");
+    fflush(stdout);
+    pid_t pid = fork();
+    if (pid == 0) {
+        mls_safe(h, 0); /* UAF -> exit(1) */
+        _exit(0);       /* not reached */
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 1,
+          "mls_safe on freed handle exits(1)");
 }
 
 static void test_mls_safe_ok(void)
@@ -93,15 +101,21 @@ static void test_put_safe_ok(void)
     m_free(h);
 }
 
-static void test_free_safe_double(void)
+static void test_free_double(void)
 {
-    printf("[test_free_safe_double]\n");
+    printf("[test_free_double]\n");
     int h = m_alloc(1, sizeof(int), MFREE);
-    m_free_safe(h);
-    mls_errno = 0;
-    int r = m_free_safe(h);
-    CHECK(r == -1, "m_free_safe on freed handle returns -1");
-    CHECK(mls_errno == MLS_EUAF, "mls_errno == MLS_EUAF");
+    m_free(h);
+    fflush(stdout);
+    pid_t pid = fork();
+    if (pid == 0) {
+        m_free(h); /* double free -> exit(1) */
+        _exit(0);  /* not reached */
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 1,
+          "m_free on freed handle exits(1)");
 }
 
 static void test_write_safe_invalid(void)
@@ -176,6 +190,34 @@ static void test_del_safe_ok(void)
     m_free(h);
 }
 
+static void test_new_safe_variants(void)
+{
+    printf("[test_new_safe_variants]\n");
+
+    int h = m_create_safe(4, sizeof(int));
+    CHECK(h > 0, "m_create_safe returns handle");
+
+    mls_errno = 0;
+    int p = m_new_safe(h, 3);
+    CHECK(p == 0 && m_len(h) == 3, "m_new_safe reserves 3 elements");
+
+    int *e = (int *)m_add_safe(h);
+    CHECK(e != NULL && m_len(h) == 4, "m_add_safe appends one element");
+
+    int ok = m_ins_safe(h, 0, 1);
+    CHECK(ok == 1 && m_len(h) == 5, "m_ins_safe inserts one element");
+
+    int r = m_resize_safe(h, 1000);
+    CHECK(r == 0 && m_bufsize(h) == 1000, "m_resize_safe grows capacity");
+
+    mls_errno = 0;
+    int bad = m_create_safe((size_t)-1, 2);
+    CHECK(bad == -1 && mls_errno == MLS_EOVERFLOW,
+          "m_create_safe overflow returns -1");
+
+    m_free(h);
+}
+
 static void test_reset_errno(void)
 {
     printf("[test_reset_errno]\n");
@@ -197,13 +239,14 @@ int main(void)
     test_mls_safe_ok();
     test_put_safe_invalid();
     test_put_safe_ok();
-    test_free_safe_double();
+    test_free_double();
     test_write_safe_invalid();
     test_read_safe_oob();
     test_setlen_safe_invalid();
     test_setlen_safe_ok();
     test_del_safe_oob();
     test_del_safe_ok();
+    test_new_safe_variants();
     test_reset_errno();
 
     m_destruct();

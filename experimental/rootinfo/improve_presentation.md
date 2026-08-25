@@ -3,6 +3,14 @@
 Analysis of stdout from `rootinfo.exed` (commit f3f5b14-ish). Each item
 below is an observed issue → fix, ordered by impact/effort.
 
+**Side finding — config never loaded (fixed):** `hdf_parse_file()` returns
+`-1` on a missing file, but `cfg_load()` tested `if (!h)`, so `-1` was taken
+as a valid handle and all file lookups silently "succeeded" with bogus data;
+no `rootinfo.hdf` was ever written. The `(cfg ...)` wrapper in `default_cfg`
+also put every node one level deeper than `hdf_find_node()` searches, so even
+a correctly written file resolved nothing. Both fixed in `cfg.c` (test
+`h <= 0`, drop the wrapper). The whole config system now actually works.
+
 ---
 
 ## 1. Memory values are raw kB — unreadable
@@ -247,22 +255,21 @@ also could be right-aligned.
 
 ## 8. No ANSI styling — all plain text
 
+**Status: DONE** (`out/out_term.c`).
+
 **Observed:** Section titles, headers, and bars all use plain text. A
 terminal tool benefits from even minimal styling.
 
-**Fix:** Add ANSI escape helper in `out_term.c`:
-  - Section titles: bold (`\033[1m`)
-  - Table headers: underline or bold
-  - Bar fill: could stay monochrome or use green/yellow/red gradient
+**Implemented:**
+  - Section titles: bold cyan (`\033[1;36m`), gated on TTY unless overridden
+  - Table headers: bold
+  - Key/Value (SYSTEM) table keys: bold
+  - Usage bars: filled portion green/yellow/red by fraction, empty portion dim
+  - Colors auto-disable when stdout is not a TTY; configurable via
+    `(style (color on|off|auto))` in `rootinfo.hdf`
 
-Keep it minimal — section titles bold adds the most value for the least
-complexity.
-
-**Affects:** `out/out_term.c:77-78` (section title print), `:207-217`
-(header row).
-
-**Risk:** Low. All modern terminals support bold. Escape codes don't affect
-column width calculations since they're zero-width.
+Colors are zero-width escapes, so column-width math in the renderer is
+unaffected.
 
 ---
 

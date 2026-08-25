@@ -1,369 +1,72 @@
-# MLS - Interpreted Comfort for C
+# MLS — Int-Handles statt C-Pointer
 
-`mls` is a lightweight C library designed to provide the flexibility and ease of use found in interpreted languages while maintaining the performance and control of C. It features dynamic arrays (managed via handles), string manipulation, and "typeless" variables, all with built-in memory safety and optional automatic cleanup for nested structures.
+`mls` ist eine kleine C-Bibliothek, die dynamische Arrays und Strings über
+ganzzahlige Handles verwaltet statt über rohe Pointer. Ein Handle ist eine
+4-Byte-Ganzzahl; die eigentliche Adresse bleibt in einer internen Tabelle.
 
-## Features
+Damit werden die häufigsten C-Fehler abgefangen:
 
-- **Handle-based Memory Management:** Data structures are referenced by integer handles, reducing pointer errors and simplifying API calls.
-- **Dynamic Arrays:** Automatically resizing arrays that can store any data type.
-- **Nested List Support:** Built-in support for lists containing other lists, with safe recursive freeing (`MFREE_EACH`).
-- **UAF Protection:** Use-After-Free detection using protection patterns in handles.
-- **Thread Safety:** Per-handle read/write locks, enabled by default on Unix (`-DMLS_THREAD_SAFE`).
-- **Error Information API:** `mls_errno`, `mls_errmsg()`, and `_safe` API variants that return error codes instead of aborting.
-- **Statistics & Introspection:** `m_count_allocated()`, `m_total_bytes()`, `m_peak_handles()`, `m_debug_print()`.
-- **Typed Accessors:** `INT(h,i)`, `FLOAT(h,i)`, `DOUBLE(h,i)`, `PTR(h,i)`, `U32(h,i)`, `U64(h,i)`, `STR(h,i)`, `CHAR(h,i)`.
-- **Debug Toolset:** Integrated tracing, allocation tracking, and post-mortem analysis under `-DMLS_DEBUG`.
-- **CMake Support:** Build with CMake, optional `pkg-config` integration.
-- **No Dependencies:** Standard C library + optional pthreads.
+- **Use-after-free wird ein Bounds-Check** — ein freigegebener Handle fällt
+  bei der nächsten Benutzung laut auf, statt still in fremden Speicher zu greifen.
+- **Keine Leaks** — `m_free()` räumt auch verschachtelte Strukturen rekursiv ab.
+- **Kein Pointer-Gejongle** — eine Funktion, die einen Puffer vergrößert,
+  braucht kein `void**` und keine Längen-Rückgabe mehr.
+- **Eine API für alles** — Liste, Baum, Graph oder String: immer `int` Handle,
+  `m_put`/`mls`/`m_free`.
 
-## Installation
+## Schnellstart
 
-### CMake (recommended)
-
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-cmake --install build --prefix /usr/local   # installs to /usr/local/lib/libmlsd.a
-```
-
-Options:
-
-| Flag | Default | Description |
-|---|---|---|
-| `-DCMAKE_BUILD_TYPE=Release` | Debug | Production build (`-O3`) |
-| `-DMLS_THREAD_SAFE=OFF` | ON | Disable thread-safety |
-| `-DMLS_WERROR=ON` | OFF | Treat warnings as errors |
-
-### Makefile (classic)
-
-```bash
-# Debug build (with MLS_DEBUG and trace support)
-make
-
-# Production build (optimized)
-make production=1
-
-# Disable threading (if not needed)
-make thread_safe=0
-```
-
-### Manual (single file)
-
-```bash
-gcc -I./lib your_program.c lib/mls.c lib/m_tool.c lib/m_table.c -o your_program -lpthread -lm -ldl
-```
-
-## Key Modules (all in `lib/`)
-- **`mls.h/c`**: The core `mls` library and handle management.
-- **`m_tool.h/c`**: Comprehensive string handling (`s_printf`, `s_app`, `s_split`, `s_join`), variables, and the `se_string` expansion system.
-- **`m_extra.h/c`**: Extended string utilities (case-insensitive comparison, padding, reversal, classification, `s_from_double`, `s_from_int`).
-- **`m_table.h/c`**: A dictionary-like data structure for storing MLS handles, accessible by name or integer, with introspection.
-- **`m_http.h/c`, `m_hdf.h/c`, `m_flask.h/c`**: Web and data format extensions.
-
-## Documentation
-
-- **API Reference (Doxygen):** Open `docs/html/index.html` in a browser.
-- **Quick Reference for LLMs:** See `QUICKREF.md`.
-- **String Documentation:** `docs/strings.md`
-- **String Expansion:** `docs/string_expansion.md`
-
-## Usage
-
-### Core Concepts
-
-#### MLS Library
-The core of the library is the handle system. Instead of managing pointers to structures, you receive an `int` handle. All operations (adding, reading, deleting) are performed using this handle.
-
-### Advanced String Handling
-Beyond simple arrays, `mls` provides a powerful suite of string utilities:
-- **`s_printf(h, p, fmt, ...)`**: Build strings with automatic resizing.
-- **`se_string(vl, fmt)`**: Modern string interpolation with variable expansion (`$var`, `$var[index]`, `$var[*]`).
-- **`m_extra`**: Case-insensitive comparisons, directional trimming, padding, and more.
-
-#### Handles
-A handle is a 32-bit integer. The lower 24 bits represent the index in the global list of arrays, while the upper 8 bits are used for UAF (Use-After-Free) protection.
-
-#### Data Types
-`mls` arrays are "width-aware". When you allocate a list, you specify the width of its elements (e.g., `sizeof(int)`, `sizeof(char*)`). The library then handles the byte-level offsets for you.
-
-### Why Integer Handles?
-
-In traditional C, managing dynamic arrays often involves using pointers (`void*`) or pointers-to-pointers (`void**`). `mls` uses integer handles to solve several common architectural issues:
-
-#### 1. Resizing without Stale Pointers
-When a dynamic array is resized (e.g., via `realloc`), its memory address might change. If you have multiple pointers to that array throughout your code, they all become "stale" (invalid) after the resize. 
-With **handles**, the actual memory address is managed internally in a central table. Your handle (the `int`) never changes, even if the underlying memory moves.
-
-#### 2. Simpler Function Signatures
-In standard C, if a function needs to resize a buffer passed by the caller, it must accept a pointer-to-pointer (`void**`) and often a pointer to the length. This makes code verbose and error-prone.
-
-**Traditional C approach:**
-```c
-// Caller must manage both the pointer and the length
-size_t len = 128;
-char *buf = malloc(len);
-ssize_t bytes = read_line(&buf, &len, fp); // Must pass address of pointer
-// ... later ...
-free(buf);
-```
-
-**MLS approach:**
-```c
-// Caller only manages a single integer handle
-int h = m_alloc(128, 1, MFREE);
-int bytes = m_read_line(h, fp); // Handle stays the same even if resized
-// ... later ...
-m_free(h);
-```
-
-By using handles, functions become much simpler to write and maintain because they don't need to "reach back" into the caller's memory to update pointers.
-
-#### 3. Robustness over Strict Typing
-Creating a universal library in C usually requires extensive use of `void*`, which already bypasses compile-time type safety. By choosing `int` handles, `mls` trades this manual type management for significant runtime robustness:
-
-- **No Loss of Safety:** Since generic C libraries already rely on `void*` for "typeless" behavior, using an `int` handle doesn't lose any safety that wasn't already being managed manually by the programmer.
-- **Superior Validation:** Unlike a raw pointer, which is just an address, an `int` handle can be rigorously validated. Every time you call an `mls` function, the library checks if the handle is initialized, if it has been freed, and if its internal protection bits match. This prevents the most common C errors like double-frees or null-pointer dereferences.
-- **Avoiding Workarounds:** Strict typing for generic structures in C often leads to complex workarounds like "macro hell," nested unions, or repetitive boilerplate. Integer handles provide a clean, universal identifier that works identically across all data structures.
-
-#### 4. Minimal Runtime Overhead
-While handle-to-pointer resolution involves a small overhead compared to raw pointer access, this trade-off is negligible in most real-world scenarios:
-
-- **Safety at a Discount:** A standard `if (ptr == NULL)` check only verifies the address isn't zero. The `mls()` function performs a handle lookup, checks for initialization, and validates the UAF protection pattern in just a few extra CPU cycles.
-- **Efficient Lookup:** The internal handle-to-pointer mapping is implemented as a simple array index lookup. For performance-critical loops, you can always resolve the handle once and work with the resulting raw pointer directly.
-- **Value-Added Security:** The minimal cost of handle resolution buys you features that would be much more expensive to implement manually, such as global Use-After-Free detection and cross-module memory tracking.
-
-#### 5. Positive Handles (> 0)
-In `mls`, all valid handles are strictly positive integers (`h > 0`). This convention provides several benefits:
-
-- **Simple Initialization Checks:** You can initialize your handle variables to `0` and then use a simple `if (h > 0)` check to verify if a list has been allocated.
-- **Error Ambiguity Removal:** Unlike pointers where only `NULL` (0) is traditionally invalid, `mls` explicitly treats all values `<= 0` as unallocated or invalid handles. 
-- **Robust API:** Functions like `m_free(h)` gracefully ignore handles `<= 0`, preventing crashes if an uninitialized handle is passed. Core access functions like `mls(h, i)` strictly enforce the `h > 0` rule, ensuring that any attempt to access an invalid handle is caught immediately during development. (Note: While handles themselves must be positive, the data stored *within* an array—such as in a list of integers—can safely contain negative values.)
-
-> **Fun Side Note:** In a 64-bit world, a standard pointer takes up 8 bytes of memory. An `mls` handle is a lean 4-byte integer. If you find yourself storing the same reference multiple times (like in a complex graph), using `mls` is essentially putting your data structure on a half-calorie diet. Your cache will thank you!
-
-### Simplifying Complex Data Structures
-
-The power of `mls` becomes even more apparent when building complex, nested data structures like trees, graphs, or JSON-like objects. By using integer handles for every child node instead of pointers, you can build deeply nested structures that are both robust and easy to manage.
-
-#### Handle-based Memory Management
-Building a complex structure involves these core operations:
-- **`m_alloc(max, w, h)`**: Creates a new list node.
-- **`m_free(m)`**: Safely deallocates a node and (if `MFREE_EACH` is used) its entire subtree.
-- **`mls(m, i)`**: Returns a `void*` to the element at index `i` in handle `m`.
-
-#### Data Access Macros
-While `mls()` returns a generic `void*`, `mls` provides several macros for type-safe and concise data access:
-
-| Macro | Type | Description |
-|---|---|---|
-| `INT(m, i)` | `int` | Integer at index `i` |
-| `UINT(m, i)` | `unsigned int` | Unsigned integer at index `i` |
-| `FLOAT(m, i)` | `float` | Float at index `i` |
-| `DOUBLE(m, i)` | `double` | Double at index `i` |
-| `PTR(m, i)` | `void*` | Pointer at index `i` |
-| `U32(m, i)` | `uint32_t` | 32-bit unsigned at index `i` |
-| `U64(m, i)` | `uint64_t` | 64-bit unsigned at index `i` |
-| `STR(m, i)` | `char*` | String pointer at index `i` |
-| `CHAR(m, i)` | `char` | Single character at index `i` |
-| `UCHAR(m, i)` | `unsigned char` | Unsigned char at index `i` |
-| `CHARP(m)` | `char*` | Raw string buffer of handle `m` |
-| `MSTR(x)` | `char*` | Element 0 as string |
-
-#### Structure Examples
-
-- **Lists:** Simply a handle where elements are data values (e.g., `sizeof(int)`).
-- **Trees:** A handle where each element is another handle (e.g., `sizeof(int)` with `MFREE_EACH`).
-- **Graphs:** Handles where elements represent edges (pointers to other handles). Because `m_free` uses the circular-reference marker (255), cycles in graphs are handled safely during recursion.
-
-#### Example: Building a Tree
-Building a tree node with multiple children is straightforward and avoids complex pointer arithmetic:
-
-```c
-// Create a node that will contain child handles
-int root = m_alloc(0, sizeof(int), MFREE_EACH);
-
-// Create child nodes
-int child1 = m_alloc(0, sizeof(int), MFREE_EACH);
-int child2 = m_alloc(0, sizeof(int), MFREE_EACH);
-
-// Add children to the root
-m_put(root, &child1);
-m_put(root, &child2);
-
-// Recursive Cleanup:
-// Because root was created with MFREE_EACH, a single call 
-// to m_free(root) will recursively free all children.
-m_free(root);
-```
-
-#### Measurable Benefits
-- **Unified API:** Use the same `m_put`, `mls`, and `m_free` functions regardless of structural complexity.
-- **Robust Code:** No more dangling pointers or complex pointer arithmetic.
-- **Reduced Error Rate:** Automated recursive freeing eliminates manual tracking of every child node, significantly reducing memory leak potential.
-
-### Error Handling
-
-The library provides two error-handling modes:
-
-**1. Fatal** (default): On error, `ERR()` prints the message and calls `exit(1)`.
-
-```c
-int *p = (int *)mls(h, 999);  // out of bounds → exit(1)
-```
-
-**2. Safe API** (recoverable): `*_safe` variants return error codes and set `mls_errno`.
-
-```c
-int *p = (int *)mls_safe(h, 999);
-if (!p) {
-    printf("Error: %s\n", mls_errmsg(mls_errno));  // "Index out of bounds"
-    // recover ...
-}
-```
-
-Error codes:
-
-| Code | Meaning |
-|---|---|
-| `MLS_EINVAL` | Invalid handle |
-| `MLS_EBOUNDS` | Index out of bounds |
-| `MLS_ENOMEM` | Out of memory |
-| `MLS_EUAF` | Use-after-free detected |
-| `MLS_EOVERFLOW` | Integer overflow |
-
-**Safe functions available:**
-
-| Function | Returns | Sets `mls_errno` |
-|---|---|---|
-| `mls_safe(h,i)` | NULL | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EUAF` |
-| `m_put_safe(h,d)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
-| `m_free_safe(h)` | -1 | `MLS_EINVAL` / `MLS_EUAF` |
-| `m_write_safe(m,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EOVERFLOW` / `MLS_ENOMEM` |
-| `m_read_safe(h,p,data,n)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` / `MLS_EOVERFLOW` |
-| `m_setlen_safe(m,len)` | -1 | `MLS_EINVAL` / `MLS_ENOMEM` |
-| `m_del_safe(m,p)` | -1 | `MLS_EINVAL` / `MLS_EBOUNDS` |
-
-### API Reference
-
-#### `int m_alloc(int max, int w, uint8_t free_hdl)`
-Allocates a new dynamic array.
-- `max`: Initial capacity (number of elements).
-- `w`: Width of each element in bytes.
-- `free_hdl`: A pre-registered free handler (e.g., `MFREE`, `MFREE_STR`, `MFREE_EACH`).
-
-#### `int m_create(int max, int w)`
-**Deprecated.** Use `m_alloc` instead. Equivalent to `m_alloc(max, w, MFREE)`.
-
-#### `void* mls(int m, int i)`
-Returns a pointer to the element at index `i` in handle `m`.
-- **Note:** Always cast the result to your data type (e.g., `*(int*)mls(h, 0)`).
-
-#### `int m_put(int m, const void* data)`
-Appends `data` to the end of the array `m`. The library automatically resizes the buffer if needed.
-- Returns the index of the newly added element.
-
-#### `int m_write(int m, int pos, const void* data, int n)`
-A safer, handle-aware alternative to `memcpy`. Copies `n` elements from `data` into list `m` starting at `pos`.
-
-#### `int m_free(int m)`
-Frees the memory associated with handle `m`. If a specialized `free_hdl` was used during allocation (like `MFREE_STR`), it will also free the elements (e.g., the strings inside the list) before freeing the list itself. It handles circular references safely.
-
-## Examples
-
-### Basic Integer List
 ```c
 #include "mls.h"
 
-int main() {
+int main(void) {
     m_init();
-    
-    // Create a list for integers
-    int h = m_alloc(10, sizeof(int), MFREE);
-    
-    for(int i = 0; i < 5; i++) {
+
+    int h = m_alloc(10, sizeof(int), MFREE);   // dynamisches int-Array
+    for (int i = 0; i < 5; i++)
         m_put(h, &i);
-    }
-    
-    printf("Value at index 2: %d\n", *(int*)mls(h, 2));
-    
+
+    printf("%d\n", INT(h, 2));                 // typisierter Zugriff
+
     m_free(h);
     m_destruct();
-    return 0;
 }
 ```
 
-### String List (Auto-freeing)
-```c
-int h = m_alloc(5, sizeof(char*), MFREE_STR);
-char *s = strdup("Hello World");
-m_put(h, &s);
-// m_free(h) will now automatically call free() on the string
-m_free(h);
-```
-
-## Building
-
-### CMake (recommended)
+Bauen (Single-File, keine Abhängigkeiten außer der C-Standardbibliothek):
 
 ```bash
-# Debug build (thread-safe, with sanitizers)
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
+gcc -I./lib prog.c lib/mls.c -o prog -lpthread -lm -ldl
+```
+
+Mehr dazu: **[docs/quickstart.md](docs/quickstart.md)**
+
+## Dokumentation
+
+| Teil | Ort | Inhalt |
+|---|---|---|
+| **Quickstart** | [docs/quickstart.md](docs/quickstart.md) | Installation, erstes Programm, wichtigste API |
+| **README** | diese Datei | Überblick und Einstieg |
+| **API (auto-generiert)** | [docs/api/API.md](docs/api/API.md) · [docs/api/API.html](docs/api/API.html) | Aus den Doxygen-Kommentaren in `lib/*.c` generiert (`python3 generate_docs.py`) |
+| **Guide** | [docs/guide/index.md](docs/guide/index.md) | Konzepte, Anleitungen, Deep Dives, Vorteile |
+| **Notizen** | [docs/notes/](docs/notes/) | Interne Entwicklungsnotizen, Fehlerhistorie, Pläne |
+
+## Bauen
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug   # oder: make
 cmake --build build
-
-# Production build (optimised, thread-safe)
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-
-# Install to system
-cmake --install build --prefix /usr/local
-
-# pkg-config support
-pkg-config --cflags --libs mls
 ```
 
-### Makefile (classic)
+Optionen: `-DMLS_THREAD_SAFE=OFF` (Threads aus), `-DMLS_WERROR=ON`
+(Warnungen als Fehler), `make production=1` (optimiert).
+
+## Tests
 
 ```bash
-# Debug build (with MLS_DEBUG and trace support)
-make
-
-# Production build (optimized)
-make production=1
-
-# Disable threading
-make thread_safe=0
+cd tests && make thread_safe=1
 ```
 
-## Testing
+## Lizenz
 
-To run the test suite:
-
-```bash
-cd tests
-make
-```
-
-Key tests include `test_mls_core`, `test_autofree`, `test_ssplit`, `test_slice`,
-`test_nested_lists`, `test_table`, and `test_extra`.
-
-For thread-safety tests:
-
-```bash
-cd experimental/ex_fuzzy
-make
-./test_thread_safe_fuzzy.exed
-./test_thread_safe_strings.exed
-./test_error_api.exed
-```
-
-## Contributing
-
-Contributions are welcome! To contribute:
-1. **Report Bugs:** Use the issue tracker to report bugs or request features.
-2. **Submit PRs:** Ensure your code follows existing patterns and includes tests for any new functionality.
-3. **Run Tests:** Always run `cd tests && make && make run` before submitting changes.
-4. **Documentation:** Regenerate Doxygen docs with `doxygen Doxyfile` and fix any new warnings.
-
-## License
-
-This project is licensed under the **MIT License**. See the `LICENSE` file for details.
+MIT — siehe [LICENSE](LICENSE).

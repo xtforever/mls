@@ -1030,6 +1030,28 @@ int s_msplit (int dest, int src, int pattern)
 }
 
 /**
+ * Like s_msplit, but optionally trims whitespace from each token in place
+ * (s_trim) before returning. The destination array is MFREE_EACH: m_free
+ * it once to release all token handles.
+ *
+ * @param dest Destination handle. If 0, a new one is allocated.
+ * @param src The source string buffer.
+ * @param pattern The pattern string buffer.
+ * @param trim If non-zero, s_trim is applied to each token.
+ * @return The handle of the destination array.
+ */
+int s_msplit_trim (int dest, int src, int pattern, int trim)
+{
+	dest = s_msplit (dest, src, pattern);
+	if (trim) {
+		int p;
+		int *d;
+		m_foreach (dest, p, d) s_trim (*d);
+	}
+	return dest;
+}
+
+/**
  * Joins an m-array of string handles into a single string buffer.
  *
  * @param dest Destination handle. If 0, a new one is allocated.
