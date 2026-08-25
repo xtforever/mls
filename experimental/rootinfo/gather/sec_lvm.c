@@ -55,12 +55,23 @@ static int lvm_pv_name(int pv_vgs, int pv_names, int vg_name)
 	return 0;
 }
 
-/* find mountpoint for an lv device path; falls back to the dm-crypt
-   /dev/mapper/<vg>-<lv> variant */
+/* /dev/mapper names escape '-' as '--' in both VG and LV name, e.g.
+   vg "admin0-vg" + lv "root" -> /dev/mapper/admin0--vg-root */
+static int lvm_dm_path (int vg_name, int lv_name)
+{
+	int vg = s_replace_c (vg_name, "-", "--");
+	int lv = s_replace_c (lv_name, "-", "--");
+	int out = s_printf (0, 0, "/dev/mapper/%s-%s", m_str (vg), m_str (lv));
+	m_free (vg);
+	m_free (lv);
+	return out;
+}
+
+/* find mountpoint for an lv device path; also tries the
+   /dev/mapper/<vg>-<lv> variant with proper dm name escaping */
 static int lvm_find_mount(int lv_path, int vg_name, int lv_name)
 {
-	int dm_h = s_printf(0, 0, "/dev/mapper/%.100s-%.100s",
-			    m_str(vg_name), m_str(lv_name));
+	int dm_h = lvm_dm_path (vg_name, lv_name);
 	int mounts = m_str_from_file("/proc/mounts");
 	int ret = 0;
 	if (mounts >= 0) {
