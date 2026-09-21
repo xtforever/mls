@@ -1,7 +1,6 @@
 #ifndef M_HTTP_H
 #define M_HTTP_H
 
-#include "m_table.h"
 #include "mls.h"
 
 typedef enum { HTTP_TYPE_REQUEST, HTTP_TYPE_RESPONSE } http_type_t;

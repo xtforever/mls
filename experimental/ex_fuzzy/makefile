@@ -5,7 +5,7 @@ include ../../rules.mk
 VPATH=../../lib
 CFLAGS+=-I../../lib
 
-DEPS=mls.od m_tool.od m_table.od
+DEPS=mls_base.od mls_ext.od m_tool.od m_table.od
 TARGETS=test_thread_safe_fuzzy.exed test_thread_safe_strings.exed test_error_api.exed test_msplit_trim.exed
 
 ALL: $(TARGETS)

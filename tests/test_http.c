@@ -1,6 +1,7 @@
 #include "../lib/m_http.h"
 #include "../lib/m_tool.h"
 #include "../lib/mls.h"
+#include "../lib/table.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,7 +23,7 @@ void test_http_basic ()
 	assert (strcmp (m_str (p.uri), "/index.html") == 0);
 	assert (strcmp (m_str (p.version), "HTTP/1.1") == 0);
 
-	int host = m_table_get_cstr (p.headers, "host");
+	int host = tbl_get_handle (p.headers, "host");
 	assert (host > 0);
 	assert (strcmp (m_str (host), "localhost") == 0);
 

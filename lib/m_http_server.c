@@ -1,7 +1,7 @@
 #include "m_http_server.h"
 #include "m_http.h"
-#include "m_table.h"
 #include "m_tool.h"
+#include "table.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -20,6 +20,41 @@ static int s_copy_cstr (const char *s)
 	return h;
 }
 
+static int route_target (int child, route_type_t *type)
+{
+	const char *f = hdf_get_property (child, "file");
+	const char *j = hdf_get_property (child, "json");
+	const char *t = hdf_get_property (child, "text");
+	if (f) {
+		*type = ROUTE_TYPE_FILE;
+		return s_copy_cstr (f);
+	}
+	if (j) {
+		*type = ROUTE_TYPE_JSON;
+		return s_copy_cstr (j);
+	}
+	if (t) {
+		*type = ROUTE_TYPE_TEXT;
+		return s_copy_cstr (t);
+	}
+	*type = ROUTE_TYPE_ECHO;
+	return 0;
+}
+
+static void server_add_route (int routes, int child)
+{
+	const char *path = hdf_get_property (child, "path");
+	if (!path)
+		return;
+	route_type_t type;
+	int target = route_target (child, &type);
+	// Create route handle: [type, target_handle]
+	int route_h = m_alloc (2, sizeof (int), MFREE_EACH);
+	m_puti (route_h, type);
+	m_puti (route_h, target);
+	tbl_set_handle_str (routes, s_copy_cstr (path), route_h);
+}
+
 http_server_config_t http_server_config_load (int h)
 {
 	http_server_config_t conf;
@@ -35,67 +70,18 @@ http_server_config_t http_server_config_load (int h)
 		conf.host = s_copy_cstr ("0.0.0.0");
 	conf.root_dir = s_copy_cstr (hdf_get_property (server_node, "root"));
 
-	conf.routes = m_table_create ();
+	conf.routes = tbl_create ();
 
 	int children = hdf_get_children (server_node);
-	if (children > 0) {
-		for (int i = 0; i < m_len (children); i++) {
-			int child = INT (children, i);
-			if (hdf_get_type (child) == HDF_TYPE_LIST) {
-				int sc = hdf_get_children (child);
-				const char *val = hdf_get_value (INT (sc, 0));
-				if (m_len (sc) > 0 && val &&
-				    strcmp (val, "route") == 0) {
-					const char *path = hdf_get_property (
-						child, "path");
-					if (path) {
-						// Create route handle: [type,
-						// target_handle]
-						int route_h = m_alloc (
-							2, sizeof (int),
-							MFREE_EACH);
-						int type = ROUTE_TYPE_ECHO;
-						int target = 0;
-
-						const char *f =
-							hdf_get_property (
-								child, "file");
-						const char *j =
-							hdf_get_property (
-								child, "json");
-						const char *t =
-							hdf_get_property (
-								child, "text");
-						if (f) {
-							type = ROUTE_TYPE_FILE;
-							target =
-								s_copy_cstr (f);
-						} else if (j) {
-							type = ROUTE_TYPE_JSON;
-							target =
-								s_copy_cstr (j);
-						} else if (t) {
-							type = ROUTE_TYPE_TEXT;
-							target =
-								s_copy_cstr (t);
-						} else if (hdf_get_property (
-								   child,
-								   "echo")) {
-							type = ROUTE_TYPE_ECHO;
-						}
-
-						m_puti (route_h, type);
-						m_puti (route_h, target);
-
-						m_table_set_handle_by_str (
-							conf.routes,
-							s_copy_cstr (path),
-							route_h,
-							MLS_TABLE_TYPE_LIST);
-					}
-				}
-			}
-		}
+	for (int i = 0; i < m_len (children); i++) {
+		int child = INT (children, i);
+		if (hdf_get_type (child) != HDF_TYPE_LIST)
+			continue;
+		int sc = hdf_get_children (child);
+		const char *val =
+			m_len (sc) > 0 ? hdf_get_value (INT (sc, 0)) : NULL;
+		if (val && strcmp (val, "route") == 0)
+			server_add_route (conf.routes, child);
 	}
 
 	return conf;
@@ -108,7 +94,7 @@ void http_server_config_free (http_server_config_t *conf)
 	if (conf->root_dir > 0)
 		m_free (conf->root_dir);
 	if (conf->routes > 0)
-		m_table_free (conf->routes);
+		tbl_free (conf->routes);
 }
 
 static void send_response (int client_fd, int status, const char *status_text,
@@ -165,7 +151,7 @@ static void handle_request (int client_fd, http_server_config_t *conf)
 
 	if (p.state == HTTP_STATE_DONE) {
 		const char *uri = m_str (p.uri);
-		int route_h = m_table_get_cstr (conf->routes, uri);
+		int route_h = tbl_get_handle (conf->routes, uri);
 		if (route_h > 0) {
 			int type = INT (route_h, 0);
 			int target = INT (route_h, 1);

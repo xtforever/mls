@@ -1,301 +1,136 @@
-#include "../lib/m_table.h"
 #include "../lib/m_tool.h"
 #include "../lib/mls.h"
+#include "../lib/table.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
-void print_table_type (mls_table_type_t type)
+void test_tbl_basic ()
 {
-	switch (type) {
-	case MLS_TABLE_TYPE_UNKNOWN:
-		printf ("UNKNOWN");
-		break;
-	case MLS_TABLE_TYPE_INT:
-		printf ("INT");
-		break;
-	case MLS_TABLE_TYPE_STRING:
-		printf ("STRING");
-		break;
-	case MLS_TABLE_TYPE_CONST_STRING:
-		printf ("CONST_STRING");
-		break;
-	case MLS_TABLE_TYPE_LIST:
-		printf ("LIST");
-		break;
-	case MLS_TABLE_TYPE_TABLE:
-		printf ("TABLE");
-		break;
-	case MLS_TABLE_TYPE_CUSTOM_HANDLE:
-		printf ("CUSTOM_HANDLE");
-		break;
-	default:
-		printf ("???");
-		break;
-	}
+	printf ("Testing tbl basic string operations...\n");
+	int t = tbl_create ();
+	assert (t > 0);
+	assert (tbl_is_table (t));
+
+	tbl_set (t, "name", "Alice");
+	tbl_set (t, "age", "30");
+	assert (strcmp (tbl_get (t, "name"), "Alice") == 0);
+	assert (strcmp (tbl_get (t, "age"), "30") == 0);
+	assert (strcmp (m_str (tbl_get_handle (t, "name")), "Alice") == 0);
+
+	// non-existent
+	assert (tbl_get (t, "city") == NULL);
+	assert (tbl_get_handle (t, "city") == 0);
+
+	tbl_free (t);
+	printf ("tbl basic string operations passed.\n");
 }
 
-void test_m_table_basic ()
+void test_tbl_sorted ()
 {
-	printf ("Testing m_table basic operations...\n");
-	int table = m_table_create ();
-	assert (table > 0);
-
-	// Set integer values
-	int age = 30;
-	m_table_set_int_val_by_cstr (table, "age", age);
-	assert (m_table_get_cstr (table, "age") == 30);
-	assert (m_table_get_type_cstr (table, "age") == MLS_TABLE_TYPE_INT);
-
-	// Set string handle (dynamic string)
-	m_table_set_string_by_cstr (table, "name", "Alice");
-	assert (strcmp (m_str (m_table_get_cstr (table, "name")), "Alice") ==
-		0);
-	assert (m_table_get_type_cstr (table, "name") == MLS_TABLE_TYPE_STRING);
-
-	// Set constant string handle (s_cstr)
-	m_table_set_const_string_by_cstr (table, "status", "active");
-	assert (strcmp (m_str (m_table_get_cstr (table, "status")), "active") ==
-		0);
-	assert (m_table_get_type_cstr (table, "status") ==
-		MLS_TABLE_TYPE_CONST_STRING);
-
-	// Set list handle
-	int grades_h = m_alloc (0, sizeof (int), MFREE);
-	int g1 = 90, g2 = 85;
-	m_put (grades_h, &g1);
-	m_put (grades_h, &g2);
-	m_table_set_list_by_cstr (table, "grades", grades_h);
-	assert (INT (m_table_get_cstr (table, "grades"), 0) == 90);
-	assert (m_table_get_type_cstr (table, "grades") == MLS_TABLE_TYPE_LIST);
-
-	// Test non-existent key
-	assert (m_table_get_cstr (table, "city") == 0);
-	assert (m_table_get_type_cstr (table, "city") ==
-		MLS_TABLE_TYPE_UNKNOWN);
-
-	m_table_free (table);
-	printf ("m_table basic operations passed.\n");
+	printf ("Testing tbl sorted iteration...\n");
+	int t = tbl_create ();
+	tbl_set (t, "zeta", "26");
+	tbl_set (t, "alpha", "1");
+	tbl_set (t, "beta", "2");
+	assert (tbl_len (t) == 3);
+	assert (strcmp (tbl_key (t, 0), "alpha") == 0);
+	assert (strcmp (tbl_key (t, 1), "beta") == 0);
+	assert (strcmp (tbl_key (t, 2), "zeta") == 0);
+	assert (strcmp (tbl_value (t, 1), "2") == 0);
+	tbl_free (t);
+	printf ("tbl sorted iteration passed.\n");
 }
 
-void test_m_table_nesting ()
+void test_tbl_overwrite ()
 {
-	printf ("Testing m_table nesting...\n");
-	int config_table = m_table_create ();
-
-	// Nested table
-	int db_settings = m_table_create ();
-	m_table_set_const_string_by_cstr (db_settings, "host", "localhost");
-	m_table_set_int_val_by_cstr (db_settings, "port", 5432);
-	m_table_set_table_by_cstr (config_table, "database", db_settings);
-
-	// Nested list of strings
-	int users_list = m_alloc (
-		0, sizeof (int), MFREE); // Use MFREE for list of s_cstr handles
-	m_put (users_list, &(int){s_cstr ("admin")});
-	m_put (users_list, &(int){s_cstr ("guest")});
-	m_table_set_list_by_cstr (config_table, "users", users_list);
-
-	// Access nested values
-	int retrieved_db_h = m_table_get_cstr (config_table, "database");
-	assert (retrieved_db_h > 0);
-	assert (m_table_get_type_cstr (config_table, "database") ==
-		MLS_TABLE_TYPE_TABLE);
-	assert (m_table_get_cstr (retrieved_db_h, "port") == 5432);
-	assert (m_table_get_type_cstr (retrieved_db_h, "port") ==
-		MLS_TABLE_TYPE_INT);
-	assert (strcmp (m_str (m_table_get_cstr (retrieved_db_h, "host")),
-			"localhost") == 0);
-	assert (m_table_get_type_cstr (retrieved_db_h, "host") ==
-		MLS_TABLE_TYPE_CONST_STRING);
-
-	int retrieved_users_h = m_table_get_cstr (config_table, "users");
-	assert (retrieved_users_h > 0);
-	assert (m_table_get_type_cstr (config_table, "users") ==
-		MLS_TABLE_TYPE_LIST);
-	assert (strcmp (m_str (INT (retrieved_users_h, 0)), "admin") == 0);
-
-	m_table_free (config_table);
-	printf ("m_table nesting passed.\n");
+	printf ("Testing tbl overwrite...\n");
+	int t = tbl_create ();
+	tbl_set (t, "k", "one");
+	assert (strcmp (tbl_get (t, "k"), "one") == 0);
+	tbl_set (t, "k", "two");
+	assert (strcmp (tbl_get (t, "k"), "two") == 0);
+	assert (tbl_len (t) == 1);
+	tbl_free (t);
+	printf ("tbl overwrite passed.\n");
 }
 
-void test_m_table_update_values ()
+void test_tbl_handle_values ()
 {
-	printf ("Testing m_table value updates...\n");
-	int table = m_table_create ();
-
-	m_table_set_int_val_by_cstr (table, "score", 100);
-	assert (m_table_get_cstr (table, "score") == 100);
-
-	m_table_set_int_val_by_cstr (table, "score", 200); // Update
-	assert (m_table_get_cstr (table, "score") == 200);
-
-	m_table_set_string_by_cstr (table, "message",
-				    "old_string"); // type is STRING
-	assert (strcmp (m_str (m_table_get_cstr (table, "message")),
-			"old_string") == 0);
-
-	m_table_set_string_by_cstr (
-		table, "message",
-		"new_string"); // Update. old_str_h should be freed because its
-			       // type was STRING.
-	assert (strcmp (m_str (m_table_get_cstr (table, "message")),
-			"new_string") == 0);
-
-	// Test updating a dynamic string with a const string
-	m_table_set_const_string_by_cstr (
-		table, "message",
-		"constant_msg"); // old new_str_h should be freed
-	assert (strcmp (m_str (m_table_get_cstr (table, "message")),
-			"constant_msg") == 0);
-	assert (m_table_get_type_cstr (table, "message") ==
-		MLS_TABLE_TYPE_CONST_STRING);
-
-	// Update a const string with a dynamic string
-	m_table_set_string_by_cstr (table, "message", "another_dynamic");
-	assert (strcmp (m_str (m_table_get_cstr (table, "message")),
-			"another_dynamic") == 0);
-	assert (m_table_get_type_cstr (table, "message") ==
-		MLS_TABLE_TYPE_STRING);
-
-	m_table_free (table);
-	printf ("m_table value updates passed.\n");
-}
-
-void test_m_table_int_keys ()
-{
-	printf ("Testing m_table with integer keys...\n");
-	int table = m_table_create ();
-	assert (table > 0);
-
-	m_table_set_int_val_by_int (table, 1, 100);
-	assert (m_table_get_int (table, 1) == 100);
-	assert (m_table_get_type_int (table, 1) == MLS_TABLE_TYPE_INT);
-
-	m_table_set_string_by_int (table, 5, "item_five");
-	assert (strcmp (m_str (m_table_get_int (table, 5)), "item_five") == 0);
-	assert (m_table_get_type_int (table, 5) == MLS_TABLE_TYPE_STRING);
-
-	// Overwrite existing integer key
-	m_table_set_int_val_by_int (table, 1, 101);
-	assert (m_table_get_int (table, 1) == 101);
-
-	// Test non-existent int key
-	assert (m_table_get_int (table, 99) == 0);
-	assert (m_table_get_type_int (table, 99) == MLS_TABLE_TYPE_UNKNOWN);
-
-	m_table_free (table);
-	printf ("m_table integer keys passed.\n");
-}
-
-void test_m_table_string_key_handles ()
-{
-	printf ("Testing m_table with string key handles...\n");
-	int table = m_table_create ();
-	assert (table > 0);
-
-	int key1_h = s_printf (0, 0, "dynamic_key");
-	m_table_set_int_val_by_str (table, key1_h, 123);
-	assert (m_table_get_str (table, key1_h) == 123);
-	assert (m_table_get_type_str (table, key1_h) == MLS_TABLE_TYPE_INT);
-
-	int key2_h = s_cstr ("constant_key"); // Constant key handle
-	m_table_set_str_key_ext (table, key2_h, MLS_TABLE_TYPE_CONST_STRING,
-				 s_strdup_c ("value_str"),
-				 MLS_TABLE_TYPE_STRING);
-	assert (strcmp (m_str (m_table_get_str (table, key2_h)), "value_str") ==
-		0);
-	assert (m_table_get_type_str (table, key2_h) == MLS_TABLE_TYPE_STRING);
-
-	// Overwrite key1_h with a new value
-	m_table_set_int_val_by_str (table, key1_h, 456);
-	assert (m_table_get_str (table, key1_h) == 456);
-
-	// Test non-existent string key handle
-	int non_existent_key_h = s_printf (0, 0, "non_existent");
-	assert (m_table_get_str (table, non_existent_key_h) == 0);
-	assert (m_table_get_type_str (table, non_existent_key_h) ==
-		MLS_TABLE_TYPE_UNKNOWN);
-	m_free (non_existent_key_h); // Free the temporary search key
-
-	m_table_free (table);
-	// key1_h will be freed by m_table_free_handler
-	// key2_h (s_cstr) will NOT be freed by m_table_free_handler (correct)
-	printf ("m_table string key handles passed.\n");
-}
-
-void test_m_table_type_overwrites ()
-{
-	printf ("Testing m_table type overwrites...\n");
-	int table = m_table_create ();
-
-	m_table_set_int_val_by_cstr (table, "data", 123);
-	assert (m_table_get_type_cstr (table, "data") == MLS_TABLE_TYPE_INT);
-	assert (m_table_get_cstr (table, "data") == 123);
-
-	m_table_set_string_by_cstr (
-		table, "data", "hello"); // Overwrite int with string handle
-	assert (m_table_get_type_cstr (table, "data") == MLS_TABLE_TYPE_STRING);
-	assert (strcmp (m_str (m_table_get_cstr (table, "data")), "hello") ==
-		0);
+	printf ("Testing tbl handle values...\n");
+	int t = tbl_create ();
 
 	int list_h = m_alloc (0, sizeof (int), MFREE);
-	m_put (list_h, &(int){42});
-	m_table_set_list_by_cstr (table, "data",
-				  list_h); // Overwrite string with list handle
-	assert (m_table_get_type_cstr (table, "data") == MLS_TABLE_TYPE_LIST);
-	assert (INT (m_table_get_cstr (table, "data"), 0) == 42);
+	int v = 42;
+	m_put (list_h, &v);
+	tbl_set_handle (t, "grades", list_h);
+	assert (tbl_get_handle (t, "grades") == list_h);
+	assert (INT (tbl_get_handle (t, "grades"), 0) == 42);
+	assert (tbl_get (t, "grades") == NULL); // not a string value
 
-	// Test that value is correctly freed when type changes
-	m_table_set_string_by_cstr (
-		table, "data", "new_string_val"); // Overwrite list with string
-	assert (m_table_get_type_cstr (table, "data") == MLS_TABLE_TYPE_STRING);
-	assert (strcmp (m_str (m_table_get_cstr (table, "data")),
-			"new_string_val") == 0);
-
-	m_table_free (table);
-	printf ("m_table type overwrites passed.\n");
+	tbl_free (t); // frees list_h
+	printf ("tbl handle values passed.\n");
 }
 
-void test_m_table_handle_collision ()
+void test_tbl_str_key_handle ()
 {
-	printf ("Testing m_table handle collision (different handles, same "
-		"content)...\n");
-	int table = m_table_create ();
+	printf ("Testing tbl string-handle key...\n");
+	int t = tbl_create ();
 
-	// Use a C-string key, which internally creates a dynamic string handle
-	mt_sets (table, "key", "value");
+	int key_h = s_strdup_c ("mykey");
+	int val_h = s_strdup_c ("myval");
+	tbl_set_handle_str (t, key_h, val_h); // takes ownership of both
 
-	// Try to get it using a different handle for the same string content
-	int const_key_h = s_cstr ("key");
-	int val = m_table_get_str (table, const_key_h);
+	assert (strcmp (tbl_get (t, "mykey"), "myval") == 0);
+	assert (tbl_get_handle (t, "mykey") == val_h);
 
-	printf ("DEBUG: m_table_get_str returned %d\n", val);
-	// This should succeed if content is compared, but currently it fails
-	// because handles differ.
-	assert (val != 0);
-	assert (strcmp (m_str (val), "value") == 0);
+	tbl_free (t);
+	printf ("tbl string-handle key passed.\n");
+}
 
-	m_table_free (table);
-	printf ("m_table handle collision passed.\n");
+void test_tbl_del ()
+{
+	printf ("Testing tbl del...\n");
+	int t = tbl_create ();
+	tbl_set (t, "a", "1");
+	tbl_set (t, "b", "2");
+	assert (tbl_del (t, "a") == 0);
+	assert (tbl_del (t, "a") == -1);
+	assert (tbl_len (t) == 1);
+	assert (tbl_get (t, "a") == NULL);
+	assert (strcmp (tbl_get (t, "b"), "2") == 0);
+	tbl_free (t);
+	printf ("tbl del passed.\n");
+}
+
+void test_tbl_is_table ()
+{
+	printf ("Testing tbl_is_table distinguishes handles...\n");
+	int t = tbl_create ();
+	int plain = m_alloc (4, sizeof (int), MFREE);
+	assert (tbl_is_table (t));
+	assert (!tbl_is_table (plain));
+	assert (!tbl_is_table (0));
+	tbl_free (t);
+	m_free (plain);
+	printf ("tbl_is_table passed.\n");
 }
 
 int main ()
 {
-	trace_level = 1;
 	m_init ();
 	conststr_init ();
 
-	test_m_table_handle_collision ();
-	test_m_table_basic ();
-	test_m_table_nesting ();
-	test_m_table_update_values ();
-	test_m_table_int_keys ();
-	test_m_table_string_key_handles ();
-	test_m_table_type_overwrites ();
+	test_tbl_basic ();
+	test_tbl_sorted ();
+	test_tbl_overwrite ();
+	test_tbl_handle_values ();
+	test_tbl_str_key_handle ();
+	test_tbl_del ();
+	test_tbl_is_table ();
 
 	conststr_free ();
 	m_destruct ();
-	printf ("All m_table tests completed successfully.\n");
+	printf ("All tbl tests completed successfully.\n");
 	return 0;
 }

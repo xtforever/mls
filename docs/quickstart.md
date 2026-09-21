@@ -16,18 +16,10 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-**Make:**
+**Ohne Build-System:**
 
 ```bash
-make                 # Debug-Build mit MLS_DEBUG + Tracing
-make production=1    # optimierter Build
-make thread_safe=0   # ohne Threads
-```
-
-**Single-File (keine Build-Systeme nötig):**
-
-```bash
-gcc -I./lib prog.c lib/mls.c -o prog -lpthread -lm -ldl
+gcc -I./lib prog.c lib/mls_base.c lib/mls_ext.c -o prog -lpthread -lm -ldl
 ```
 
 ## Erstes Programm

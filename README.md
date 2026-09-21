@@ -33,10 +33,10 @@ int main(void) {
 }
 ```
 
-Bauen (Single-File, keine Abhängigkeiten außer der C-Standardbibliothek):
+Bauen ohne Build-System (nur C-Standardbibliothek plus pthreads/dl/m):
 
 ```bash
-gcc -I./lib prog.c lib/mls.c -o prog -lpthread -lm -ldl
+gcc -I./lib prog.c lib/mls_base.c lib/mls_ext.c -o prog -lpthread -lm -ldl
 ```
 
 Mehr dazu: **[docs/quickstart.md](docs/quickstart.md)**
@@ -54,12 +54,12 @@ Mehr dazu: **[docs/quickstart.md](docs/quickstart.md)**
 ## Bauen
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug   # oder: make
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
 Optionen: `-DMLS_THREAD_SAFE=OFF` (Threads aus), `-DMLS_WERROR=ON`
-(Warnungen als Fehler), `make production=1` (optimiert).
+(Warnungen als Fehler). Für einen optimierten Build `-DCMAKE_BUILD_TYPE=Release`.
 
 ## Tests
 

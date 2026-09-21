@@ -1,7 +1,7 @@
 production=0
 TAG="\"DEBUG_$(shell date)\""
 CFLAGS_DEB=-g -Wall -DMLS_DEBUG  -fstack-protector-all -fsanitize=address
-DEPS=mls.od
+DEPS=mls_base.od mls_ext.od
 all: mlscoretest.exed
 
 %.exed: %.od $(DEPS)

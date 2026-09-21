@@ -10,3 +10,4 @@ tests/error-handler
 *.save
 nohup.out
 __pycache__/
+score/

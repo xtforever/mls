@@ -1,9 +1,9 @@
 #include "m_flask.h"
+#include "m_extra.h"
 #include "m_hdf.h"
 #include "m_http_server.h"
-#include "m_table.h"
 #include "m_tool.h"
-#include "m_extra.h"
+#include "table.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -25,8 +25,8 @@ static int handler_registry = 0, flask_config_root = 0, route_table = 0;
 
 #ifdef MLS_THREAD_SAFE
 static pthread_mutex_t flask_lock = PTHREAD_MUTEX_INITIALIZER;
-#define FLASK_LOCK() pthread_mutex_lock(&flask_lock)
-#define FLASK_UNLOCK() pthread_mutex_unlock(&flask_lock)
+#define FLASK_LOCK() pthread_mutex_lock (&flask_lock)
+#define FLASK_UNLOCK() pthread_mutex_unlock (&flask_lock)
 #else
 #define FLASK_LOCK() ((void)0)
 #define FLASK_UNLOCK() ((void)0)
@@ -36,9 +36,9 @@ int flask_init ()
 {
 	FLASK_LOCK ();
 	if (!handler_registry)
-		handler_registry = m_table_create ();
+		handler_registry = tbl_create ();
 	if (!route_table)
-		route_table = m_table_create ();
+		route_table = tbl_create ();
 	FLASK_UNLOCK ();
 	return 0;
 }
@@ -56,8 +56,7 @@ void flask_status (int res_h, int status)
 }
 void flask_set_header (int res_h, const char *key, const char *val)
 {
-	m_table_set_string_by_cstr (((flask_res_t *)m_buf (res_h))->headers,
-				    key, val);
+	tbl_set (((flask_res_t *)m_buf (res_h))->headers, key, val);
 }
 
 void flask_register (const char *name, flask_handler_t handler)
@@ -65,8 +64,7 @@ void flask_register (const char *name, flask_handler_t handler)
 	FLASK_LOCK ();
 	int h_ptr = m_alloc (sizeof (flask_handler_t), 1, MFREE);
 	*(flask_handler_t *)m_buf (h_ptr) = handler;
-	m_table_set_handle_by_cstr (handler_registry, name, h_ptr,
-				    MLS_TABLE_TYPE_CUSTOM_HANDLE);
+	tbl_set_handle (handler_registry, name, h_ptr);
 	FLASK_UNLOCK ();
 }
 
@@ -83,9 +81,9 @@ static void parse_args (int args_table, const char *uri)
 		char *eq = strchr (*s, '=');
 		if (eq) {
 			*eq = 0;
-			m_table_set_string_by_cstr (args_table, *s, eq + 1);
+			tbl_set (args_table, *s, eq + 1);
 		} else
-			m_table_set_string_by_cstr (args_table, *s, "");
+			tbl_set (args_table, *s, "");
 	}
 	m_free (parts);
 }
@@ -93,15 +91,12 @@ static void parse_args (int args_table, const char *uri)
 static void send_full_response (int fd, flask_res_t *res)
 {
 	int resp_h = s_printf (0, 0, "HTTP/1.1 %d OK\r\n", res->status);
-	int i, keys = m_table_keys (res->headers);
-	m_foreach (keys, i, (int *){0})
-	{
-		const char *k = m_str (INT (keys, i));
-		int v_h = m_table_get_cstr (res->headers, k);
+	for (int i = 0; i < tbl_len (res->headers); i++) {
+		const char *k = tbl_key (res->headers, i);
+		int v_h = tbl_get_handle (res->headers, k);
 		s_printf (resp_h, -1, "%s: %s\r\n", k, m_str (v_h));
 	}
-	m_free (keys);
-	if (!m_table_get_cstr (res->headers, "Content-Type"))
+	if (!tbl_get_handle (res->headers, "Content-Type"))
 		s_app (resp_h, "Content-Type: text/plain\r\n", NULL);
 	s_printf (resp_h, -1, "Content-Length: %d\r\nConnection: close\r\n\r\n",
 		  (int)s_strlen (res->body));
@@ -120,11 +115,9 @@ static void compile_routes (int server_node)
 		const char *path = hdf_get_property (child, "path");
 		const char *call = hdf_get_property (child, "call");
 		if (path && call) {
-			int h_ptr = m_table_get_cstr (handler_registry, call);
+			int h_ptr = tbl_get_handle (handler_registry, call);
 			if (h_ptr > 0)
-				m_table_set_handle_by_cstr (
-					route_table, path, h_ptr,
-					MLS_TABLE_TYPE_CUSTOM_HANDLE);
+				tbl_set_handle (route_table, path, h_ptr);
 		}
 	}
 }
@@ -152,7 +145,7 @@ void flask_process_client (int client_fd)
 		if (q)
 			*q = 0;
 		FLASK_LOCK ();
-		int h_ptr = m_table_get_cstr (route_table, path);
+		int h_ptr = tbl_get_handle (route_table, path);
 		FLASK_UNLOCK ();
 		if (h_ptr > 0) {
 			int req_h = m_alloc (sizeof (flask_req_t), 1, MFREE);
@@ -161,17 +154,17 @@ void flask_process_client (int client_fd)
 			req->uri = parser.uri;
 			req->body = parser.body;
 			req->headers = parser.headers;
-			req->args = m_table_create ();
+			req->args = tbl_create ();
 			parse_args (req->args, uri_full);
 			int res_h = m_alloc (sizeof (flask_res_t), 1, MFREE);
 			flask_res_t *res = m_buf (res_h);
 			res->status = 200;
-			res->headers = m_table_create ();
+			res->headers = tbl_create ();
 			res->body = m_alloc (0, 1, MFREE);
 			(*(flask_handler_t *)m_buf (h_ptr)) (req_h, res_h);
 			send_full_response (client_fd, res);
-			m_table_free (req->args);
-			m_table_free (res->headers);
+			tbl_free (req->args);
+			tbl_free (res->headers);
 			m_free (res->body);
 			m_free (req_h);
 			m_free (res_h);
@@ -248,14 +241,14 @@ const char *flask_body (int req_h)
 }
 const char *flask_arg (int req_h, const char *key, const char *def)
 {
-	int v_h = m_table_get_cstr (((flask_req_t *)m_buf (req_h))->args, key);
+	int v_h = tbl_get_handle (((flask_req_t *)m_buf (req_h))->args, key);
 	return v_h > 0 ? m_str (v_h) : def;
 }
 const char *flask_header (int req_h, const char *key)
 {
 	int k_h = s_lower (s_strdup_c (key)),
-	    v_h = m_table_get_cstr (((flask_req_t *)m_buf (req_h))->headers,
-				    m_str (k_h));
+	    v_h = tbl_get_handle (((flask_req_t *)m_buf (req_h))->headers,
+				  m_str (k_h));
 	const char *v = v_h > 0 ? m_str (v_h) : NULL;
 	m_free (k_h);
 	return v;
@@ -278,8 +271,7 @@ void flask_json_h (int res_h, int status, int json_h)
 {
 	flask_res_t *res = m_buf (res_h);
 	res->status = status;
-	m_table_set_string_by_cstr (res->headers, "Content-Type",
-				    "application/json");
+	tbl_set (res->headers, "Content-Type", "application/json");
 	m_clear (res->body);
 	m_slice (res->body, 0, json_h, 0, -1);
 }

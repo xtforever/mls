@@ -1,6 +1,7 @@
 #include "../lib/m_http.h"
 #include "../lib/m_tool.h"
 #include "../lib/mls.h"
+#include "../lib/table.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,7 +21,7 @@ void test_empty_keys ()
 	assert (res == 0);
 	assert (p.state == HTTP_STATE_DONE);
 
-	int host = m_table_get_cstr (p.headers, "host");
+	int host = tbl_get_handle (p.headers, "host");
 	assert (host > 0);
 	assert (strcmp (m_str (host), "localhost") == 0);
 
@@ -44,7 +45,7 @@ void test_malformed_headers ()
 	assert (res == 0); // Current implementation ignores lines without colon
 	assert (p.state == HTTP_STATE_DONE);
 
-	int host = m_table_get_cstr (p.headers, "host");
+	int host = tbl_get_handle (p.headers, "host");
 	assert (host > 0);
 	assert (strcmp (m_str (host), "localhost") == 0);
 
@@ -154,8 +155,8 @@ void test_memory_safety ()
 	m_free (p2.version);
 	m_free (p1.body);
 	m_free (p2.body);
-	m_table_free (p1.headers);
-	m_table_free (p2.headers);
+	tbl_free (p1.headers);
+	tbl_free (p2.headers);
 
 	printf ("Memory safety test passed.\n");
 }
@@ -203,7 +204,7 @@ void test_incremental_parsing ()
 	m_free (p.uri);
 	m_free (p.version);
 	m_free (p.body);
-	m_table_free (p.headers);
+	tbl_free (p.headers);
 
 	printf ("Incremental parsing test passed.\n");
 }
@@ -264,7 +265,7 @@ void test_response_parsing ()
 	assert (strcmp (m_str (p.version), "HTTP/1.1") == 0);
 	assert (p.status_code == 200);
 
-	int ct = m_table_get_cstr (p.headers, "content-type");
+	int ct = tbl_get_handle (p.headers, "content-type");
 	assert (ct > 0);
 	assert (strstr (m_str (ct), "text/html") != NULL);
 

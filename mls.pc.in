@@ -4,9 +4,8 @@ libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
 Name: mls
-Description: Master List System — safe dynamic arrays for C
+Description: Master List System — safe dynamic arrays for C (full build)
 Version: @PROJECT_VERSION@
-@MLS_PC_LIBS@
-Cflags: -I${includedir} @MLS_PC_CFLAGS@
-Libs: -L${libdir} -lmls@CMAKE_DEBUG_POSTFIX@ -lm -ldl
+Cflags: -I${includedir}
+Libs: -L${libdir} -lmls_ext@CMAKE_DEBUG_POSTFIX@ -lmls_base@CMAKE_DEBUG_POSTFIX@ -lm -ldl
 Libs.private: @MLS_PC_PRIVATE_LIBS@

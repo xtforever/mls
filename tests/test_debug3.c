@@ -1,6 +1,7 @@
 #include "../lib/m_http.h"
 #include "../lib/m_tool.h"
 #include "../lib/mls.h"
+#include "../lib/table.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -31,9 +32,9 @@ int main ()
 	printf ("has_content_length: %d\n", p.has_content_length);
 	printf ("is_chunked: %d\n", p.is_chunked);
 
-	int cl = m_table_get_cstr (p.headers, "content-length");
+	int cl = tbl_get_handle (p.headers, "content-length");
 	printf ("CL header: %s\n", cl > 0 ? m_str (cl) : "NULL");
-	int te = m_table_get_cstr (p.headers, "transfer-encoding");
+	int te = tbl_get_handle (p.headers, "transfer-encoding");
 	printf ("TE header: %s\n", te > 0 ? m_str (te) : "NULL");
 
 	m_free (data);

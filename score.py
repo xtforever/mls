@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""score.py: compute the "nesting + pointer indirection" metric per C function.
+"""score.py: compute the "nesting + pointer indirection + dereference" metric
+per C function.
 
 Usage:  score.py FILE.c
         score.py --selftest
 
 For every function found it prints the c(i) nesting histogram, the p(k)
-pointer-indirection histogram, the two score factors, and the final score.
+pointer-indirection histogram, the d(j) dereference histogram, the three
+score factors, and the final score.
 
-    score(f) = ( sum_{i>=1} c(i) * 2^(i-1) ) * ( prod_{k>=1} (k+1)^p(k) )
+    score(f) = ( sum_{i>=1} c(i) * 2^(i-1) )
+             * ( prod_{k>=1} (k+1)^p(k) )
+             * ( prod_{j>=1} (j+1)^d(j) )
 
 c(i) = number of statements of f at nesting (brace) depth i. A statement is
        counted once no matter how many physical lines it spans (line-wrapped
@@ -16,6 +20,13 @@ c(i) = number of statements of f at nesting (brace) depth i. A statement is
        ignored (the sum starts at i=1).
 p(k) = number of pointer objects in f (params + locals) with indirection
        level k: `int *s` -> 1, `int **s` -> 2, `int ***p` -> 3.
+d(j) = number of `->` dereferences at chain position j, for j >= 2 only. A
+       chain `a->x->y` has dereferences at positions 1 and 2; position 1 (the
+       `a->x` part, whose null is usually local/obvious) is not counted, while
+       position 2 (`->y`, dereferencing a pointer that came from somewhere
+       else) is. Only runs of `-> id -> id ...` chain together. Counting every
+       `->` multiplicatively explodes the score and drowns the signal, so
+       isolated `a->x` dereferences are ignored entirely.
 """
 
 import sys
@@ -87,6 +98,10 @@ def tokenize(src):
                 j += 1
             toks.append(('num', src[i:j], line))
             i = j
+            continue
+        if src.startswith('->', i):
+            toks.append(('op', '->', line))
+            i += 2
             continue
         toks.append(('op', c, line))
         i += 1
@@ -281,18 +296,45 @@ def nesting_counts(body_toks):
     return c
 
 
+def deref_counts(body_toks):
+    """d(j): number of `->` dereferences at chain position j (j >= 2 only).
+    A run of `-> id -> id ...` is one chain; position 1 is ignored because the
+    null there is on a locally-visible variable, while deeper positions
+    dereference pointers that typically come from elsewhere."""
+    d = {}
+    chain = 0
+    i, n = 0, len(body_toks)
+    while i < n:
+        if body_toks[i][1] == '->':
+            chain += 1
+            if chain >= 2:
+                d[chain] = d.get(chain, 0) + 1
+            if (i + 2 < n and body_toks[i + 1][0] == 'id'
+                    and body_toks[i + 2][1] == '->'):
+                i += 2
+                continue
+            chain = 0
+        i += 1
+    return d
+
+
 def metric(name, line, param_toks, body_toks):
     p = {}
     for lvl in param_pointers(param_toks) + local_pointers(body_toks):
         p[lvl] = p.get(lvl, 0) + 1
 
     c = nesting_counts(body_toks)
+    d = deref_counts(body_toks)
 
     sum_part = sum(v * (2 ** (i - 1)) for i, v in c.items())
     prod_part = 1
     for kk, vv in p.items():
         prod_part *= (kk + 1) ** vv
-    return c, p, sum_part, prod_part, sum_part * prod_part
+    deref_part = 1
+    for kk, vv in d.items():
+        deref_part *= (kk + 1) ** vv
+    return c, p, d, sum_part, prod_part, deref_part, \
+        sum_part * prod_part * deref_part
 
 
 def fmt_c(c):
@@ -315,12 +357,14 @@ def report(path):
         print("no functions found")
         return
     for name, ln, ptoks, btoks in funcs:
-        c, p, sp, pp, score = metric(name, ln, ptoks, btoks)
+        c, p, d, sp, pp, dp, score = metric(name, ln, ptoks, btoks)
         print(f"{name} (line {ln})")
         print(f"  c(i): {dict(sorted(c.items())) if c else {}}")
         print(f"  p(k): {dict(sorted(p.items())) if p else {}}")
+        print(f"  d(j): {dict(sorted(d.items())) if d else {}}")
         print(f"  nesting term: {fmt_c(c)} = {sp}")
         print(f"  pointer term: {fmt_p(p)} = {pp}")
+        print(f"  deref term:   {fmt_p(d)} = {dp}")
         print(f"  score: {score}")
         print()
 
@@ -342,11 +386,13 @@ def selftest():
     assert len(funcs) == 1, funcs
     name, ln, ptoks, btoks = funcs[0]
     assert name == 'foo' and ln == 2
-    c, p, sp, pp, score = metric(name, ln, ptoks, btoks)
+    c, p, d, sp, pp, dp, score = metric(name, ln, ptoks, btoks)
     assert c == {1: 4, 2: 1}, c
     assert p == {1: 1, 2: 2}, p
+    assert d == {}, d
     assert sp == 6, sp            # 4*2^0 + 1*2^1
     assert pp == 18, pp           # 2^1 * 3^2
+    assert dp == 1, dp
     assert score == 108, score
 
     # function-pointer params are level-1 (their own star), and the real
@@ -357,7 +403,7 @@ int fp(int (*cb)(void *ctx, int n, void *data), void *ctx) {
 }
 """
     funcs = find_functions(tokenize(FP))
-    c, p, sp, pp, score = metric(*funcs[0])
+    c, p, d, sp, pp, dp, score = metric(*funcs[0])
     assert p == {1: 2}, p        # cb + ctx, both level-1 (not level-3)
     assert pp == 4, pp           # 2^2
     assert sp == 1, sp
@@ -388,8 +434,8 @@ int w(char **s) {
     return 0;
 }
 """
-    c1 = metric(*find_functions(tokenize(WRAPPED))[0])[2]
-    c2 = metric(*find_functions(tokenize(COMPACT))[0])[2]
+    c1 = metric(*find_functions(tokenize(WRAPPED))[0])[3]
+    c2 = metric(*find_functions(tokenize(COMPACT))[0])[3]
     assert c1 == c2 == 8, (c1, c2)  # 2 + 2 + 4, same for both layouts
 
     # static/const local pointers are counted too
@@ -402,6 +448,19 @@ int q(void) {
 """
     p = metric(*find_functions(tokenize(Q))[0])[1]
     assert p == {1: 2}, p
+
+    # `->` chains: a->next->next has a position-2 dereference; a->next alone
+    # (position 1) is ignored as the local/obvious case
+    D = r"""
+int chain(struct node *a, struct node *b) {
+    a->next->next = b;
+    return a->next ? 1 : 0;
+}
+"""
+    d = metric(*find_functions(tokenize(D))[0])[2]
+    dp = metric(*find_functions(tokenize(D))[0])[5]
+    assert d == {2: 1}, d
+    assert dp == 3, dp           # 3^1
     print("selftest ok")
 
 

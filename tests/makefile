@@ -1,19 +1,16 @@
 include ../rules.mk
 
-TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table  test_table_advanced test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_table_pointers test_splice test_m_subproc
+TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_splice test_m_subproc
 ifeq ($(thread_safe),1)
 TARGETS+=test_thread_safe_fuzzy
 TARGETS+=test_thread_safety
 TARGETS+=test_tsan_races
 endif
-DEPS=../lib/mls.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
+DEPS=../lib/mls_base.o${OBJ} ../lib/mls_ext.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/list.o${OBJ} ../lib/table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
 
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
 ALL: $(EXE_TARGETS) error-handler
-
-test_table_pointers.exe${OBJ}: test_table_pointers.o${OBJ} $(DEPS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 memcached_server.exed: memcached_server.od $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -49,8 +46,8 @@ test_m_subproc.exe${OBJ}: test_m_subproc.o${OBJ} $(DEPS) ../lib/m_subproc.o${OBJ
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-error-handler: error-handler.c mls.c mls.h m_tool.c  m_tool.h m_table.h m_table.c
-	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls.c ../lib/m_tool.c ../lib/m_table.c -I ../lib
+error-handler: error-handler.c mls_base.c mls_base.h mls_ext.c mls_ext.h m_tool.c m_tool.h list.h list.c table.h table.c
+	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls_base.c ../lib/mls_ext.c ../lib/m_tool.c ../lib/list.c ../lib/table.c -I ../lib
 
 test_ssplit.exe${OBJ}: test_ssplit.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -71,9 +68,6 @@ test_table.exe${OBJ}: test_table.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_slice_advanced.exe${OBJ}: test_slice_advanced.o${OBJ} $(DEPS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-test_table_advanced.exe${OBJ}: test_table_advanced.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_memory_advanced.exe${OBJ}: test_memory_advanced.o${OBJ} $(DEPS)

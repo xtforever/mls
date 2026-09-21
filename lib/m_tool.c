@@ -2,7 +2,7 @@
 #include "m_tool.h"
 #include "mls.h"
 #include "mls_internal.h"
-#include "m_table.h"
+#include "table.h"
 #include <errno.h>
 #include <fcntl.h>
 #ifdef __GLIBC__
@@ -18,15 +18,14 @@ static int vas_app (int m, va_list ap);
 static int field_escape (int s2, char *s, int quotes);
 static void repl_char (int buf, char ch);
 
-
-
 /* Relocated Core Utilities */
 
-
 /**
- * Executes a regular expression on a string and stores sub-matches in an m-array.
+ * Executes a regular expression on a string and stores sub-matches in an
+ * m-array.
  *
- * @param m The handle of the m-array to store matches. If <= 1, a new one is allocated.
+ * @param m The handle of the m-array to store matches. If <= 1, a new one is
+ * allocated.
  * @param regex The regular expression pattern.
  * @param s The string to search.
  * @return The handle of the m-array containing the matches.
@@ -78,7 +77,6 @@ void m_qsort (int list, int (*compar) (const void *, const void *))
 	qsort (m_buf (list), m_len (list), m_width (list), compar);
 }
 
-
 /**
  * Performs a linear search on an m-array.
  *
@@ -99,7 +97,6 @@ int m_lfind (const void *key, int list,
 		return (res - m_buf (list)) / m_width (list);
 	return -1;
 }
-
 
 /**
  * Reads all available data from a file descriptor into an m-array.
@@ -293,10 +290,7 @@ int s_clone (int h)
  * @param h The handle of the string buffer to copy.
  * @return The handle of the new string buffer.
  */
-int s_mdup (int h)
-{
-	return s_clone (h);
-}
+int s_mdup (int h) { return s_clone (h); }
 
 /**
  * Resizes a string buffer and ensures it is null-terminated.
@@ -354,7 +348,8 @@ int s_has_suffix (int h, const char *suffix)
 	int h_len = s_strlen (h);
 	if (suf_len > h_len)
 		return 0;
-	return memcmp ((char *)m_buf (h) + h_len - suf_len, suffix, suf_len) == 0;
+	return memcmp ((char *)m_buf (h) + h_len - suf_len, suffix, suf_len) ==
+	       0;
 }
 
 /**
@@ -418,10 +413,7 @@ int s_join (const char *sep, ...)
  * @param b Handle of the second string buffer.
  * @return 0 if equal, <0 if a < b, >0 if a > b.
  */
-int s_cmp (int a, int b)
-{
-	return s_subcmp (a, 0, -1, b, 0, -1);
-}
+int s_cmp (int a, int b) { return s_subcmp (a, 0, -1, b, 0, -1); }
 
 /**
  * Compares up to n characters of two string buffers.
@@ -431,10 +423,7 @@ int s_cmp (int a, int b)
  * @param n Maximum number of characters to compare.
  * @return 0 if equal, <0 if a < b, >0 if a > b.
  */
-int s_ncmp (int a, int b, int n)
-{
-	return s_subcmp (a, 0, n - 1, b, 0, n - 1);
-}
+int s_ncmp (int a, int b, int n) { return s_subcmp (a, 0, n - 1, b, 0, n - 1); }
 
 /**
  * Finds the first occurrence of a character in a string buffer.
@@ -497,7 +486,8 @@ int s_find (int h, const char *sub)
 }
 
 /**
- * Calculates the length of the initial segment of a string buffer which consists entirely of characters in accept.
+ * Calculates the length of the initial segment of a string buffer which
+ * consists entirely of characters in accept.
  *
  * @param h The handle of the string buffer.
  * @param accept C-style string containing characters to accept.
@@ -518,7 +508,8 @@ int s_spn (int h, const char *accept)
 }
 
 /**
- * Calculates the length of the initial segment of a string buffer which consists entirely of characters not in reject.
+ * Calculates the length of the initial segment of a string buffer which
+ * consists entirely of characters not in reject.
  *
  * @param h The handle of the string buffer.
  * @param reject C-style string containing characters to reject.
@@ -601,7 +592,7 @@ int s_ncat (int h, const char *src, int n)
  */
 int s_sub (int h, int pos, int len)
 {
-	return s_slice( 0,0, h, pos, pos + len -1 );
+	return s_slice (0, 0, h, pos, pos + len - 1);
 }
 
 /**
@@ -665,14 +656,15 @@ int s_replace_c (int h, const char *old, const char *replacement)
  * Trims specified characters from both ends of a string buffer.
  *
  * @param h The handle of the string buffer.
- * @param chars C-style string containing characters to trim. If NULL, whitespace is trimmed.
+ * @param chars C-style string containing characters to trim. If NULL,
+ * whitespace is trimmed.
  * @return A new handle to the trimmed string buffer.
  */
 int s_trim_c (int h, const char *chars)
 {
 	if (h == 0)
 		return s_new ();
-	if (is_empty(chars))
+	if (is_empty (chars))
 		chars = " \t\n\r";
 
 	const char *s = m_str (h);
@@ -685,7 +677,7 @@ int s_trim_c (int h, const char *chars)
 	while (end >= start && strchr (chars, s[end]))
 		end--;
 
-	return s_slice (0,0, h, start, end - start + 1);
+	return s_slice (0, 0, h, start, end - start + 1);
 }
 
 /**
@@ -741,7 +733,8 @@ int s_index (int buf, int p, int ch)
 /**
  * Splits a string into an m-array of strings based on a delimiter character.
  *
- * @param m The handle to store the resulting strings. If 0, a new one is allocated.
+ * @param m The handle to store the resulting strings. If 0, a new one is
+ * allocated.
  * @param s The string to split.
  * @param c The delimiter character.
  * @param remove_wspace If non-zero, trims whitespace from the parts.
@@ -751,7 +744,6 @@ int s_split (int m, const char *s, int c, int remove_wspace)
 {
 	int p = 0, start = 0, end;
 	char *szTemp;
-
 
 	if (m)
 		m_free_strings (m, 1);
@@ -827,8 +819,9 @@ int s_strstr (int m, int offs, int pattern)
 	int p_len = s_strlen (pattern);
 	if (p_len == 0)
 		return offs;
-	
-	void *res = memmem (m_buf (m) + offs, m_len_val - offs, m_buf (pattern), p_len);
+
+	void *res = memmem (m_buf (m) + offs, m_len_val - offs, m_buf (pattern),
+			    p_len);
 	if (res)
 		return (char *)res - (char *)m_buf (m);
 	return -1;
@@ -910,16 +903,24 @@ int s_subcmp (int s0, int s0a, int s0b, int s1, int s1a, int s1b)
 	int len1 = s_strlen (s1);
 
 	// Normalize indices like m_slice
-	if (s0b < 0) s0b += len0;
-	if (s0a < 0) s0a += len0;
-	if (s1b < 0) s1b += len1;
-	if (s1a < 0) s1a += len1;
+	if (s0b < 0)
+		s0b += len0;
+	if (s0a < 0)
+		s0a += len0;
+	if (s1b < 0)
+		s1b += len1;
+	if (s1a < 0)
+		s1a += len1;
 
 	// Clamp bounds
-	if (s0a < 0) s0a = 0;
-	if (s0b >= len0) s0b = len0 - 1;
-	if (s1a < 0) s1a = 0;
-	if (s1b >= len1) s1b = len1 - 1;
+	if (s0a < 0)
+		s0a = 0;
+	if (s0b >= len0)
+		s0b = len0 - 1;
+	if (s1a < 0)
+		s1a = 0;
+	if (s1b >= len1)
+		s1b = len1 - 1;
 
 	int sub_len0 = (s0b >= s0a) ? (s0b - s0a + 1) : 0;
 	int sub_len1 = (s1b >= s1a) ? (s1b - s1a + 1) : 0;
@@ -927,8 +928,8 @@ int s_subcmp (int s0, int s0a, int s0b, int s1, int s1a, int s1b)
 	int min_len = (sub_len0 < sub_len1) ? sub_len0 : sub_len1;
 	int res = 0;
 	if (min_len > 0) {
-		res = memcmp ((char *)m_buf (s0) + s0a, (char *)m_buf (s1) + s1a,
-			      min_len);
+		res = memcmp ((char *)m_buf (s0) + s0a,
+			      (char *)m_buf (s1) + s1a, min_len);
 	}
 
 	if (res != 0)
@@ -1094,7 +1095,8 @@ int s_strdup_c (const char *s) { return s_dup (s); }
 /**
  * Copies a C-style string into an existing string buffer.
  *
- * @param out Handle of the destination string buffer. If <= 0, a new one is allocated.
+ * @param out Handle of the destination string buffer. If <= 0, a new one is
+ * allocated.
  * @param s The C-style string.
  * @return The handle of the string buffer.
  */
@@ -1115,17 +1117,20 @@ int s_strcpy_c (int out, const char *s)
 void s_puts (int m) { printf ("%s\n", m_str (m)); }
 
 /** TODO!
- * print up to n charcaters of string 
+ * print up to n charcaters of string
  *
  * @param m The handle of the string buffer.
  * @param n The length
  */
 void s_write (int m, int n)
 {
-	int p; char *d;
-	m_foreach( m, p, d ) { 
-		if(!*d) break;
-		fputc( *d, stdout );
+	int p;
+	char *d;
+	m_foreach (m, p, d)
+	{
+		if (!*d)
+			break;
+		fputc (*d, stdout);
 	}
 }
 
@@ -1169,8 +1174,6 @@ void m_register_printf ()
 
 #endif /* __GLIBC__ */
 
-
-
 /* Variable System */
 
 /**
@@ -1188,8 +1191,7 @@ int v_init (void) { return m_alloc (100, sizeof (int), MFREE_EACH); }
 void v_free (int vl)
 {
 	int p, *d;
-	m_foreach (vl, p, d)
-		m_free_strings (*d, 0);
+	m_foreach (vl, p, d) m_free_strings (*d, 0);
 	m_free (vl);
 }
 
@@ -1474,7 +1476,8 @@ void se_parse (str_exp_t *se, const char *frm)
 	s0 = s;
 	while (*s) {
 		if (*s == '\\' && s[1] == '$') {
-			/* Found escaped dollar. We need to collect what we have and then add the $ */
+			/* Found escaped dollar. We need to collect what we have
+			 * and then add the $ */
 			if (s > s0) {
 				cp = strndup (s0, s - s0);
 				m_put (b, &cp);
@@ -1499,11 +1502,11 @@ void se_parse (str_exp_t *se, const char *frm)
 			}
 			while (isalnum (*s) || *s == '_')
 				s++;
-			
+
 			cp = strndup (s0, s - s0);
 			m_put (b, &cp);
 			m_put (v, &cp);
-			
+
 			int index = parse_index (&s);
 			m_put (idx, &index);
 
@@ -1586,8 +1589,8 @@ static int field_escape (int s2, char *s, int quotes)
  */
 static int get_variable_handle (int vl, const char *name)
 {
-	if (m_is_table (vl)) {
-		return m_table_get_cstr (vl, name);
+	if (tbl_is_table (vl)) {
+		return tbl_get_handle (vl, name);
 	}
 	return v_lookup (vl, name);
 }
@@ -1612,8 +1615,11 @@ char *se_expand (str_exp_t *se, int vl, int row)
 	m_foreach (se->splitbuf, p, d)
 	{
 		s = *d;
-		/* Check if this part in splitbuf matches the next expected variable in se->values */
-		if (vn < m_len (se->values) && (val_ptr = (char **)mls (se->values, vn)) && *val_ptr == s) {
+		/* Check if this part in splitbuf matches the next expected
+		 * variable in se->values */
+		if (vn < m_len (se->values) &&
+		    (val_ptr = (char **)mls (se->values, vn)) &&
+		    *val_ptr == s) {
 			int name_offset = 1;
 			if (s[1] == '\'') {
 				quotes = 1;
@@ -1626,11 +1632,15 @@ char *se_expand (str_exp_t *se, int vl, int row)
 			vn++;
 			if (index == 1) {
 				/* [*] expansion - join all if it's a list */
-				if (var > 0 && m_width (var) == sizeof (char *)) {
-					field_escape (buf, STR (var, 1), quotes);
-					for (index = 2; index < m_len (var); index++) {
+				if (var > 0 &&
+				    m_width (var) == sizeof (char *)) {
+					field_escape (buf, STR (var, 1),
+						      quotes);
+					for (index = 2; index < m_len (var);
+					     index++) {
 						m_putc (buf, ',');
-						field_escape (buf, STR (var, index),
+						field_escape (buf,
+							      STR (var, index),
 							      quotes);
 					}
 				} else if (var > 0) {
@@ -1645,15 +1655,17 @@ char *se_expand (str_exp_t *se, int vl, int row)
 
 				if (var > 0) {
 					if (m_width (var) == sizeof (char *)) {
-						/* Variable System style: list of char* */
+						/* Variable System style: list
+						 * of char* */
 						if (index < v_klen (var))
-							field_escape (buf,
-								      STR (var,
-									   index +
-										   1),
-								      quotes);
+							field_escape (
+								buf,
+								STR (var,
+								     index + 1),
+								quotes);
 					} else {
-						/* Single string handle (m_table style) */
+						/* Single string handle (table
+						 * style) */
 						field_escape (buf, m_str (var),
 							      quotes);
 					}
@@ -1683,9 +1695,9 @@ char *se_string (int vl, const char *frm)
 	se_expand (&se, vl, 0);
 
 	char *res;
-	if (m_is_table (vl)) {
-		m_table_set_string_by_cstr (vl, "se_string", mls (se.buf, 0));
-		int h = m_table_get_cstr (vl, "se_string");
+	if (tbl_is_table (vl)) {
+		tbl_set (vl, "se_string", mls (se.buf, 0));
+		int h = tbl_get_handle (vl, "se_string");
 		res = m_str (h);
 	} else {
 		int data = v_set (vl, "se_string", mls (se.buf, 0), 1);
@@ -1760,7 +1772,8 @@ static int cut_word (char **s, char *delim, int trimws, char **a, char **b)
 }
 
 /**
- * Internal helper to duplicate a word between two pointers, optionally trimming whitespace.
+ * Internal helper to duplicate a word between two pointers, optionally trimming
+ * whitespace.
  */
 static char *dup_word (char *a, char *b, int trimws)
 {
@@ -1824,10 +1837,7 @@ int m_strncpy (int dst, int src, int max)
 	dst = s_slice (dst, 0, src, 0, len - 1);
 	return dst;
 }
-int s_strncpy (int dst, int src, int max)
-{
-	return m_strncpy(dst,src,max);
-}
+int s_strncpy (int dst, int src, int max) { return m_strncpy (dst, src, max); }
 
 /**
  * Internal helper to copy elements between m-arrays.
@@ -1844,7 +1854,8 @@ static void element_copy (int dest, int destp, int src, int srcp, int src_count,
 }
 
 /**
- * Copies a range of elements from one m-array to another, handling width differences.
+ * Copies a range of elements from one m-array to another, handling width
+ * differences.
  *
  * @param dest Destination handle.
  * @param destp Destination offset.
@@ -1934,12 +1945,11 @@ int s_readln (int buf, FILE *fp)
 	return m_len (buf) - 1;
 }
 
-
 /* Ring buffer lock — protects concurrent put/get on shared ring buffers */
 #ifdef MLS_THREAD_SAFE
 static pthread_mutex_t ring_lock = PTHREAD_MUTEX_INITIALIZER;
-#define RING_LOCK() pthread_mutex_lock(&ring_lock)
-#define RING_UNLOCK() pthread_mutex_unlock(&ring_lock)
+#define RING_LOCK() pthread_mutex_lock (&ring_lock)
+#define RING_UNLOCK() pthread_mutex_unlock (&ring_lock)
 #else
 #define RING_LOCK() ((void)0)
 #define RING_UNLOCK() ((void)0)
@@ -2068,14 +2078,14 @@ int ring_get (int r)
  */
 void ring_free (int r) { m_free (r); }
 
-
 /**
- * Specialized free function for lists containing dynamically allocated strings (char *).
- * Frees each string in the list and optionally the list handle itself.
+ * Specialized free function for lists containing dynamically allocated strings
+ * (char *). Frees each string in the list and optionally the list handle
+ * itself.
  *
  * @param list The handle of the string list.
- * @param CLEAR_ONLY If non-zero, the strings are freed and the list is cleared, but the handle remains.
- *                   If zero, the handle itself is also freed.
+ * @param CLEAR_ONLY If non-zero, the strings are freed and the list is cleared,
+ * but the handle remains. If zero, the handle itself is also freed.
  */
 void m_free_strings (int list, int CLEAR_ONLY)
 {
@@ -2093,4 +2103,3 @@ void m_free_strings (int list, int CLEAR_ONLY)
 	else
 		m_free (list);
 }
-

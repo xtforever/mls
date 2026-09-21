@@ -5,7 +5,7 @@ include ../../rules.mk
 VPATH=../../lib
 CFLAGS+=-I../../lib
 
-DEPS=mls.od m_tool.od m_table.od
+DEPS=mls_base.od mls_ext.od m_tool.od m_table.od
 TARGET=dirwalker.exed
 
 
