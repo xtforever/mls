@@ -1,0 +1,105 @@
+# Keyword dictionary for the Gutenberg demo.
+# Format:  <keyword-name><TAB><pattern>[;<pattern>...]
+# A book gets the keyword if any pattern is a case-insensitive substring of
+# its Subjects or Bookshelves field.  Lines starting with # are ignored.
+
+science-fiction	Science fiction
+fantasy	Fantasy fiction;Fantasy
+short-stories	Short stories
+fiction	Fiction
+historical-fiction	Historical fiction
+detective	Detective and mystery stories
+mystery	Mystery;Mystery fiction
+crime	Crime;Criminals
+thriller	Thrillers
+adventure	Adventure stories;Adventure and adventurers
+western	Western stories
+romance	Man-woman relationships;Romances;Arthurian romances
+roman	Romances;Arthurian romances
+love-story	Love stories
+vampire	Vampires
+horror	Horror
+gothic	Gothic
+poetry	Poetry
+drama	Drama
+comedy	Comedy plays;Comedy
+tragedy	Tragedies
+satire	Satire
+humor	Humorous stories;Wit and humor
+essays	Essays
+letters	Letters
+speeches	Speeches
+biography	Biography
+autobiography	Autobiography
+memoir	Memoirs
+folklore	Folklore
+fairy-tales	Fairy tales
+mythology	Mythology
+legends	Legends
+fables	Fables
+conduct-of-life	Conduct of life
+relationships	Man-woman relationships
+women	Women
+young-women	Young women
+girls	Girls
+boys	Boys
+children	Children;Children's stories
+families	Families
+friendship	Friendship
+siblings	Siblings;Brothers and sisters
+orphans	Orphans
+christian-life	Christian life
+religion	Religion
+spirituality	Spirituality
+philosophy	Philosophy
+ethics	Ethics
+education	Education;Teaching
+animals	Animals
+birds	Birds
+nature	Nature
+natural-history	Natural history
+science	Science
+biology	Biology
+war	War
+world-war-1	World War, 1914-1918
+politics	Politics;Political science
+law	Law
+travel	Travel;Voyages and travels
+frontier	Frontier and pioneer life
+domestic-fiction	Domestic fiction
+bildungsroman	Bildungsromans
+marriage	Marriage
+united-states	United States
+great-britain	Great Britain
+england	England
+france	France
+london	London (England)
+paris	Paris (France)
+scotland	Scotland
+ireland	Ireland
+italy	Italy
+russia	Russia
+canada	Canada
+europe	Europe
+africa	Africa
+india	India
+japan	Japan
+china	China
+australia	Australia
+germany	Germany
+spain	Spain
+greece	Greece
+rome	Rome
+new-york	New York (N.Y.)
+english-fiction	English fiction
+french-fiction	French fiction
+german-fiction	German fiction
+american-fiction	American fiction
+english-poetry	English poetry
+american-poetry	American poetry
+indians	Indians of North America
+african-americans	African Americans
+aliens	Human-alien encounters
+ghosts	Ghosts
+sea	Sea stories;Seafaring life
+pirates	Pirates

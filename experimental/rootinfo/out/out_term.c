@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 /* zero-width ANSI styling, safe for col-width math */
@@ -29,6 +30,18 @@ static int color_on (void *cfg)
 			return 0;
 	}
 	return isatty (STDOUT_FILENO);
+}
+
+/* terminal width in columns: tty first, then $COLUMNS, else 80 */
+static int term_width (void)
+{
+	struct winsize ws;
+	if (ioctl (STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+		return ws.ws_col;
+	const char *c = getenv ("COLUMNS");
+	if (c && atoi (c) > 0)
+		return atoi (c);
+	return 80;
 }
 
 static const char *bar_color (double frac)
@@ -325,11 +338,41 @@ void out_table (const data_t *d, void *cfg)
 		}
 	}
 
-	cfg_t cc = cfg ? *(cfg_t *)cfg : 0;
-	int maxw = cfg_int (cc, "table", "max_col_width", 24);
+	/* Fit every table into one shared terminal width: keep each
+	   column at its natural width while it fits, split the rest
+	   equally among the columns that are still too wide. */
+	int avail = term_width () - 2 - 2 * (ncols - 1);
+	if (avail < ncols)
+		avail = ncols;
+	int total = 0;
 	for (int i = 0; i < ncols; i++)
-		if (colw[i] > maxw)
-			colw[i] = maxw;
+		total += colw[i];
+	if (total > avail) {
+		char *fixed = (char *)calloc ((size_t)ncols, 1);
+		int budget = avail, nfix = 0;
+		for (;;) {
+			int flex = ncols - nfix;
+			if (flex <= 0)
+				break;
+			int share = budget / flex;
+			int capped = 0;
+			for (int i = 0; i < ncols; i++) {
+				if (!fixed[i] && colw[i] <= share) {
+					fixed[i] = 1;
+					nfix++;
+					budget -= colw[i];
+					capped = 1;
+				}
+			}
+			if (!capped) {
+				for (int i = 0; i < ncols; i++)
+					if (!fixed[i])
+						colw[i] = share;
+				break;
+			}
+		}
+		free (fixed);
+	}
 
 	int col = color_on (cfg);
 	if (!kv_header) {

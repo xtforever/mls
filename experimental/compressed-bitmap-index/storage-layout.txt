@@ -1,0 +1,42 @@
+ 
+
+
+each tuple is bitmap chunk
+bs = array_sorted [ (bitmap_start0, bitmap_buffer0), (bitmap_start1, ...), (..,..) ]
+
+init:
+struct chunk {
+	int bitpos;
+	int data;
+}
+bs = m_create( 1, sizeof( struct chunk ));
+
+bit_set ( bs, n ):
+  struct chunk *c = binsearch for chunk with biggest bitpos < n
+  offs = (n - c->bitpos) / 64;
+  if( offs > m_len(c->data) {
+     resize-data-or-insert-new-chunk
+  }
+  uint64_t *d = mls( c->data, offs );
+  d |= 1 << ( (n - c->bitpos) % 64 ); 
+
+
+OPS - single bit: bs - bitset, n bitposition
+bit_set    ( bs, n )
+bit_clr    ( bs, n )
+bit_test   ( bs, n )
+bit_first0 ( bs, chunk_index )
+bit_first1 ( bs, chunk_index )
+bit_last0  ( bs, chunk_index )
+bit_last1  ( bs, chunk_index )
+
+
+OPS - bitsets bs0,bs1: bitsets, n0 start bit
+bitset_and ( bs2, bs0, bs1, start_bit, bit_count )
+bitset_or  ( bs2, bs0, bs1, start_bit, bit_count )
+bitset_xor ( bs2, bs0, bs1, start_bit, bit_count )
+
+Housekeeping
+chunk_merge( bs, chunk_num )
+chunk_split( bs, n )
+

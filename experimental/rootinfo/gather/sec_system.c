@@ -89,38 +89,54 @@ static void gather_cpuinfo (int rows)
 	m_free (cpuinfo);
 }
 
+/* value of one /proc/meminfo key, in kB (0 if absent) */
+static unsigned long long meminfo_kb (int meminfo, const char *key)
+{
+	int hit = s_find (meminfo, key);
+	if (hit < 0)
+		return 0;
+	int c = s_chr (meminfo, ':', hit);
+	int start = c >= 0 ? c + 1 : hit;
+	while (CHAR (meminfo, start) == ' ' || CHAR (meminfo, start) == '\t')
+		start++;
+	int nl = s_chr (meminfo, '\n', start);
+	int end = nl < 0 ? s_strlen (meminfo) - 1 : nl - 1;
+	int vh = s_slice (0, 0, meminfo, start, end);
+	unsigned long long kb = (unsigned long long)s_to_long (vh);
+	m_free (vh);
+	return kb;
+}
+
 static void gather_meminfo (int rows)
 {
 	int meminfo = m_str_from_file ("/proc/meminfo");
 	if (meminfo < 0)
 		return;
 
-	const char *keys[] = {"MemTotal", "MemAvailable", "SwapTotal",
-			      "SwapFree"};
-	for (int i = 0; i < 4; i++) {
-		int vstr = 0;
-		int hit = s_find (meminfo, keys[i]);
-		if (hit >= 0) {
-			int c = s_chr (meminfo, ':', hit);
-			int start = c >= 0 ? c + 1 : hit;
-			while (CHAR (meminfo, start) == ' ' ||
-			       CHAR (meminfo, start) == '\t')
-				start++;
-			int nl = s_chr (meminfo, '\n', start);
-			int end = nl < 0 ? s_strlen (meminfo) - 1 : nl - 1;
-			int vh = s_slice (0, 0, meminfo, start, end);
-			double gb = (double)s_to_long (vh) / (1024.0 * 1024.0);
-			vstr = s_printf (0, 0, "%.1f GB", gb);
-			m_free (vh);
-		} else {
-			vstr = s_printf (0, 0, "n/a");
-		}
-		int r = kv_pair (keys[i], m_str (vstr));
+	unsigned long long mt = meminfo_kb (meminfo, "MemTotal");
+	unsigned long long ma = meminfo_kb (meminfo, "MemAvailable");
+	unsigned long long st = meminfo_kb (meminfo, "SwapTotal");
+	unsigned long long sf = meminfo_kb (meminfo, "SwapFree");
+	m_free (meminfo);
+
+	/* one line each: used / total, like the DISK bar */
+	struct {
+		const char *label;
+		unsigned long long total, free;
+	} m[2] = {
+		{"Mem", mt, ma},
+		{"Swap", st, sf},
+	};
+	for (int i = 0; i < 2; i++) {
+		if (!m[i].total)
+			continue;
+		double used = (double)(m[i].total - m[i].free) / (1024.0 * 1024.0);
+		double total = (double)m[i].total / (1024.0 * 1024.0);
+		int vstr = s_printf (0, 0, "%.1f / %.1f GB used", used, total);
+		int r = kv_pair (m[i].label, m_str (vstr));
 		m_free (vstr);
 		m_put (rows, &r);
 	}
-
-	m_free (meminfo);
 }
 
 /* filesystem types df itself ignores plus the ones the old `df -x ...`
@@ -573,6 +589,9 @@ int gather_all (cfg_t cfg)
 			m_put (sections, &sh);
 	if (cfg_bool (cfg, "section", "health", 1))
 		if ((sh = gather_health (cfg)))
+			m_put (sections, &sh);
+	if (cfg_bool (cfg, "section", "logs", 1))
+		if ((sh = gather_logs (cfg)))
 			m_put (sections, &sh);
 
 	return sections;

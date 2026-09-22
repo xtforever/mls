@@ -10,11 +10,11 @@ static const char *default_cfg =
 	"(proc        (top 5))\n"
 	"(ports       (max 5) (ipv4 true))\n"
 	"(cron        (max_lines 10))\n"
-	"(table       (max_col_width 24) (marker \"...\"))\n"
+	"(table       (marker \"...\"))\n"
 	"(bar         (width 20) (empty \"░\") (full \"▓\"))\n"
 	"(style       (color auto))\n"
 	"(section     (zfs true) (lvm true) (cron true) (proc true)\n"
-	"             (ports true) (firewall true) (stack true))\n";
+	"             (ports true) (firewall true) (stack true) (logs true))\n";
 
 cfg_t cfg_load (const char *override)
 {

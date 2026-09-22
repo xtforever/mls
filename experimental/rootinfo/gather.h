@@ -150,6 +150,17 @@ static inline int str_line(int h)
 	return out;
 }
 
+static inline int human_size(unsigned long long bytes)
+{
+	static const char *units[] = {"B", "K", "M", "G", "T", "P"};
+	double v = (double)bytes;
+	int ui = 0;
+	while (v >= 1024.0 && ui < 5) { v /= 1024.0; ui++; }
+	if (ui == 0)
+		return s_printf(0, 0, "%llu%s", bytes, units[ui]);
+	return s_printf(0, 0, "%.1f%s", v, units[ui]);
+}
+
 int gather_all(cfg_t cfg);
 
 int gather_system(cfg_t cfg);
@@ -162,5 +173,6 @@ int gather_firewall(cfg_t cfg);
 int gather_stack(cfg_t cfg);
 int gather_docker(cfg_t cfg);
 int gather_health(cfg_t cfg);
+int gather_logs(cfg_t cfg);
 
 #endif
