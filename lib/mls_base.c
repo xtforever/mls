@@ -28,6 +28,7 @@ static MLS_THREAD_LOCAL int freeing_handle = 0;
 static int freeing_handle = 0;
 #endif
 int FH = 0;
+void (*mls_on_free) (int) = 0;
 
 /* prototypes */
 static int get_free_hdl (void);
@@ -737,6 +738,8 @@ simple_free:
 	lst_put ((lst_t)ML.data, &realh);
 	UAF_PROTECTION = (UAF_PROTECTION + 1) & 0x7f;
 	MLS_MASTER_UNLOCK ();
+	if (mls_on_free)
+		mls_on_free (realh);
 	TRACE (1, "freed: %d, Hdl: %d", realh, m);
 	return 0;
 }

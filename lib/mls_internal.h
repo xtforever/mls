@@ -56,6 +56,13 @@ extern int FH;
 extern int last_created_hdl;
 extern int error_occurred;
 
+/* Optional debug hook: called by m_free() with the real handle number
+ * after the handle has been actually released. The debug layer in
+ * mls_ext.c (debug builds only) sets it so that frees happening inside
+ * the library (list_free/tbl_free freeing owned handles) do not yield
+ * false-positive "still allocated" warnings in _m_destruct(). */
+extern void (*mls_on_free) (int realhdl);
+
 void *lst (lst_t l, size_t i);
 void lst_create (lst_t l, size_t max, size_t w);
 int lst_new (lst_t LP, size_t n);

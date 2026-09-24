@@ -15,9 +15,11 @@ typedef struct {
  *   [0] = key   (LIST_STRING node)
  *   [1] = value (LIST_STRING or LIST_HANDLE node) */
 
+/* mls_safe, not mls: tbl_* entry points must survive being called with
+ * foreign or empty handles (that is the point of tbl_is_table()). */
 static tbl_root_t *tbl_root_of (int t)
 {
-	return t > 0 ? (tbl_root_t *)mls (t, 0) : NULL;
+	return t > 0 ? (tbl_root_t *)mls_safe (t, 0) : NULL;
 }
 
 static int tbl_entries (int t)
@@ -158,9 +160,12 @@ int tbl_set_handle_str (int t, int key_h, int value_h)
 {
 	if (key_h <= 0)
 		return -1;
+	/* LIST_STRING, not LIST_HANDLE: value_h is a string handle, so
+	 * tbl_get()/list_text() must return its text; tbl_get_handle()
+	 * still works via list_data(). */
 	return set_common (t, (const char *)m_buf (key_h),
 			   list_node (LIST_STRING, key_h),
-			   list_node (LIST_HANDLE, value_h));
+			   list_node (LIST_STRING, value_h));
 }
 
 const char *tbl_get (int t, const char *key)

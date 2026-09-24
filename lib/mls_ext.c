@@ -1376,12 +1376,28 @@ void m_debug_print (FILE *fp)
  *
  * @return 0 on success, 1 if already initialized.
  */
+/* Called from mls_base's m_free() for every released handle. Marks the
+ * handle freed in the debug list when it was freed inside library code
+ * (list_free/tbl_free freeing owned values), so _m_destruct() does not
+ * report false positives. */
+static void debug_on_free (int realhdl)
+{
+	if (!DEB)
+		return;
+	if ((size_t)realhdl >= m_len (DEB))
+		return;
+	lst_owner *o = (lst_owner *)mls (DEB, realhdl);
+	if (o->ln > 0)
+		o->ln = -o->ln;
+}
+
 int _m_init ()
 {
 	if (DEB)
 		return 1;
 	m_init ();
 	DEB = m_create (100, sizeof (lst_owner));
+	mls_on_free = debug_on_free;
 	atexit (exit_error);
 	return 0;
 }
@@ -1403,6 +1419,7 @@ void _m_destruct ()
 			      o->fun, i);
 		}
 	}
+	mls_on_free = 0; /* no hook while freeing DEB itself */
 	m_free (DEB);
 	DEB = 0;
 	m_destruct ();

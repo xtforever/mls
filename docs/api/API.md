@@ -1,6 +1,6 @@
 # Project API Documentation
 
-## File: `mls.c`
+## File: `mls_base.c`
 
 ### `deb_err`
 
@@ -71,26 +71,11 @@ Used by the mls_must() macro; never returns.
 
 ---
 
-### `print_stacksize`
+### `lst_resize`
 
 **Signature:**
 ```c
-int print_stacksize()
-```
-
-Returns the current size of the master list (stack of allocated handles).
-
-**Returns:** The number of handles in the master list.
-
----
-
-### `_mlsdb_caller`
-
-**Signature:**
-```c
-static void _mlsdb_caller(const char *me, int ln, const char *fn,
-			   const char *fun, int args, int handle, int index,
-			   const void *data)
+void lst_resize(lst_t lp, size_t new_size)
 ```
 
 Returns a pointer to the element at the specified index in a list structure.
@@ -102,113 +87,17 @@ if (!l->data)
 ERR ("Not init.");
 return &l->data[l->w * i];
 }
-
-struct lst_owner_st {
-int allocated;
-const char *fn, *fun;
-int ln;
-};
-typedef struct lst_owner_st lst_owner;
-
-struct debug_info_st {
-char msg[500];
-const char *me, *fn, *fun;
-int ln, args, handle, index;
-const void *data;
-};
-
-static int DEB = 0; // debug list
-static struct debug_info_st debi;
-
 /**
-Records caller information for the current MLS operation.
-Used by debug wrappers to provide context for error messages.
-
-4:data).
-
-**Parameters:**
-- l The list structure.
-- i The index of the element.
-- me The name of the function being wrapped.
-- ln The line number of the call.
-- fn The filename of the call.
-- fun The function name of the caller.
-- args Bitmask indicating which arguments are valid (1:handle, 2:index,
-- handle The MLS handle involved in the operation.
-- index The index involved in the operation.
-- data Pointer to data involved in the operation.
-
-**Returns:** A pointer to the element data.
-
----
-
-### `perr`
-
-**Signature:**
-```c
-static void perr(const char *format, ...)
-```
-
-Prints a formatted error message to stderr, followed by a newline.
-
-**Parameters:**
-- format The format string.
-
----
-
-### `_mlsdb_check_handle`
-
-**Signature:**
-```c
-static int _mlsdb_check_handle()
-```
-
-Validates the handle stored in the current debug info.
-Prints detailed information about the handle's state and allocation source.
-
-**Returns:** 0 if the handle is valid, -1 otherwise.
-
----
-
-### `_mlsdb_check_index`
-
-**Signature:**
-```c
-static int _mlsdb_check_index()
-```
-
-Validates the index stored in the current debug info against its handle.
-Prints an error message if the index is out of bounds.
-
-**Returns:** 0 if the index is valid, -1 otherwise.
-
----
-
-### `exit_error`
-
-**Signature:**
-```c
-void exit_error()
-```
-
-Performs a post-mortem analysis of the last recorded MLS operation.
-Registered as an atexit handler. Only runs if an error was detected.
-
----
-
-### `lst_resize`
-
-**Signature:**
-```c
-void lst_resize(lst_t lp, size_t new_size)
-```
-
 Resizes a list structure to a new maximum size.
 Dies on error; lst_resize_safe() reports the error instead.
 
 **Parameters:**
+- l The list structure.
+- i The index of the element.
 - lp Pointer to the list structure pointer.
 - new_size The new maximum number of elements.
+
+**Returns:** A pointer to the element data.
 
 ---
 
@@ -267,7 +156,7 @@ Appends an element to a list.
 
 **Signature:**
 ```c
-static int lst_del_safe(lst_t l, size_t p)
+int lst_del_safe(lst_t l, size_t p)
 ```
 
 Returns a pointer to the element at the specified index without using
@@ -284,7 +173,6 @@ if (i >= l->max)
 ERR ("index out of bound max=%zu index=%zu", l->max, i);
 return lst (l, i);
 }
-
 /* Like lst_del but reports a bounds error instead of dying.
 
 **Parameters:**
@@ -343,7 +231,6 @@ if (!r)
 _mls_die (__LINE__, __FILE__, __FUNCTION__);
 return r;
 }
-
 /**
 Iterates to the next element in a list.
 
@@ -430,6 +317,409 @@ Public accessor for getting a list pointer from a handle.
 - r The handle.
 
 **Returns:** A pointer to the list structure pointer.
+
+---
+
+### `m_alloc_safe`
+
+**Signature:**
+```c
+int m_alloc_safe(size_t max, size_t w, uint8_t hfree)
+```
+
+Non-aborting version of m_alloc(): returns -1 and sets mls_errno on
+OOM or size overflow. A bad free-handler ID is a parameter error and
+still exits.
+
+**Parameters:**
+- max Initial maximum elements.
+- w Width of each element in bytes.
+- hfree The ID of the registered free handler to use.
+
+**Returns:** A new 1-based MLS handle, or -1 on error.
+
+---
+
+### `m_create`
+
+**Signature:**
+```c
+int m_create(size_t max, size_t w)
+```
+
+Creates a new MLS handle with the default free handler (MFREE).
+
+**Parameters:**
+- max Initial maximum elements.
+- w Width of each element.
+
+**Returns:** A new handle.
+
+---
+
+### `m_free`
+
+**Signature:**
+```c
+int m_free(int m)
+```
+
+Frees an MLS handle and its associated list data.
+The handle is marked as freed and returned to the free list for reuse.
+Handles with MFREE_NODESTRUCT will not be touched - useful if you want to
+make sure that the memory stays allocated forever and the list never gets
+destroyed
+
+**Parameters:**
+- m The handle to free.
+
+**Returns:** 0 on success.
+
+---
+
+### `m_len`
+
+**Signature:**
+```c
+size_t m_len(int m)
+```
+
+Returns the number of elements in the list associated with a handle.
+
+**Parameters:**
+- m The handle.
+
+**Returns:** The number of elements.
+
+---
+
+### `m_next`
+
+**Signature:**
+```c
+int m_next(int m, int *p, void *d)
+```
+
+Returns a pointer to the raw data buffer of the list associated with a
+handle.
+
+/
+void *m_buf (int m)
+{
+if (m <= 0)
+return NULL;
+return m_peek (m, 0);
+}
+/**
+Returns a pointer to the element at the specified index with bounds checking.
+
+/
+void *mls (int m, size_t i)
+{
+if (m <= 0)
+return NULL;
+void *ret = mls_safe (m, i);
+if (!ret)
+_mls_die (__LINE__, __FILE__, __FUNCTION__);
+return ret;
+}
+/**
+Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.
+
+/
+void *mls_safe (int m, size_t i)
+{
+if (m <= 0) {
+mls_errno = MLS_EINVAL;
+return NULL;
+}
+lst_t lp = lock_handle (m, 0);
+if (i >= lp->l) {
+mls_errno = MLS_EBOUNDS;
+unlock_handle (lp);
+return NULL;
+}
+void *ret = lst (lp, i);
+unlock_handle (lp);
+return ret;
+}
+/**
+Iterates through the elements of a handle's list.
+
+**Parameters:**
+- m The handle.
+- m The handle.
+- i The index.
+- m The handle.
+- i The index.
+- m The handle.
+- p Pointer to the current index.
+- d Pointer to store the address of the next element.
+
+**Returns:** 1 if an element was found, 0 otherwise.
+
+---
+
+### `m_put`
+
+**Signature:**
+```c
+int m_put(int m, const void *data)
+```
+
+Appends an element to a handle's list.
+
+**Parameters:**
+- m The handle.
+- data Pointer to the element data to append.
+
+**Returns:** The index of the appended element.
+
+---
+
+### `m_put_safe`
+
+**Signature:**
+```c
+int m_put_safe(int m, const void *data)
+```
+
+Non-aborting version of m_put(). Returns -1 on error and sets mls_errno.
+
+**Parameters:**
+- m The handle.
+- data Pointer to the element data to append.
+
+**Returns:** The index of the appended element, or -1 on error.
+
+---
+
+### `m_setlen`
+
+**Signature:**
+```c
+int m_setlen(int m, size_t len)
+```
+
+Sets the logical length of a handle's list.
+
+**Parameters:**
+- m The handle.
+- len The new length.
+
+**Returns:** 0 on success.
+
+---
+
+### `m_setlen_safe`
+
+**Signature:**
+```c
+int m_setlen_safe(int m, size_t len)
+```
+
+Non-aborting version of m_setlen(). Returns -1 on error and sets mls_errno.
+
+**Parameters:**
+- m The handle.
+- len The new length.
+
+**Returns:** 0 on success, -1 on error.
+
+---
+
+### `m_write`
+
+**Signature:**
+```c
+int m_write(int m, size_t p, const void *data, size_t n)
+```
+
+Writes data to a handle's list starting at a specific index.
+Resizes the list if necessary.
+
+**Parameters:**
+- m The handle.
+- p The starting index.
+- data Pointer to the source data.
+- n The number of elements to write.
+
+**Returns:** 0 on success.
+
+---
+
+### `m_write_safe`
+
+**Signature:**
+```c
+int m_write_safe(int m, size_t p, const void *data, size_t n)
+```
+
+Non-aborting version of m_write(). Returns -1 on error and sets mls_errno.
+
+**Parameters:**
+- m The handle.
+- p The starting index.
+- data Pointer to the source data.
+- n The number of elements to write.
+
+**Returns:** 0 on success, -1 on error.
+
+---
+
+### `m_width`
+
+**Signature:**
+```c
+size_t m_width(int m)
+```
+
+Returns a pointer to the element at the specified index without bounds
+checking.
+
+/
+void *m_peek (int m, size_t i)
+{
+if (m <= 0)
+return NULL;
+lst_t lp = lock_handle (m, 0);
+void *ret = lst_peek (lp, i);
+unlock_handle (lp);
+return ret;
+}
+/**
+Returns the width of each element in a handle's list in bytes.
+
+**Parameters:**
+- m The handle.
+- i The index.
+- m The handle.
+
+**Returns:** The element width.
+
+---
+
+### `m_resize_safe`
+
+**Signature:**
+```c
+int m_resize_safe(int m, size_t new_size)
+```
+
+Resizes the allocated capacity of a handle's list.
+
+**Parameters:**
+- m The handle.
+- new_size The new maximum number of elements.
+
+---
+
+### `m_base_init`
+
+**Signature:**
+```c
+int m_base_init()
+```
+
+Initializes the core MLS system: master handle list + free list only.
+Ext state (const-string map, free-handler table) is set up separately by
+mls_ext (see m_init()).
+
+**Returns:** 0 on success.
+
+---
+
+### `m_base_destruct`
+
+**Signature:**
+```c
+void m_base_destruct()
+```
+
+Destroys the core MLS system: frees all remaining handle data and the
+master list. Does not touch ext state.
+
+---
+
+## File: `mls_ext.c`
+
+### `_mlsdb_caller`
+
+**Signature:**
+```c
+static void _mlsdb_caller(const char *me, int ln, const char *fn,
+			   const char *fun, int args, int handle, int index,
+			   const void *data)
+```
+
+Records caller information for the current MLS operation.
+Used by debug wrappers to provide context for error messages.
+
+4:data).
+
+**Parameters:**
+- me The name of the function being wrapped.
+- ln The line number of the call.
+- fn The filename of the call.
+- fun The function name of the caller.
+- args Bitmask indicating which arguments are valid (1:handle, 2:index,
+- handle The MLS handle involved in the operation.
+- index The index involved in the operation.
+- data Pointer to data involved in the operation.
+
+---
+
+### `perr`
+
+**Signature:**
+```c
+static void perr(const char *format, ...)
+```
+
+Prints a formatted error message to stderr, followed by a newline.
+
+**Parameters:**
+- format The format string.
+
+---
+
+### `_mlsdb_check_handle`
+
+**Signature:**
+```c
+static int _mlsdb_check_handle()
+```
+
+Validates the handle stored in the current debug info.
+Prints detailed information about the handle's state and allocation source.
+
+**Returns:** 0 if the handle is valid, -1 otherwise.
+
+---
+
+### `_mlsdb_check_index`
+
+**Signature:**
+```c
+static int _mlsdb_check_index()
+```
+
+Validates the index stored in the current debug info against its handle.
+Prints an error message if the index is out of bounds.
+
+**Returns:** 0 if the index is valid, -1 otherwise.
+
+---
+
+### `exit_error`
+
+**Signature:**
+```c
+void exit_error()
+```
+
+Performs a post-mortem analysis of the last recorded MLS operation.
+Registered as an atexit handler. Only runs if an error was detected.
 
 ---
 
@@ -553,63 +843,6 @@ Policy: Do not call user registered free_handler functions
 
 ---
 
-### `m_alloc_safe`
-
-**Signature:**
-```c
-int m_alloc_safe(size_t max, size_t w, uint8_t hfree)
-```
-
-Non-aborting version of m_alloc(): returns -1 and sets mls_errno on
-OOM or size overflow. A bad free-handler ID is a parameter error and
-still exits.
-
-**Parameters:**
-- max Initial maximum elements.
-- w Width of each element in bytes.
-- hfree The ID of the registered free handler to use.
-
-**Returns:** A new 1-based MLS handle, or -1 on error.
-
----
-
-### `m_create`
-
-**Signature:**
-```c
-int m_create(size_t max, size_t w)
-```
-
-Creates a new MLS handle with the default free handler (MFREE).
-
-**Parameters:**
-- max Initial maximum elements.
-- w Width of each element.
-
-**Returns:** A new handle.
-
----
-
-### `m_free`
-
-**Signature:**
-```c
-int m_free(int m)
-```
-
-Frees an MLS handle and its associated list data.
-The handle is marked as freed and returned to the free list for reuse.
-Handles with MFREE_NODESTRUCT will not be touched - useful if you want to
-make sure that the memory stays allocated forever and the list never gets
-destroyed
-
-**Parameters:**
-- m The handle to free.
-
-**Returns:** 0 on success.
-
----
-
 ### `m_reg_freefn`
 
 **Signature:**
@@ -700,22 +933,6 @@ the copy will be read-write. This is not a deep copy operation.
 
 ---
 
-### `m_len`
-
-**Signature:**
-```c
-size_t m_len(int m)
-```
-
-Returns the number of elements in the list associated with a handle.
-
-**Parameters:**
-- m The handle.
-
-**Returns:** The number of elements.
-
----
-
 ### `m_new_safe`
 
 **Signature:**
@@ -723,61 +940,9 @@ Returns the number of elements in the list associated with a handle.
 int m_new_safe(int m, size_t n)
 ```
 
-Returns a pointer to the raw data buffer of the list associated with a
-handle.
-
-/
-void *m_buf (int m)
-{
-if (m <= 0)
-return NULL;
-return m_peek (m, 0);
-}
-
-/**
-Returns a pointer to the element at the specified index with bounds checking.
-
-/
-void *mls (int m, size_t i)
-{
-if (m <= 0)
-return NULL;
-void *ret = mls_safe (m, i);
-if (!ret)
-_mls_die (__LINE__, __FILE__, __FUNCTION__);
-return ret;
-}
-
-/**
-Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.
-
-/
-void *mls_safe (int m, size_t i)
-{
-if (m <= 0) {
-mls_errno = MLS_EINVAL;
-return NULL;
-}
-lst_t lp = lock_handle (m, 0);
-if (i >= lp->l) {
-mls_errno = MLS_EBOUNDS;
-unlock_handle (lp);
-return NULL;
-}
-void *ret = lst (lp, i);
-unlock_handle (lp);
-return ret;
-}
-
-/**
 Reserves space for n new elements in a handle's list.
 
 **Parameters:**
-- m The handle.
-- m The handle.
-- i The index.
-- m The handle.
-- i The index.
 - m The handle.
 - n The number of elements to reserve.
 
@@ -785,11 +950,11 @@ Reserves space for n new elements in a handle's list.
 
 ---
 
-### `m_next`
+### `m_bufsize`
 
 **Signature:**
 ```c
-int m_next(int m, int *p, void *d)
+size_t m_bufsize(int m)
 ```
 
 Appends one new element to a handle's list and returns a pointer to it.
@@ -807,7 +972,6 @@ void *ret = p < 0 ? NULL : lst (lp, p);
 unlock_handle (lp);
 return ret;
 }
-
 void *m_add (int m)
 {
 if (m <= 0)
@@ -817,157 +981,14 @@ if (!ret)
 _mls_die (__LINE__, __FILE__, __FUNCTION__);
 return ret;
 }
-
 /**
-Iterates through the elements of a handle's list.
-
-**Parameters:**
-- m The handle.
-- m The handle.
-- p Pointer to the current index.
-- d Pointer to store the address of the next element.
-
-**Returns:** 1 if an element was found, 0 otherwise.
-
----
-
-### `m_put`
-
-**Signature:**
-```c
-int m_put(int m, const void *data)
-```
-
-Appends an element to a handle's list.
-
-**Parameters:**
-- m The handle.
-- data Pointer to the element data to append.
-
-**Returns:** The index of the appended element.
-
----
-
-### `m_put_safe`
-
-**Signature:**
-```c
-int m_put_safe(int m, const void *data)
-```
-
-Non-aborting version of m_put(). Returns -1 on error and sets mls_errno.
-
-**Parameters:**
-- m The handle.
-- data Pointer to the element data to append.
-
-**Returns:** The index of the appended element, or -1 on error.
-
----
-
-### `m_setlen`
-
-**Signature:**
-```c
-int m_setlen(int m, size_t len)
-```
-
-Sets the logical length of a handle's list.
-
-**Parameters:**
-- m The handle.
-- len The new length.
-
-**Returns:** 0 on success.
-
----
-
-### `m_setlen_safe`
-
-**Signature:**
-```c
-int m_setlen_safe(int m, size_t len)
-```
-
-Non-aborting version of m_setlen(). Returns -1 on error and sets mls_errno.
-
-**Parameters:**
-- m The handle.
-- len The new length.
-
-**Returns:** 0 on success, -1 on error.
-
----
-
-### `m_bufsize`
-
-**Signature:**
-```c
-size_t m_bufsize(int m)
-```
-
 Returns the currently allocated capacity (buffer size) of a handle's list.
 
 **Parameters:**
 - m The handle.
+- m The handle.
 
 **Returns:** The maximum number of elements before a realloc is needed.
-
----
-
-### `m_write`
-
-**Signature:**
-```c
-int m_write(int m, size_t p, const void *data, size_t n)
-```
-
-Returns a pointer to the element at the specified index without bounds
-checking.
-
-/
-void *m_peek (int m, size_t i)
-{
-if (m <= 0)
-return NULL;
-lst_t lp = lock_handle (m, 0);
-void *ret = lst_peek (lp, i);
-unlock_handle (lp);
-return ret;
-}
-
-/**
-Writes data to a handle's list starting at a specific index.
-Resizes the list if necessary.
-
-**Parameters:**
-- m The handle.
-- i The index.
-- m The handle.
-- p The starting index.
-- data Pointer to the source data.
-- n The number of elements to write.
-
-**Returns:** 0 on success.
-
----
-
-### `m_write_safe`
-
-**Signature:**
-```c
-int m_write_safe(int m, size_t p, const void *data, size_t n)
-```
-
-Non-aborting version of m_write(). Returns -1 on error and sets mls_errno.
-
-**Parameters:**
-- m The handle.
-- p The starting index.
-- data Pointer to the source data.
-- n The number of elements to write.
-
-**Returns:** 0 on success, -1 on error.
 
 ---
 
@@ -1080,7 +1101,6 @@ void *ret = lst (lp, lp->l);
 unlock_handle (lp);
 return ret;
 }
-
 /**
 Inserts n empty (zero-initialized) elements at a specific index in a handle's
 list.
@@ -1092,37 +1112,6 @@ list.
 - n The number of elements to insert.
 
 **Returns:** 1 on success, 0 on failure.
-
----
-
-### `m_width`
-
-**Signature:**
-```c
-size_t m_width(int m)
-```
-
-Returns the width of each element in a handle's list in bytes.
-
-**Parameters:**
-- m The handle.
-
-**Returns:** The element width.
-
----
-
-### `m_resize_safe`
-
-**Signature:**
-```c
-int m_resize_safe(int m, size_t new_size)
-```
-
-Resizes the allocated capacity of a handle's list.
-
-**Parameters:**
-- m The handle.
-- new_size The new maximum number of elements.
 
 ---
 
@@ -1207,14 +1196,14 @@ int m_fscan(int m, char delim, FILE *fp)
 
 Similar to m_fscan2, but returns the length of the data scanned.
 
-before EOF.
+were read before EOF.
 
 **Parameters:**
 - m The handle.
 - delim The delimiter character.
 - fp The file pointer.
 
-**Returns:** The number of characters scanned, or EOF if no characters were read
+**Returns:** The number of characters scanned, or EOF if no characters
 
 ---
 
@@ -1281,14 +1270,17 @@ int m_lookup_str(int m, const char *key, int NOT_INSERT)
 ```
 
 Looks up a string in a list of strings (char *).
-If not found and NOT_INSERT is 0, the string is duplicated and appended.
+If not found and NOT_INSERT is 0, the string is duplicated and
+appended.
+
+set.
 
 **Parameters:**
 - m The handle of the string list.
 - key The string to look for.
 - NOT_INSERT If non-zero, do not insert the string if not found.
 
-**Returns:** The index of the string, or -1 if not found and NOT_INSERT is set.
+**Returns:** The index of the string, or -1 if not found and NOT_INSERT is
 
 ---
 
@@ -1370,11 +1362,11 @@ int utf8_getchar(FILE *fp, utf8_char_t buf)
 
 Reads a single UTF-8 character from a file pointer.
 
-6).
+if len < 6).
 
 **Parameters:**
 - fp The file pointer.
-- buf Buffer to store the UTF-8 byte sequence (null-terminated if len <
+- buf Buffer to store the UTF-8 byte sequence (null-terminated
 
 **Returns:** The number of bytes in the UTF-8 character, or EOF.
 
@@ -1387,7 +1379,8 @@ Reads a single UTF-8 character from a file pointer.
 int cmp_int(const void *a0, const void *b0)
 ```
 
-Comparison function for integers, suitable for qsort or binary search.
+Comparison function for integers, suitable for qsort or binary
+search.
 
 **Parameters:**
 - a0 Pointer to first integer.
@@ -1408,9 +1401,9 @@ int m_binsert(int buf, const void *data,
 
 Inserts an element into a sorted m-array, maintaining order.
 
-duplicates are not allowed.
-@bugs if data is not allocated or its alloced size if less the m_width(buf)
-this will crash!
+exists and duplicates are not allowed.
+@bugs if data is not allocated or its alloced size if less the
+m_width(buf) this will crash!
 
 **Parameters:**
 - buf The handle of the m-array.
@@ -1418,7 +1411,7 @@ this will crash!
 - cmpf Comparison function pointer.
 - with_duplicates If non-zero, allows duplicate elements.
 
-**Returns:** The index where the element was inserted, or -index if it exists and
+**Returns:** The index where the element was inserted, or -index if it
 
 ---
 
@@ -1438,7 +1431,7 @@ Use when data is not m_width(buf) bytes long (e.g. a C string looked
 up in an int list).
 
 an empty (zeroed) slot is inserted instead.
-duplicates are not allowed.
+exists and duplicates are not allowed.
 
 **Parameters:**
 - buf The handle of the m-array.
@@ -1447,7 +1440,7 @@ duplicates are not allowed.
 - with_duplicates If non-zero, allows duplicate elements.
 - with_copy If non-zero, data is copied into the array; if zero,
 
-**Returns:** The index where the element was inserted, or -index if it exists and
+**Returns:** The index where the element was inserted, or -index if it
 
 ---
 
@@ -1458,13 +1451,15 @@ duplicates are not allowed.
 int m_blookup_int(int buf, int key, void (*new) (void *, void *), void *ctx)
 ```
 
-Looks up an integer in a sorted list using binary search and inserts it if
-not found.
+Looks up an integer in a sorted list using binary search and inserts
+it if not found.
+
+inserted.
 
 **Parameters:**
 - buf The handle of the sorted list.
 - key The integer to look for.
-- new Optional callback function called when a new element is inserted.
+- new Optional callback function called when a new element is
 - ctx Context pointer for the callback.
 
 **Returns:** The index of the integer in the list.
@@ -1505,7 +1500,6 @@ void *ctx)
 {
 return mls (buf, m_blookup_int (buf, key, new, ctx));
 }
-
 /**
 Inserts an integer into a sorted list using binary search.
 
@@ -1559,8 +1553,9 @@ Excludes slot 0 (the internal free list).
 size_t m_total_bytes(void)
 ```
 
-Returns the total number of bytes allocated across all active handles.
-Sums (capacity x width) for handles that own their memory (no MFREE_NOALLOC).
+Returns the total number of bytes allocated across all active
+handles. Sums (capacity x width) for handles that own their memory
+(no MFREE_NOALLOC).
 
 **Returns:** The total allocated bytes.
 
@@ -1595,15 +1590,21 @@ Useful for debugging leaks and understanding handle state.
 
 ---
 
-### `_m_init`
+### `debug_on_free`
 
 **Signature:**
 ```c
-int _m_init()
+static void debug_on_free(int realhdl)
 ```
 
 Internal debug version of m_init.
 Initializes the master list and the debug ownership list.
+
+/
+/* Called from mls_base's m_free() for every released handle. Marks the
+handle freed in the debug list when it was freed inside library code
+(list_free/tbl_free freeing owned values), so _m_destruct() does not
+report false positives.
 
 **Returns:** 0 on success, 1 if already initialized.
 
@@ -1651,7 +1652,8 @@ int _m_free(int ln, const char *fn, const char *fun, int m)
 ```
 
 Internal debug version of m_free.
-Records caller information and marks the list as freed in the debug tracker.
+Records caller information and marks the list as freed in the debug
+tracker.
 
 **Parameters:**
 - ln Caller line number.
@@ -1788,10 +1790,13 @@ Records caller information and allocation source.
 int m_regex(int m, const char *regex, const char *s)
 ```
 
-Executes a regular expression on a string and stores sub-matches in an m-array.
+Executes a regular expression on a string and stores sub-matches in an
+m-array.
+
+allocated.
 
 **Parameters:**
-- m The handle of the m-array to store matches. If <= 1, a new one is allocated.
+- m The handle of the m-array to store matches. If <= 1, a new one is
 - regex The regular expression pattern.
 - s The string to search.
 
@@ -2232,7 +2237,8 @@ Finds the first occurrence of a substring in a string buffer.
 int s_spn(int h, const char *accept)
 ```
 
-Calculates the length of the initial segment of a string buffer which consists entirely of characters in accept.
+Calculates the length of the initial segment of a string buffer which
+consists entirely of characters in accept.
 
 **Parameters:**
 - h The handle of the string buffer.
@@ -2249,7 +2255,8 @@ Calculates the length of the initial segment of a string buffer which consists e
 int s_cspn(int h, const char *reject)
 ```
 
-Calculates the length of the initial segment of a string buffer which consists entirely of characters not in reject.
+Calculates the length of the initial segment of a string buffer which
+consists entirely of characters not in reject.
 
 **Parameters:**
 - h The handle of the string buffer.
@@ -2392,9 +2399,11 @@ int s_trim_c(int h, const char *chars)
 TODO!
 Trims specified characters from both ends of a string buffer.
 
+whitespace is trimmed.
+
 **Parameters:**
 - h The handle of the string buffer.
-- chars C-style string containing characters to trim. If NULL, whitespace is trimmed.
+- chars C-style string containing characters to trim. If NULL,
 
 **Returns:** A new handle to the trimmed string buffer.
 
@@ -2461,8 +2470,10 @@ int s_split(int m, const char *s, int c, int remove_wspace)
 
 Splits a string into an m-array of strings based on a delimiter character.
 
+allocated.
+
 **Parameters:**
-- m The handle to store the resulting strings. If 0, a new one is allocated.
+- m The handle to store the resulting strings. If 0, a new one is
 - s The string to split.
 - c The delimiter character.
 - remove_wspace If non-zero, trims whitespace from the parts.
@@ -2716,8 +2727,10 @@ int s_strcpy_c(int out, const char *s)
 
 Copies a C-style string into an existing string buffer.
 
+allocated.
+
 **Parameters:**
-- out Handle of the destination string buffer. If <= 0, a new one is allocated.
+- out Handle of the destination string buffer. If <= 0, a new one is
 - s The C-style string.
 
 **Returns:** The handle of the string buffer.
@@ -3146,7 +3159,9 @@ Internal helper to get a variable handle from a variable system or table.
 
 **Signature:**
 ```c
- if(vn < m_len (se->values) && (val_ptr = (char **)mls (se->values, vn)) && *val_ptr == s)
+ if(vn < m_len (se->values) &&
+		    (val_ptr = (char **)mls (se->values, vn)) &&
+		    *val_ptr == s)
 ```
 
 Expands a parsed format string using values from a variable system or table.
@@ -3164,7 +3179,8 @@ vn = 0;
 m_foreach (se->splitbuf, p, d)
 {
 s = *d;
-/* Check if this part in splitbuf matches the next expected variable in se->values
+/* Check if this part in splitbuf matches the next expected
+variable in se->values
 
 **Parameters:**
 - se Pointer to the parsed string expansion structure.
@@ -3193,9 +3209,9 @@ se_parse (&se, frm);
 se_expand (&se, vl, 0);
 
 char *res;
-if (m_is_table (vl)) {
-m_table_set_string_by_cstr (vl, "se_string", mls (se.buf, 0));
-int h = m_table_get_cstr (vl, "se_string");
+if (tbl_is_table (vl)) {
+tbl_set (vl, "se_string", mls (se.buf, 0));
+int h = tbl_get_handle (vl, "se_string");
 res = m_str (h);
 } else {
 int data = v_set (vl, "se_string", mls (se.buf, 0), 1);
@@ -3260,7 +3276,8 @@ Internal helper to cut a word from a string based on a delimiter.
 int m_str_split(int ms, char *s, char *delim, int trimws)
 ```
 
-Internal helper to duplicate a word between two pointers, optionally trimming whitespace.
+Internal helper to duplicate a word between two pointers, optionally trimming
+whitespace.
 /
 static char *dup_word (char *a, char *b, int trimws)
 {
@@ -3342,7 +3359,8 @@ Internal helper to copy elements between m-arrays.
 int m_mcopy(int dest, int destp, int src, int srcp, int src_count)
 ```
 
-Copies a range of elements from one m-array to another, handling width differences.
+Copies a range of elements from one m-array to another, handling width
+differences.
 
 **Parameters:**
 - dest Destination handle.
@@ -3518,353 +3536,15 @@ Frees a ring buffer.
 void m_free_strings(int list, int CLEAR_ONLY)
 ```
 
-Specialized free function for lists containing dynamically allocated strings (char *).
-Frees each string in the list and optionally the list handle itself.
+Specialized free function for lists containing dynamically allocated strings
+(char *). Frees each string in the list and optionally the list handle
+itself.
 
-If zero, the handle itself is also freed.
+but the handle remains. If zero, the handle itself is also freed.
 
 **Parameters:**
 - list The handle of the string list.
-- CLEAR_ONLY If non-zero, the strings are freed and the list is cleared, but the handle remains.
-
----
-
-## File: `m_table.c`
-
-### `m_table_create`
-
-**Signature:**
-```c
-int m_table_create()
-```
-
-Creates a new empty table handle.
-A table stores key-value pairs where keys can be integers or strings,
-and values can be various types (ints, strings, lists, other tables).
-
-**Returns:** The handle of the new table.
-
----
-
-### `m_is_table`
-
-**Signature:**
-```c
-int m_is_table(int table_h)
-```
-
-Checks if a handle refers to a table.
-
-**Parameters:**
-- table_h The handle to check.
-
-**Returns:** 1 if it is a table, 0 otherwise.
-
----
-
-### `m_table_free`
-
-**Signature:**
-```c
-void m_table_free(int table_h)
-```
-
-Frees a table and all its contents recursively.
-
-**Parameters:**
-- table_h The handle of the table to free.
-
----
-
-### `m_table_remove_by_str`
-
-**Signature:**
-```c
-void m_table_remove_by_str(int table_h, int key_str_h)
-```
-
-Removes a table entry by string handle key.
-Frees both the key (if dynamic) and the value (if it's an MLS handle).
-
-**Parameters:**
-- table_h The handle of the table.
-- key_str_h The handle of the string key to remove.
-
----
-
-### `m_table_set_int_key`
-
-**Signature:**
-```c
-void m_table_set_int_key(int table_h, int key_idx, uint64_t value,
-			  mls_table_type_t type)
-```
-
-Sets a value for an integer key in the table.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_idx Integer key.
-- value Value (raw int or handle).
-- type Type of the value.
-
----
-
-### `m_table_set_str_key_ext`
-
-**Signature:**
-```c
-void m_table_set_str_key_ext(int table_h, int key_str_h,
-			      mls_table_type_t key_type, uint64_t value,
-			      mls_table_type_t type)
-```
-
-Sets a value for a string handle key with a specific key type.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_str_h Handle of the key string.
-- key_type Type of the key (e.g. MLS_TABLE_TYPE_STRING or MLS_TABLE_TYPE_CONST_STRING).
-- value Value (raw int or handle).
-- type Type of the value.
-
----
-
-### `m_table_set_str_key`
-
-**Signature:**
-```c
-void m_table_set_str_key(int table_h, int key_str_h, uint64_t value,
-			  mls_table_type_t type)
-```
-
-Sets a value for a string handle key (defaults key type to MLS_TABLE_TYPE_STRING).
-
-**Parameters:**
-- table_h Handle of the table.
-- key_str_h Handle of the key string.
-- value Value (raw int or handle).
-- type Type of the value.
-
----
-
-### `m_table_set_cstr_key`
-
-**Signature:**
-```c
-void m_table_set_cstr_key(int table_h, const char *key_cstr, uint64_t value,
-			   mls_table_type_t type)
-```
-
-Sets a value for a C-style string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_cstr The C-style string key.
-- value Value (raw int or handle).
-- type Type of the value.
-
----
-
-### `mt_seti`
-
-**Signature:**
-```c
-void mt_seti(int table_h, const char *key, int64_t val)
-```
-
-Sets an integer value for a C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key Key name.
-- val Integer value.
-
----
-
-### `mt_sets`
-
-**Signature:**
-```c
-void mt_sets(int table_h, const char *key, const char *val)
-```
-
-Sets a string value for a C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key Key name.
-- val String value.
-
----
-
-### `mt_setc`
-
-**Signature:**
-```c
-void mt_setc(int table_h, const char *key, const char *val)
-```
-
-Sets a constant string value for a C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key Key name.
-- val String value.
-
----
-
-### `mt_seth`
-
-**Signature:**
-```c
-void mt_seth(int table_h, const char *key, uint64_t handle, mls_table_type_t type)
-```
-
-Sets a handle value for a C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key Key name.
-- handle The handle to store.
-- type The type of the handle.
-
----
-
-### `mt_get`
-
-**Signature:**
-```c
-uint64_t mt_get(int table_h, const char *key)
-```
-
-Gets a value from the table by C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key Key name.
-
-**Returns:** The value (int or handle).
-
----
-
-### `m_table_get_int`
-
-**Signature:**
-```c
-uint64_t m_table_get_int(int table_h, int key_idx)
-```
-
-Gets a value from the table by integer key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_idx Integer key.
-
-**Returns:** The value (int or handle), or 0 if not found.
-
----
-
-### `m_table_get_str`
-
-**Signature:**
-```c
-uint64_t m_table_get_str(int table_h, int key_str_h)
-```
-
-Gets a value from the table by string handle key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_str_h String handle key.
-
-**Returns:** The value (int or handle), or 0 if not found.
-
----
-
-### `m_table_get_cstr`
-
-**Signature:**
-```c
-uint64_t m_table_get_cstr(int table_h, const char *key_cstr)
-```
-
-Gets a value from the table by C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_cstr C-string key.
-
-**Returns:** The value (int or handle), or 0 if not found.
-
----
-
-### `m_table_keys`
-
-**Signature:**
-```c
-int m_table_keys(int table_h)
-```
-
-Returns a list of all keys in the table.
-
-User is responsible for freeing the list (but not the keys themselves).
-
-**Parameters:**
-- table_h Handle of the table.
-
-**Returns:** Handle of the m-array containing the keys.
-
----
-
-### `m_table_get_type_int`
-
-**Signature:**
-```c
-mls_table_type_t m_table_get_type_int(int table_h, int key_idx)
-```
-
-Gets the type of a value by integer key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_idx Integer key.
-
-**Returns:** The type of the value.
-
----
-
-### `m_table_get_type_str`
-
-**Signature:**
-```c
-mls_table_type_t m_table_get_type_str(int table_h, int key_str_h)
-```
-
-Gets the type of a value by string handle key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_str_h String handle key.
-
-**Returns:** The type of the value.
-
----
-
-### `m_table_get_type_cstr`
-
-**Signature:**
-```c
-mls_table_type_t m_table_get_type_cstr(int table_h, const char *key_cstr)
-```
-
-Gets the type of a value by C-string key.
-
-**Parameters:**
-- table_h Handle of the table.
-- key_cstr C-string key.
-
-**Returns:** The type of the value.
+- CLEAR_ONLY If non-zero, the strings are freed and the list is cleared,
 
 ---
 
