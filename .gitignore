@@ -11,3 +11,5 @@ tests/error-handler
 nohup.out
 __pycache__/
 score/
+movies-db
+
