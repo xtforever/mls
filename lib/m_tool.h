@@ -51,7 +51,8 @@ int m_mcopy (int dest, int destp, int src, int srcp, int src_count);
 int m_binsert (int buf, const void *data,
 	       int (*cmpf) (const void *a, const void *b), int with_duplicates);
 int m_binsert2 (int buf, const void *data,
-	       int (*cmpf) (const void *a, const void *b), int with_duplicates, int with_copy);
+		int (*cmpf) (const void *a, const void *b), int with_duplicates,
+		int with_copy);
 int compare_int (const void *a, const void *b);
 int cmp_mstr_fast (const void *a, const void *b);
 int cmp_mstr_cstr_fast (const void *a, const void *b);
@@ -120,7 +121,8 @@ int m_regex (int m, const char *regex, const char *s);
 void m_qsort (int list, int (*compar) (const void *, const void *));
 int m_bsearch (const void *key, int list,
 	       int (*compar) (const void *, const void *));
-int m_lfind (const void *key, int list, int (*compar) (const void *, const void *));
+int m_lfind (const void *key, int list,
+	     int (*compar) (const void *, const void *));
 int ioread_all (int fd, int buffer);
 
 /* String Core Moved from mls.h */
@@ -172,7 +174,6 @@ void escape_buf (int buf, char *src);
 
 enum { VAR_APPEND = -1, VAR_RENAME = 0, VAR_SET = 1 };
 
-
 void ring_free (int r);
 int ring_get (int r);
 int ring_put (int r, int data);
@@ -181,6 +182,5 @@ int ring_empty (int r);
 int ring_create (int size);
 
 void m_free_strings (int list, int CLEAR_ONLY);
-
 
 #endif

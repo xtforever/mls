@@ -1,5 +1,5 @@
-#include "mls.h"
 #include "m_tool.h"
+#include "mls.h"
 #undef ASSERT
 #include "greatest.h"
 
@@ -102,10 +102,10 @@ TEST test_s_from_long (void)
 	ASSERT_STR_EQ ("-1", m_str (h));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_hash (void)
-	{
+TEST test_s_hash (void)
+{
 	int h1 = s_dup ("test");
 	int h2 = s_dup ("test");
 	int h3 = s_dup ("other");
@@ -115,10 +115,10 @@ TEST test_s_from_long (void)
 	s_free (h2);
 	s_free (h3);
 	PASS ();
-	}
+}
 
-	TEST test_s_join (void)
-	{
+TEST test_s_join (void)
+{
 	int h = s_join (", ", "one", "two", "three", NULL);
 	ASSERT_STR_EQ ("one, two, three", m_str (h));
 	s_free (h);
@@ -135,10 +135,10 @@ TEST test_s_from_long (void)
 	ASSERT_STR_EQ ("", m_str (h));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_cmp (void)
-	{
+TEST test_s_cmp (void)
+{
 	int h1 = s_dup ("abc");
 	int h2 = s_dup ("abc");
 	int h3 = s_dup ("abd");
@@ -155,10 +155,10 @@ TEST test_s_from_long (void)
 	s_free (h3);
 	s_free (h4);
 	PASS ();
-	}
+}
 
-	TEST test_s_ncmp (void)
-	{
+TEST test_s_ncmp (void)
+{
 	int h1 = s_dup ("abcde");
 	int h2 = s_dup ("abc");
 	int h3 = s_dup ("abcXY");
@@ -171,10 +171,10 @@ TEST test_s_from_long (void)
 	s_free (h2);
 	s_free (h3);
 	PASS ();
-	}
+}
 
-	TEST test_s_chr (void)
-	{
+TEST test_s_chr (void)
+{
 	int h = s_dup ("abcabc");
 	ASSERT_EQ (0, s_chr (h, 'a', 0));
 	ASSERT_EQ (1, s_chr (h, 'b', 0));
@@ -184,10 +184,10 @@ TEST test_s_from_long (void)
 	ASSERT_EQ (-1, s_chr (h, 'a', 10));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_rchr (void)
-	{
+TEST test_s_rchr (void)
+{
 	int h = s_dup ("abcabc");
 	ASSERT_EQ (3, s_rchr (h, 'a'));
 	ASSERT_EQ (4, s_rchr (h, 'b'));
@@ -195,10 +195,10 @@ TEST test_s_from_long (void)
 	ASSERT_EQ (-1, s_rchr (h, 'z'));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_find (void)
-	{
+TEST test_s_find (void)
+{
 	int h = s_dup ("Hello World");
 	ASSERT_EQ (6, s_find (h, "World"));
 	ASSERT_EQ (0, s_find (h, "Hello"));
@@ -207,28 +207,28 @@ TEST test_s_from_long (void)
 	ASSERT_EQ (-1, s_find (h, NULL));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_spn (void)
-	{
+TEST test_s_spn (void)
+{
 	int h = s_dup ("12345abc");
 	ASSERT_EQ (5, s_spn (h, "1234567890"));
 	ASSERT_EQ (0, s_spn (h, "abc"));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_cspn (void)
-	{
+TEST test_s_cspn (void)
+{
 	int h = s_dup ("abcde123");
 	ASSERT_EQ (5, s_cspn (h, "1234567890"));
 	ASSERT_EQ (0, s_cspn (h, "abc"));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_cat (void)
-	{
+TEST test_s_cat (void)
+{
 	int h = s_dup ("Hello");
 	s_cat (h, " World");
 	ASSERT_STR_EQ ("Hello World", m_str (h));
@@ -238,10 +238,10 @@ TEST test_s_from_long (void)
 	ASSERT_STR_EQ ("Start", m_str (h));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_ncat (void)
-	{
+TEST test_s_ncat (void)
+{
 	int h = s_dup ("Hello");
 	s_ncat (h, " World", 3);
 	ASSERT_STR_EQ ("Hello Wo", m_str (h));
@@ -251,10 +251,10 @@ TEST test_s_from_long (void)
 	ASSERT_STR_EQ ("Start", m_str (h));
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_sub (void)
-	{
+TEST test_s_sub (void)
+{
 	int h = s_dup ("Hello World");
 	int sub = s_sub (h, 6, 5);
 	ASSERT_STR_EQ ("World", m_str (sub));
@@ -274,30 +274,30 @@ TEST test_s_from_long (void)
 
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_left (void)
-	{
+TEST test_s_left (void)
+{
 	int h = s_dup ("Hello World");
 	int left = s_left (h, 5);
 	ASSERT_STR_EQ ("Hello", m_str (left));
 	s_free (left);
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_right (void)
-	{
+TEST test_s_right (void)
+{
 	int h = s_dup ("Hello World");
 	int right = s_right (h, 5);
 	ASSERT_STR_EQ ("World", m_str (right));
 	s_free (right);
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_replace_c (void)
-	{
+TEST test_s_replace_c (void)
+{
 	int h = s_dup ("Hello World World");
 	int rep = s_replace_c (h, "World", "Gemini");
 	ASSERT_STR_EQ ("Hello Gemini Gemini", m_str (rep));
@@ -309,10 +309,10 @@ TEST test_s_from_long (void)
 
 	s_free (h);
 	PASS ();
-	}
+}
 
-	TEST test_s_trim_c (void)
-	{
+TEST test_s_trim_c (void)
+{
 	int h = s_dup ("  Hello  ");
 	int trim = s_trim_c (h, NULL);
 	ASSERT_STR_EQ ("Hello", m_str (trim));
@@ -330,10 +330,10 @@ TEST test_s_from_long (void)
 
 	s_free (h);
 	PASS ();
-	}
+}
 
-	GREATEST_SUITE (m_string_suite)
-	{
+GREATEST_SUITE (m_string_suite)
+{
 	RUN_TEST (test_s_new);
 	RUN_TEST (test_s_dup);
 	RUN_TEST (test_s_clone);
@@ -358,7 +358,8 @@ TEST test_s_from_long (void)
 	RUN_TEST (test_s_right);
 	RUN_TEST (test_s_replace_c);
 	RUN_TEST (test_s_trim_c);
-	}GREATEST_MAIN_DEFS ();
+}
+GREATEST_MAIN_DEFS ();
 
 int main (int argc, char **argv)
 {

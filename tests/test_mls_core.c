@@ -1,5 +1,5 @@
-#include "mls.h"
 #include "m_tool.h"
+#include "mls.h"
 /* Conflict resolution: mls.h defines ASSERT, so does greatest.h.
    We undefine the one from mls.h before including greatest.h */
 #undef ASSERT
@@ -14,7 +14,8 @@ SUITE (mls_core_suite);
 
 TEST test_m_init_destruct (void)
 {
-	/* m_init() is called in main, but we can check if it returns 1 (already init) */
+	/* m_init() is called in main, but we can check if it returns 1 (already
+	 * init) */
 	ASSERT_EQ (1, m_init ());
 	PASS ();
 }
@@ -183,8 +184,8 @@ TEST test_m_put_threaded (void)
 	for (int i = 0; i < MLS_THREAD_COUNT; i++) {
 		args[i].h = h;
 		args[i].base = i * MLS_THREAD_ITERS;
-		ASSERT_EQ (0, pthread_create (&threads[i], NULL, threaded_puti_worker,
-					      &args[i]));
+		ASSERT_EQ (0, pthread_create (&threads[i], NULL,
+					      threaded_puti_worker, &args[i]));
 	}
 	for (int i = 0; i < MLS_THREAD_COUNT; i++)
 		ASSERT_EQ (0, pthread_join (threads[i], NULL));
@@ -199,8 +200,9 @@ TEST test_m_alloc_free_threaded (void)
 	pthread_t threads[MLS_THREAD_COUNT];
 
 	for (int i = 0; i < MLS_THREAD_COUNT; i++)
-		ASSERT_EQ (0, pthread_create (&threads[i], NULL,
-					      threaded_alloc_free_worker, NULL));
+		ASSERT_EQ (0,
+			   pthread_create (&threads[i], NULL,
+					   threaded_alloc_free_worker, NULL));
 	for (int i = 0; i < MLS_THREAD_COUNT; i++)
 		ASSERT_EQ (0, pthread_join (threads[i], NULL));
 	PASS ();
@@ -306,15 +308,9 @@ GREATEST_SUITE (mls_string_suite)
 	RUN_TEST (test_s_copy_split);
 }
 
-GREATEST_SUITE (mls_search_suite)
-{
-	RUN_TEST (test_binary_search);
-}
+GREATEST_SUITE (mls_search_suite) { RUN_TEST (test_binary_search); }
 
-GREATEST_SUITE (mls_variable_suite)
-{
-	RUN_TEST (test_variables);
-}
+GREATEST_SUITE (mls_variable_suite) { RUN_TEST (test_variables); }
 
 /* Main function */
 GREATEST_MAIN_DEFS ();

@@ -6,17 +6,24 @@
 
 static int passed = 0, failed = 0;
 
-#define T(name) static void name(void)
-#define check(cond, msg) do { \
-	if (!(cond)) { printf("  FAIL: %s (%s:%d)\n", msg, __FILE__, __LINE__); failed++; } \
-	else passed++; } while(0)
+#define T(name) static void name (void)
+#define check(cond, msg)                                                       \
+	do {                                                                   \
+		if (!(cond)) {                                                 \
+			printf ("  FAIL: %s (%s:%d)\n", msg, __FILE__,         \
+				__LINE__);                                     \
+			failed++;                                              \
+		} else                                                         \
+			passed++;                                              \
+	} while (0)
 
 T (test_read_echo)
 {
 	int h = subproc_read ("echo hello");
 	check (h > 0, "subproc_read returned handle");
 	const char *s = m_str (h);
-	check (s != NULL && strstr (s, "hello") != NULL, "stdout contains hello");
+	check (s != NULL && strstr (s, "hello") != NULL,
+	       "stdout contains hello");
 	m_free (h);
 }
 
@@ -51,9 +58,15 @@ T (test_lines)
 	for (idx = -1; m_next (lines, &idx, (void *)&h);) {
 		const char *s = m_str (*h);
 		switch (idx) {
-		case 0: check (s && strstr (s, "a") != NULL, "line 1 is a"); break;
-		case 1: check (s && strstr (s, "b") != NULL, "line 2 is b"); break;
-		case 2: check (s && strstr (s, "c") != NULL, "line 3 is c"); break;
+		case 0:
+			check (s && strstr (s, "a") != NULL, "line 1 is a");
+			break;
+		case 1:
+			check (s && strstr (s, "b") != NULL, "line 2 is b");
+			break;
+		case 2:
+			check (s && strstr (s, "c") != NULL, "line 3 is c");
+			break;
 		}
 	}
 	m_free (lines);

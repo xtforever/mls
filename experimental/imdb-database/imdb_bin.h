@@ -67,10 +67,10 @@ struct imdb_bin_header {
 	uint64_t off[9];
 };
 
-_Static_assert(sizeof (uint32_t) == 4, "uint32_t muss 4 Byte sein");
-_Static_assert(sizeof (uint16_t) == 2, "uint16_t muss 2 Byte sein");
-_Static_assert(sizeof (uint64_t) == 8, "uint64_t muss 8 Byte sein");
-_Static_assert(sizeof (struct imdb_bin_header) == 104,
-	       "Header muss 104 Byte sein");
+_Static_assert (sizeof (uint32_t) == 4, "uint32_t muss 4 Byte sein");
+_Static_assert (sizeof (uint16_t) == 2, "uint16_t muss 2 Byte sein");
+_Static_assert (sizeof (uint64_t) == 8, "uint64_t muss 8 Byte sein");
+_Static_assert (sizeof (struct imdb_bin_header) == 104,
+		"Header muss 104 Byte sein");
 
 #endif

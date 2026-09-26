@@ -1,6 +1,6 @@
 #include "m_extra.h"
-#include <strings.h>
 #include <ctype.h>
+#include <strings.h>
 
 /**
  * Case-insensitive comparison of two strings.
@@ -89,7 +89,8 @@ long s_to_long (int h)
  * Trims specific characters from the left side of a string.
  *
  * @param h The string handle.
- * @param chars A string containing characters to trim. If NULL, trims whitespace.
+ * @param chars A string containing characters to trim. If NULL, trims
+ * whitespace.
  * @return A new handle containing the trimmed string.
  */
 int s_trim_left_c (int h, const char *chars)
@@ -113,7 +114,8 @@ int s_trim_left_c (int h, const char *chars)
  * Trims specific characters from the right side of a string.
  *
  * @param h The string handle.
- * @param chars A string containing characters to trim. If NULL, trims whitespace.
+ * @param chars A string containing characters to trim. If NULL, trims
+ * whitespace.
  * @return A new handle containing the trimmed string.
  */
 int s_trim_right_c (int h, const char *chars)
@@ -257,7 +259,7 @@ int s_base64_decode (int h)
 		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
 		52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-		-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+		-1, 0,	1,  2,	3,  4,	5,  6,	7,  8,	9,  10, 11, 12, 13, 14,
 		15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
 		-1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
 		41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1};

@@ -9,14 +9,14 @@
 
 // Handler for POST /index
 // Adds a directory to the scan queue and potentially starts indexing.
-void index_controller(int req, int res);
+void index_controller (int req, int res);
 
 // Handler for GET /search
 // Searches the video index based on query parameters.
-void search_controller(int req, int res);
+void search_controller (int req, int res);
 
 // Handler for GET /status
 // Returns the current status of the indexing process.
-void status_controller(int req, int res);
+void status_controller (int req, int res);
 
 #endif // API_HANDLERS_H

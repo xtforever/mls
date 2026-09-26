@@ -57,8 +57,8 @@ int gather_logs (cfg_t cfg)
 {
 	(void)cfg;
 
-	int out = subproc_read (
-		"find /var/log -type f -printf '%T@|%s|%p\\n' 2>/dev/null || true");
+	int out = subproc_read ("find /var/log -type f -printf '%T@|%s|%p\\n' "
+				"2>/dev/null || true");
 	if (STRTAB_EMPTY (out)) {
 		m_free (out);
 		return 0;

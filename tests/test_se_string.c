@@ -1,6 +1,6 @@
-#include "mls.h"
-#include "m_tool.h"
 #include "m_extra.h"
+#include "m_tool.h"
+#include "mls.h"
 #undef ASSERT
 #include "greatest.h"
 
@@ -22,17 +22,18 @@ TEST test_se_basic (void)
 TEST test_se_indexed (void)
 {
 	int vs = v_init ();
-	/* v_set at pos 1 is index 0 for expansion system (since STR(var,0) is the name) */
+	/* v_set at pos 1 is index 0 for expansion system (since STR(var,0) is
+	 * the name) */
 	v_set (vs, "items", "apple", 1);
 	v_set (vs, "items", "banana", 2);
 	v_set (vs, "items", "cherry", 3);
 
 	/* [0] uses the row parameter passed to se_expand, se_string passes 0 */
 	ASSERT_STR_EQ ("First: apple", se_string (vs, "First: $items[0]"));
-	
-	/* [1] in parse_index returns val+2 = 3. 
-	   In se_expand: index -= 2 => 1. 
-	   STR(var, index+1) => STR(var, 2) => "banana" 
+
+	/* [1] in parse_index returns val+2 = 3.
+	   In se_expand: index -= 2 => 1.
+	   STR(var, index+1) => STR(var, 2) => "banana"
 	*/
 	ASSERT_STR_EQ ("Second: banana", se_string (vs, "Second: $items[1]"));
 	ASSERT_STR_EQ ("Third: cherry", se_string (vs, "Third: $items[2]"));
@@ -48,7 +49,7 @@ TEST test_se_star (void)
 	v_set (vs, "list", "b", 2);
 	v_set (vs, "list", "c", 3);
 
-	/* [*] in parse_index returns 1. 
+	/* [*] in parse_index returns 1.
 	   In se_expand: if (index == 1) it joins all elements with comma.
 	*/
 	ASSERT_STR_EQ ("All: a,b,c", se_string (vs, "All: $list[*]"));
@@ -93,10 +94,10 @@ TEST test_se_multiple_rows (void)
 	str_exp_t se;
 	se_init (&se);
 	se_parse (&se, "Value: $col");
-	
+
 	char *res0 = se_expand (&se, vs, 0);
 	ASSERT_STR_EQ ("Value: row0", res0);
-	
+
 	char *res1 = se_expand (&se, vs, 1);
 	ASSERT_STR_EQ ("Value: row1", res1);
 

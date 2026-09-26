@@ -26,7 +26,7 @@ static unsigned int fuzz_rand (unsigned int *seed)
 
 static void exercise_local_alloc_free (unsigned int *seed, int value)
 {
-	TRACE(1,"");
+	TRACE (1, "");
 	int h = m_alloc ((int)(fuzz_rand (seed) % 8), sizeof (int), MFREE);
 	int n = (int)(fuzz_rand (seed) % 16);
 
@@ -38,16 +38,14 @@ static void exercise_local_alloc_free (unsigned int *seed, int value)
 	if (n > 0) {
 		int copy = 0;
 		void *dst = &copy;
-		if( m_len(h) > 0 ) {
+		if (m_len (h) > 0) {
 			assert (m_read (h, 0, &dst, 1) == 0);
 		} else {
-			WARN("Handle %d: Len: %ld", h & 0xffffff, m_len(h) );
+			WARN ("Handle %d: Len: %ld", h & 0xffffff, m_len (h));
 		}
-		
 	}
-	TRACE(1,"start free");
+	TRACE (1, "start free");
 	m_free (h);
-	
 }
 
 static void *fuzz_worker (void *arg)
@@ -82,11 +80,13 @@ static void *fuzz_worker (void *arg)
 		case 4: {
 			int copy = 0;
 			void *dst = &copy;
-			if( m_len(h) ) 	assert (m_read (h, 0, &dst, 1) == 0);
+			if (m_len (h))
+				assert (m_read (h, 0, &dst, 1) == 0);
 			break;
 		}
 		default:
-			exercise_local_alloc_free (&a->seed, (a->id * ITERS) + i);
+			exercise_local_alloc_free (&a->seed,
+						   (a->id * ITERS) + i);
 			break;
 		}
 	}
@@ -104,7 +104,7 @@ int main (void)
 	trace_level = 0;
 	assert (m_init () >= 0);
 
-	for (int i = 0; i < SHARED_HANDLES; i++) 
+	for (int i = 0; i < SHARED_HANDLES; i++)
 		handles[i] = m_alloc (1, sizeof (int), MFREE);
 
 	for (int i = 0; i < THREADS; i++) {
@@ -112,7 +112,8 @@ int main (void)
 		args[i].seed = 0xc0ffeeu ^ (unsigned int)(i * 0x9e3779b9u);
 		for (int j = 0; j < SHARED_HANDLES; j++)
 			args[i].handles[j] = handles[j];
-		assert (pthread_create (&threads[i], NULL, fuzz_worker, &args[i]) == 0);
+		assert (pthread_create (&threads[i], NULL, fuzz_worker,
+					&args[i]) == 0);
 	}
 
 	for (int i = 0; i < THREADS; i++)
@@ -126,7 +127,8 @@ int main (void)
 	assert (total_len == append_count);
 	m_destruct ();
 
-	printf ("thread-safe fuzzy test passed: %d randomized operations, %d shared appends\n",
+	printf ("thread-safe fuzzy test passed: %d randomized operations, %d "
+		"shared appends\n",
 		THREADS * ITERS, append_count);
 	return 0;
 }

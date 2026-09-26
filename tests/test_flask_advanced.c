@@ -131,7 +131,9 @@ int main ()
 		printf ("\n");
 
 		printf ("[Test] Verifying /render?name=Gemini&app=MLS...\n");
-		system ("curl -s \"http://127.0.0.1:20002/render?name=Gemini&app=MLS\"");
+		system ("curl -s "
+			"\"http://127.0.0.1:20002/"
+			"render?name=Gemini&app=MLS\"");
 		printf ("\n");
 
 		printf ("[Test] Killing server process %d...\n", pid);

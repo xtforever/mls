@@ -74,15 +74,17 @@ static void *fuzz_worker (void *arg)
 			break;
 		}
 		case 4: {
-			/* ponytail: use _safe variant — shared handle may be empty
-			   from another thread's perspective, and m_read would ERR(). */
+			/* ponytail: use _safe variant — shared handle may be
+			   empty from another thread's perspective, and m_read
+			   would ERR(). */
 			int copy = 0;
 			void *dst = &copy;
 			m_read_safe (h, 0, &dst, 1);
 			break;
 		}
 		default:
-			exercise_local_alloc_free (&a->seed, (a->id * g_iters) + i);
+			exercise_local_alloc_free (&a->seed,
+						   (a->id * g_iters) + i);
 			break;
 		}
 	}
@@ -93,14 +95,15 @@ static void *fuzz_worker (void *arg)
 int main (void)
 {
 	char *env = getenv ("FUZZ_ITERS");
-	if (env) g_iters = atoi (env);
+	if (env)
+		g_iters = atoi (env);
 
 	pthread_t threads[THREADS];
 	fuzz_arg_t args[THREADS];
 	int handles[SHARED_HANDLES];
 	int total_len = 0;
 
-	trace_level = 0;  /* ponytail: silent for 100-round stress run */
+	trace_level = 0; /* ponytail: silent for 100-round stress run */
 	assert (m_init () >= 0);
 
 	for (int i = 0; i < SHARED_HANDLES; i++)
@@ -111,7 +114,8 @@ int main (void)
 		args[i].seed = 0xc0ffeeu ^ (unsigned int)(i * 0x9e3779b9u);
 		for (int j = 0; j < SHARED_HANDLES; j++)
 			args[i].handles[j] = handles[j];
-		assert (pthread_create (&threads[i], NULL, fuzz_worker, &args[i]) == 0);
+		assert (pthread_create (&threads[i], NULL, fuzz_worker,
+					&args[i]) == 0);
 	}
 
 	for (int i = 0; i < THREADS; i++)
@@ -125,7 +129,8 @@ int main (void)
 	assert (total_len == append_count);
 	m_destruct ();
 
-	printf ("thread-safe fuzzy test passed: %d randomized operations, %d shared appends\n",
+	printf ("thread-safe fuzzy test passed: %d randomized operations, %d "
+		"shared appends\n",
 		THREADS * g_iters, append_count);
 	return 0;
 }

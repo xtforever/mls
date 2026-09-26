@@ -130,7 +130,8 @@ static void gather_meminfo (int rows)
 	for (int i = 0; i < 2; i++) {
 		if (!m[i].total)
 			continue;
-		double used = (double)(m[i].total - m[i].free) / (1024.0 * 1024.0);
+		double used =
+			(double)(m[i].total - m[i].free) / (1024.0 * 1024.0);
 		double total = (double)m[i].total / (1024.0 * 1024.0);
 		int vstr = s_printf (0, 0, "%.1f / %.1f GB used", used, total);
 		int r = kv_pair (m[i].label, m_str (vstr));
@@ -144,12 +145,13 @@ static void gather_meminfo (int rows)
 static int skip_fs_type (const char *type)
 {
 	static const char *skip[] = {
-		"autofs", "binfmt_misc", "bpf", "cgroup", "cgroup2",
-		"configfs", "debugfs", "devpts", "devtmpfs", "efivarfs",
-		"fusectl", "hugetlbfs", "mqueue", "nsfs", "nfsd",
-		"overlay", "proc", "pstore", "ramfs", "rpc_pipefs",
-		"securityfs", "selinuxfs", "squashfs", "sysfs", "tmpfs",
-		"tracefs",
+		"autofs",     "binfmt_misc", "bpf",	 "cgroup",
+		"cgroup2",    "configfs",    "debugfs",	 "devpts",
+		"devtmpfs",   "efivarfs",    "fusectl",	 "hugetlbfs",
+		"mqueue",     "nsfs",	     "nfsd",	 "overlay",
+		"proc",	      "pstore",	     "ramfs",	 "rpc_pipefs",
+		"securityfs", "selinuxfs",   "squashfs", "sysfs",
+		"tmpfs",      "tracefs",
 	};
 	for (size_t i = 0; i < sizeof (skip) / sizeof (skip[0]); i++)
 		if (strcmp (type, skip[i]) == 0)
@@ -165,9 +167,9 @@ static int mount_unescape (int h)
 		char c = CHAR (h, i);
 		if (!c)
 			break;
-		if (c == '\\' && isdigit ((unsigned char)CHAR (h, i + 1))
-		    && isdigit ((unsigned char)CHAR (h, i + 2))
-		    && isdigit ((unsigned char)CHAR (h, i + 3))) {
+		if (c == '\\' && isdigit ((unsigned char)CHAR (h, i + 1)) &&
+		    isdigit ((unsigned char)CHAR (h, i + 2)) &&
+		    isdigit ((unsigned char)CHAR (h, i + 3))) {
 			int v = (CHAR (h, i + 1) - '0') * 64 +
 				(CHAR (h, i + 2) - '0') * 8 +
 				(CHAR (h, i + 3) - '0');
@@ -269,9 +271,9 @@ static void gather_disk (int entries)
 
 	add_entry (entries,
 		   bar_new (s_printf (0, 0, "Disk: %.1fG/%.1fG used (%.0f%%)",
-					      used / (1024.0 * 1024.0 * 1024.0),
-					      total / (1024.0 * 1024.0 * 1024.0),
-					      frac * 100.0),
+				      used / (1024.0 * 1024.0 * 1024.0),
+				      total / (1024.0 * 1024.0 * 1024.0),
+				      frac * 100.0),
 			    frac));
 
 	int mounts = m_str_from_file ("/proc/mounts");
@@ -287,17 +289,19 @@ static void gather_disk (int entries)
 	{
 		s_msplit (toks, *d, s_cstr (" "));
 		int skip = 1, out = 0;
-		if (m_len (toks) >= 3
-		    && !skip_fs_type (m_str (INT (toks, 2)))) {
+		if (m_len (toks) >= 3 &&
+		    !skip_fs_type (m_str (INT (toks, 2)))) {
 			int path = mount_unescape (INT (toks, 1));
 			int q = shell_quote (path);
-			int cmd = s_printf (0, 0, "LC_ALL=C df -kP %s 2>/dev/null",
+			int cmd = s_printf (0, 0,
+					    "LC_ALL=C df -kP %s 2>/dev/null",
 					    m_str (q));
 			m_free (q);
 			m_free (path);
 			/* one df per mountpoint: an unreachable NFS server
 			   costs only this row, not the whole section */
-			skip = (subproc_run (m_str (cmd), &out, NULL, 3000) != 0);
+			skip = (subproc_run (m_str (cmd), &out, NULL, 3000) !=
+				0);
 			m_free (cmd);
 		}
 		for (int j = 0; j < (int)m_len (toks); j++) {
@@ -319,8 +323,8 @@ static void gather_disk (int entries)
 		return;
 	}
 
-	int th = table_new (6, (const char *[]){ "Filesystem", "Size", "Used",
-						 "Avail", "Use%", "Mounted on" });
+	int th = table_new (6, (const char *[]){"Filesystem", "Size", "Used",
+						"Avail", "Use%", "Mounted on"});
 	data_t *t = (data_t *)m_buf (th);
 	m_free (t->rows);
 	t->rows = rows;
@@ -518,8 +522,8 @@ static void gather_network (int entries)
 		"tr ' ' '\\n' | sed '/^$/d' | sort -u");
 	if (dns <= 0 || s_isempty (dns)) {
 		m_free (dns);
-		dns = subproc_read (
-			"sed -n 's/^nameserver //p' /etc/resolv.conf 2>/dev/null");
+		dns = subproc_read ("sed -n 's/^nameserver //p' "
+				    "/etc/resolv.conf 2>/dev/null");
 	}
 	if (dns > 0 && !s_isempty (dns)) {
 		int dns_line = s_printf (0, 0, "DNS: %s", m_str (dns));

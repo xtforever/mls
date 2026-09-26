@@ -1,5 +1,5 @@
-#include "../lib/mls.h"
 #include "../lib/m_tool.h"
+#include "../lib/mls.h"
 
 #if MLS_THREAD_SAFE
 
@@ -9,12 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define THREADS  4
-#define ITERS    500
+#define THREADS 4
+#define ITERS 500
 
 static int handles[ITERS];
 
-typedef struct { int start; int end; } range_t;
+typedef struct {
+	int start;
+	int end;
+} range_t;
 
 static void *is_freed_checker (void *arg)
 {
@@ -41,11 +44,12 @@ static int test_is_freed_concurrent (void)
 	}
 
 	pthread_t checkers[THREADS], freers[2];
-	range_t r0 = { 0, ITERS / 2 };
-	range_t r1 = { ITERS / 2, ITERS };
+	range_t r0 = {0, ITERS / 2};
+	range_t r1 = {ITERS / 2, ITERS};
 
 	for (int i = 0; i < THREADS; i++)
-		assert (pthread_create (&checkers[i], NULL, is_freed_checker, NULL) == 0);
+		assert (pthread_create (&checkers[i], NULL, is_freed_checker,
+					NULL) == 0);
 	assert (pthread_create (&freers[0], NULL, freer_worker, &r0) == 0);
 	assert (pthread_create (&freers[1], NULL, freer_worker, &r1) == 0);
 
@@ -91,11 +95,12 @@ static int test_m_str_concurrent (void)
 		str_hdls[i] = s_printf (0, 0, "hello-%d", i);
 
 	pthread_t readers[THREADS], appenders[2];
-	range_t r0 = { 0, ITERS / 2 };
-	range_t r1 = { ITERS / 2, ITERS };
+	range_t r0 = {0, ITERS / 2};
+	range_t r1 = {ITERS / 2, ITERS};
 
 	for (int i = 0; i < THREADS; i++)
-		assert (pthread_create (&readers[i], NULL, str_reader, NULL) == 0);
+		assert (pthread_create (&readers[i], NULL, str_reader, NULL) ==
+			0);
 	assert (pthread_create (&appenders[0], NULL, str_appender, &r0) == 0);
 	assert (pthread_create (&appenders[1], NULL, str_appender, &r1) == 0);
 
@@ -106,7 +111,10 @@ static int test_m_str_concurrent (void)
 
 	int ok = 1;
 	for (int i = 0; i < ITERS; i++) {
-		if (m_is_freed (str_hdls[i])) { ok = 0; break; }
+		if (m_is_freed (str_hdls[i])) {
+			ok = 0;
+			break;
+		}
 		m_free (str_hdls[i]);
 	}
 	printf ("  m_str concurrent: %s\n", ok ? "OK" : "FAIL");
@@ -152,7 +160,8 @@ static int test_ring_concurrent (void)
 	int empty = ring_empty (r);
 	ring_free (r);
 
-	printf ("  ring concurrent: empty=%d %s\n", empty, empty ? "OK" : "FAIL");
+	printf ("  ring concurrent: empty=%d %s\n", empty,
+		empty ? "OK" : "FAIL");
 	return empty;
 }
 
@@ -185,9 +194,11 @@ static int test_diag_concurrent (void)
 	pthread_t diag_threads[2], churn_threads[2];
 
 	for (int i = 0; i < 2; i++)
-		assert (pthread_create (&churn_threads[i], NULL, churn_worker, NULL) == 0);
+		assert (pthread_create (&churn_threads[i], NULL, churn_worker,
+					NULL) == 0);
 	for (int i = 0; i < 2; i++)
-		assert (pthread_create (&diag_threads[i], NULL, diag_worker, NULL) == 0);
+		assert (pthread_create (&diag_threads[i], NULL, diag_worker,
+					NULL) == 0);
 
 	for (int i = 0; i < 2; i++)
 		pthread_join (churn_threads[i], NULL);
@@ -205,10 +216,14 @@ int main (void)
 	m_init ();
 	trace_level = 0;
 
-#define RUN(t)  do { \
-	printf ("%s ...\n", #t); \
-	if (t ()) passed++; else failed++; \
-} while (0)
+#define RUN(t)                                                                 \
+	do {                                                                   \
+		printf ("%s ...\n", #t);                                       \
+		if (t ())                                                      \
+			passed++;                                              \
+		else                                                           \
+			failed++;                                              \
+	} while (0)
 
 	RUN (test_is_freed_concurrent);
 	RUN (test_m_str_concurrent);

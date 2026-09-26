@@ -1998,7 +1998,8 @@ int s_read_fields (int dest, FILE *fp, const char *sep, int strip)
 	if (is_empty (sep)) { /* whole line is a single field */
 		if (strip)
 			s_trim (line);
-		m_put (dest, &line); /* transfer ownership, do not m_free(line) */
+		m_put (dest,
+		       &line); /* transfer ownership, do not m_free(line) */
 		return dest;
 	}
 

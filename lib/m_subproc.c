@@ -1,13 +1,13 @@
 #include "m_subproc.h"
 #include "m_tool.h"
-#include <signal.h>
-#include <unistd.h>
-#include <poll.h>
-#include <sys/wait.h>
-#include <sys/syscall.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
 #include <time.h>
+#include <unistd.h>
 
 static int exit_code (int status)
 {
@@ -47,10 +47,10 @@ static pid_t subproc_fork (const char *cmd, int out_pipe[2], int err_pipe[2])
 			close (err_pipe[1]);
 		}
 #ifdef SYS_close_range
-			syscall (SYS_close_range, 3, ~0U, 0);
+		syscall (SYS_close_range, 3, ~0U, 0);
 #else
-			for (int fd = 3; fd < 1024; fd++)
-				close (fd);
+		for (int fd = 3; fd < 1024; fd++)
+			close (fd);
 #endif
 		execl ("/bin/sh", "sh", "-c", cmd, (char *)NULL);
 		_exit (127);
@@ -64,8 +64,8 @@ static pid_t subproc_fork (const char *cmd, int out_pipe[2], int err_pipe[2])
 
 int subproc_run (const char *cmd, int *stdout_h, int *stderr_h, int timeout_ms)
 {
-	int out_p[2] = { -1, -1 }, err_p[2] = { -1, -1 };
-	int buffers[2] = { 0, 0 }, rc = -1;
+	int out_p[2] = {-1, -1}, err_p[2] = {-1, -1};
+	int buffers[2] = {0, 0}, rc = -1;
 	pid_t pid = subproc_fork (cmd, out_p, err_p);
 	if (pid < 0)
 		goto done;
@@ -75,10 +75,7 @@ int subproc_run (const char *cmd, int *stdout_h, int *stderr_h, int timeout_ms)
 	buffers[0] = s_new ();
 	buffers[1] = s_new ();
 
-	struct pollfd fds[2] = {
-		{ out_p[0], POLLIN, 0 },
-		{ err_p[0], POLLIN, 0 }
-	};
+	struct pollfd fds[2] = {{out_p[0], POLLIN, 0}, {err_p[0], POLLIN, 0}};
 	int active = 2;
 	while (active > 0) {
 		int ret = poll (fds, 2, timeout_ms > 0 ? timeout_ms : -1);
@@ -89,16 +86,17 @@ int subproc_run (const char *cmd, int *stdout_h, int *stderr_h, int timeout_ms)
 		}
 		if (ret == 0) {
 			kill (pid, SIGKILL);
-			/* ponytail: a child stuck in D state (e.g. statvfs on a hard
-			   NFS mount whose server is gone) ignores SIGKILL, so a
-			   blocking waitpid would hang us too. Give it a 500 ms
-			   grace period and, if it is still around, abandon it:
-			   rootinfo is short-lived and init reaps the leftover
-			   child after we exit. */
+			/* ponytail: a child stuck in D state (e.g. statvfs on a
+			   hard NFS mount whose server is gone) ignores SIGKILL,
+			   so a blocking waitpid would hang us too. Give it a
+			   500 ms grace period and, if it is still around,
+			   abandon it: rootinfo is short-lived and init reaps
+			   the leftover child after we exit. */
 			for (int i = 0; i < 50; i++) {
 				if (waitpid (pid, NULL, WNOHANG) == pid)
 					break;
-				struct timespec ts = { .tv_nsec = 10000000 }; /* 10 ms */
+				struct timespec ts = {
+					.tv_nsec = 10000000}; /* 10 ms */
 				nanosleep (&ts, NULL);
 			}
 			pid = -1;
@@ -110,7 +108,8 @@ int subproc_run (const char *cmd, int *stdout_h, int *stderr_h, int timeout_ms)
 			if (fds[i].revents & (POLLIN | POLLHUP)) {
 				ssize_t n = read (fds[i].fd, buf, sizeof (buf));
 				if (n > 0)
-					m_write (buffers[i], m_len (buffers[i]), buf, n);
+					m_write (buffers[i], m_len (buffers[i]),
+						 buf, n);
 				if (n <= 0) {
 					close (fds[i].fd);
 					fds[i].fd = -1;
@@ -156,7 +155,10 @@ int subproc_read (const char *cmd)
 {
 	int h = 0;
 	int rc = subproc_run (cmd, &h, NULL, 0);
-	if (rc != 0) { m_free (h); return 0; }
+	if (rc != 0) {
+		m_free (h);
+		return 0;
+	}
 	return h;
 }
 

@@ -4,12 +4,12 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <signal.h>
 
 #define PORT 19999
 #define BUFFER_SIZE 4096
@@ -173,8 +173,8 @@ void test_security_header_injection ()
 	serv_addr.sin_port = htons (PORT);
 
 	inet_pton (AF_INET, "127.0.0.1", &serv_addr.sin_addr);
-	if (connect (sock, (struct sockaddr *)&serv_addr,
-		     sizeof (serv_addr)) < 0) {
+	if (connect (sock, (struct sockaddr *)&serv_addr, sizeof (serv_addr)) <
+	    0) {
 		printf ("Connection failed (no server running?)\n");
 		close (sock);
 		return;

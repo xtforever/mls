@@ -3,18 +3,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void my_recursive_free_deep ( int h )
+void my_recursive_free_deep (int h)
 {
 	int p = -1, *d;
-	m_foreach(h,p,d) {
-		m_free (*d);
-	}
+	m_foreach (h, p, d) { m_free (*d); }
 }
 
 /*
-  1  
+  1
     2
-    
+
  */
 
 void test_deep_recursion ()
@@ -49,7 +47,7 @@ void test_complex_custom_free ()
 int main ()
 {
 	m_init ();
-	trace_level=1;
+	trace_level = 1;
 	test_deep_recursion ();
 	test_complex_custom_free ();
 	m_destruct ();

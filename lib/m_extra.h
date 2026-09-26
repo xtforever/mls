@@ -1,8 +1,8 @@
 #ifndef M_EXTRA_H
 #define M_EXTRA_H
 
-#include "mls.h"
 #include "m_tool.h"
+#include "mls.h"
 
 /* Case-insensitive comparison */
 int s_casecmp (int a, int b);
@@ -16,8 +16,8 @@ int s_trim_left_c (int h, const char *chars);
 int s_trim_right_c (int h, const char *chars);
 
 /* String Manipulation */
-int s_reverse (int h); /* In-place */
-int s_pad_left (int h, int width, char pad); /* Returns new handle */
+int s_reverse (int h);			      /* In-place */
+int s_pad_left (int h, int width, char pad);  /* Returns new handle */
 int s_pad_right (int h, int width, char pad); /* Returns new handle */
 
 /* Classification */

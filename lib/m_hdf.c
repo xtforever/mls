@@ -345,7 +345,8 @@ int hdf_put_property (int h, const char *key, const char *value)
 		int children = hdf_get_children (node);
 		if (m_len (children) >= 2) {
 			int old_val = INT (children, 1);
-			INT (children, 1) = create_node (HDF_TYPE_STRING, s_strdup_c (value));
+			INT (children, 1) = create_node (HDF_TYPE_STRING,
+							 s_strdup_c (value));
 			hdf_free (old_val);
 			return 0;
 		}
@@ -393,12 +394,13 @@ static void hdf_write_node (int h, FILE *fp, int indent)
 			int needs_quotes = 0;
 			if (!*val || !is_keyword_char (*val, 1))
 				needs_quotes = 1;
-			else for (const char *p = val + 1; *p; p++) {
-				if (!is_keyword_char (*p, 0)) {
-					needs_quotes = 1;
-					break;
+			else
+				for (const char *p = val + 1; *p; p++) {
+					if (!is_keyword_char (*p, 0)) {
+						needs_quotes = 1;
+						break;
+					}
 				}
-			}
 			if (needs_quotes) {
 				fprintf (fp, "\"");
 				for (const char *p = val; *p; p++) {

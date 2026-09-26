@@ -1,6 +1,5 @@
+#include "m_tool.h"
 #include "mls.h"
-#include "m_tool.h"
-#include "m_tool.h"
 #include <stdio.h>
 #include <sys/wait.h>
 #define EXEC(a)                                                                \

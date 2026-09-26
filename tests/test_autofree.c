@@ -62,7 +62,7 @@ void test_mfree_each ()
 }
 
 static int custom_free_called = 0;
-void my_custom_free ( int x ) { custom_free_called++; }
+void my_custom_free (int x) { custom_free_called++; }
 
 void test_custom_free ()
 {

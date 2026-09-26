@@ -170,8 +170,8 @@ static void handle_client (int fd)
 		else if (strcmp (uri, "/stats") == 0) {
 			char stats[256];
 			snprintf (stats, sizeof (stats),
-				  "Keys: %zu, Mem: %zu\n", (size_t)tbl_len (kv_store),
-				  current_memory);
+				  "Keys: %zu, Mem: %zu\n",
+				  (size_t)tbl_len (kv_store), current_memory);
 			send_response (fd, 200, "OK", stats, strlen (stats));
 		} else if (strcmp (uri, "/memory") == 0) {
 			char mem[512];

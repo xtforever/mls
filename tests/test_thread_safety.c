@@ -21,7 +21,7 @@
  * ====================================================================
  */
 #define AF_THREADS 8
-#define AF_ITERS   20000
+#define AF_ITERS 20000
 
 typedef struct {
 	int failures;
@@ -32,10 +32,18 @@ static void *af_worker (void *arg)
 	af_arg_t *a = arg;
 	a->failures = 0;
 	for (int i = 0; i < AF_ITERS; i++) {
-		int h = m_alloc ((int)(((unsigned)i * 7) % 32), sizeof (int), MFREE);
-		if (h < 0) { a->failures++; continue; }
+		int h = m_alloc ((int)(((unsigned)i * 7) % 32), sizeof (int),
+				 MFREE);
+		if (h < 0) {
+			a->failures++;
+			continue;
+		}
 		int v = i;
-		if (m_puti (h, v) < 0) { a->failures++; m_free (h); continue; }
+		if (m_puti (h, v) < 0) {
+			a->failures++;
+			m_free (h);
+			continue;
+		}
 		m_free (h);
 	}
 	return NULL;
@@ -44,11 +52,12 @@ static void *af_worker (void *arg)
 static int test_concurrent_alloc_free (void)
 {
 	pthread_t threads[AF_THREADS];
-	af_arg_t  args[AF_THREADS] = {0};
+	af_arg_t args[AF_THREADS] = {0};
 	int total_failures = 0;
 
 	for (int i = 0; i < AF_THREADS; i++)
-		assert (pthread_create (&threads[i], NULL, af_worker, &args[i]) == 0);
+		assert (pthread_create (&threads[i], NULL, af_worker,
+					&args[i]) == 0);
 
 	for (int i = 0; i < AF_THREADS; i++) {
 		pthread_join (threads[i], NULL);
@@ -60,10 +69,14 @@ static int test_concurrent_alloc_free (void)
 	int ok = 1;
 	for (int i = 0; i < 100; i++) {
 		int h = m_alloc (1, sizeof (int), MFREE);
-		if (h < 0) { ok = 0; break; }
+		if (h < 0) {
+			ok = 0;
+			break;
+		}
 		m_free (h);
 	}
-	if (total_failures) ok = 0;
+	if (total_failures)
+		ok = 0;
 
 	printf ("  concurrent alloc/free: %d threads x %d iters, %s\n",
 		AF_THREADS, AF_ITERS,
@@ -87,12 +100,12 @@ static int test_concurrent_alloc_free (void)
  */
 #define RW_WRITERS 1
 #define RW_READERS 6
-#define RW_ITERS   10000
+#define RW_ITERS 10000
 
 typedef struct {
-	int        handle;
-	int        iters;
-	int        id;
+	int handle;
+	int iters;
+	int id;
 } rw_arg_t;
 
 static pthread_barrier_t rw_barrier;
@@ -129,16 +142,18 @@ static int test_concurrent_read_write (void)
 	int handle = m_alloc (1, sizeof (int), MFREE);
 	assert (handle > 0);
 
-	assert (pthread_barrier_init (&rw_barrier, NULL, RW_WRITERS + RW_READERS) == 0);
+	assert (pthread_barrier_init (&rw_barrier, NULL,
+				      RW_WRITERS + RW_READERS) == 0);
 
-	pthread_t           writer_thread;
-	rw_arg_t            warg = { handle, RW_ITERS, 0 };
+	pthread_t writer_thread;
+	rw_arg_t warg = {handle, RW_ITERS, 0};
 	assert (pthread_create (&writer_thread, NULL, rw_writer, &warg) == 0);
 
-	pthread_t           reader_threads[RW_READERS];
-	rw_arg_t            rarg = { handle, RW_ITERS, 0 };
+	pthread_t reader_threads[RW_READERS];
+	rw_arg_t rarg = {handle, RW_ITERS, 0};
 	for (int i = 0; i < RW_READERS; i++)
-		assert (pthread_create (&reader_threads[i], NULL, rw_reader, &rarg) == 0);
+		assert (pthread_create (&reader_threads[i], NULL, rw_reader,
+					&rarg) == 0);
 
 	pthread_join (writer_thread, NULL);
 	for (int i = 0; i < RW_READERS; i++)
@@ -150,8 +165,8 @@ static int test_concurrent_read_write (void)
 	m_free (handle);
 
 	int ok = (final_len == RW_ITERS);
-	printf ("  concurrent read/write: len=%d expected=%d  %s\n",
-		RW_ITERS, final_len, ok ? "OK" : "FAIL");
+	printf ("  concurrent read/write: len=%d expected=%d  %s\n", RW_ITERS,
+		final_len, ok ? "OK" : "FAIL");
 	return ok;
 }
 
@@ -185,8 +200,8 @@ static int test_uaf_detection (void)
 	int valid = m_is_valid (h);
 
 	int ok = (freed == 1 && valid == 0);
-	printf ("  UAF detection: freed=%d valid=%d  %s\n",
-		freed, valid, ok ? "OK" : "FAIL");
+	printf ("  UAF detection: freed=%d valid=%d  %s\n", freed, valid,
+		ok ? "OK" : "FAIL");
 	return ok;
 }
 
@@ -200,10 +215,14 @@ int main (void)
 	m_init ();
 	trace_level = 0;
 
-#define RUN(t)  do { \
-	printf ("%s ...\n", #t); \
-	if (t ()) passed++; else failed++; \
-} while (0)
+#define RUN(t)                                                                 \
+	do {                                                                   \
+		printf ("%s ...\n", #t);                                       \
+		if (t ())                                                      \
+			passed++;                                              \
+		else                                                           \
+			failed++;                                              \
+	} while (0)
 
 	RUN (test_concurrent_alloc_free);
 	RUN (test_concurrent_read_write);
@@ -215,7 +234,7 @@ int main (void)
 	return failed > 0 ? 1 : 0;
 }
 
-#else  /* !MLS_THREAD_SAFE */
+#else /* !MLS_THREAD_SAFE */
 
 int main (void)
 {
