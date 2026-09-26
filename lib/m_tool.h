@@ -94,6 +94,7 @@ int s_strncmp2 (int s0, int p0, int s1, int p1, int len);
 int s_strncmpr (int str, int suffix);
 
 int s_readln (int buf, FILE *fp);
+int s_read_fields (int dest, FILE *fp, const char *sep, int strip);
 int s_regex (int res, char *regex, int buf);
 bool glob_match (char const *pat, char const *str, const char **a,
 		 const char **b) __attribute__ ((const));

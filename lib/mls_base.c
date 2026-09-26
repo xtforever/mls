@@ -20,7 +20,7 @@ MLS_THREAD_LOCAL int mls_errline = 0;
 int error_occurred = 0;
 static int UAF_PROTECTION = 0;
 struct ls_st ML = {0}; // stack allocated vars
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 pthread_mutex_t ml_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cs_map_lock = PTHREAD_MUTEX_INITIALIZER;
 static MLS_THREAD_LOCAL int freeing_handle = 0;
@@ -35,7 +35,7 @@ static int get_free_hdl (void);
 
 static void init_handle_lock (lst_t lp)
 {
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 	if (lp->lock)
 		return;
 	lp->lock = malloc (sizeof (*lp->lock));
@@ -49,7 +49,7 @@ static void init_handle_lock (lst_t lp)
 }
 static void destroy_handle_lock (lst_t lp)
 {
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 	if (!lp->lock)
 		return;
 	pthread_rwlock_destroy (lp->lock);
@@ -108,7 +108,7 @@ static lst_t lock_handle_core (int m, int write, int die)
 	}
 
 	init_handle_lock (lp);
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 	if (write)
 		pthread_rwlock_wrlock (lp->lock);
 	else
@@ -122,7 +122,7 @@ static lst_t lock_handle_core (int m, int write, int die)
 	if (lp->data == NULL ||
 	    (lp->free_hdl == 255 &&
 	     (!die || REAL_HDL (freeing_handle) != REAL_HDL (m)))) {
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		pthread_rwlock_unlock (lp->lock);
 #endif
 		MLS_MASTER_UNLOCK ();
@@ -139,7 +139,7 @@ static lst_t lock_handle_core (int m, int write, int die)
 lst_t lock_handle (int m, int write) { return lock_handle_core (m, write, 1); }
 void unlock_handle (lst_t lp)
 {
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 	pthread_rwlock_unlock (lp->lock);
 #else
 	(void)lp;

@@ -1,6 +1,6 @@
 include ../rules.mk
 
-TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_splice test_m_subproc
+TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_splice test_m_subproc test_read_fields
 ifeq ($(thread_safe),1)
 TARGETS+=test_thread_safe_fuzzy
 TARGETS+=test_thread_safety
@@ -43,11 +43,14 @@ test_tsan_races.exe${OBJ}: test_tsan_races.o${OBJ} $(DEPS)
 test_m_subproc.exe${OBJ}: test_m_subproc.o${OBJ} $(DEPS) ../lib/m_subproc.o${OBJ}
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+test_read_fields.exe${OBJ}: test_read_fields.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
 test_autofree.exe${OBJ}: test_autofree.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 error-handler: error-handler.c mls_base.c mls_base.h mls_ext.c mls_ext.h m_tool.c m_tool.h list.h list.c table.h table.c
-	gcc -g -o error-handler -DMLS_DEBUG error-handler.c ../lib/mls_base.c ../lib/mls_ext.c ../lib/m_tool.c ../lib/list.c ../lib/table.c -I ../lib
+	gcc -g -o error-handler -DMLS_DEBUG -DMLS_THREAD_SAFE=0 error-handler.c ../lib/mls_base.c ../lib/mls_ext.c ../lib/m_tool.c ../lib/list.c ../lib/table.c -I ../lib
 
 test_ssplit.exe${OBJ}: test_ssplit.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
@@ -114,6 +117,10 @@ check-leaks: $(EXE_TARGETS)
 		echo "Checking leaks in $$exe..."; \
 		ASAN_OPTIONS=detect_leaks=1 ./$$exe || exit 1; \
 	done
+
+# Single-header amalgam (mls_core.h): 4 build configs x selectable trace_level
+check-amalgam:
+	bash test_mls_core_amalgam.sh
 
 # ThreadSanitizer build — catches data races
 check-tsan:

@@ -35,14 +35,13 @@ int main() {
     // The HDF file will define routes and server port.
     printf("Starting video indexer server with config: %s\n", CONFIG_FILE);
 
-    // Note: For flask_run_mt to be available, MLS_THREAD_SAFE must be defined during compilation.
-    // We assume it is defined or will be in the Makefile.
-#ifdef MLS_THREAD_SAFE
+    // Note: flask_run_mt is available when MLS_THREAD_SAFE is 1.
+#if MLS_THREAD_SAFE
     flask_run_mt(CONFIG_FILE);
 #else
-    // Fallback to single-threaded if MLS_THREAD_SAFE is not defined
+    // Fallback to single-threaded when MLS_THREAD_SAFE=0.
     // This is not ideal for the demo, but prevents compilation errors.
-    fprintf(stderr, "Warning: MLS_THREAD_SAFE not defined. Running in single-threaded mode.\n");
+    fprintf(stderr, "Warning: MLS_THREAD_SAFE=0. Running in single-threaded mode.\n");
     flask_run(CONFIG_FILE); 
 #endif
 

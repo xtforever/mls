@@ -10,7 +10,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/socket.h>
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 #include <pthread.h>
 #endif
 
@@ -23,7 +23,7 @@ typedef struct {
 
 static int handler_registry = 0, flask_config_root = 0, route_table = 0;
 
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 static pthread_mutex_t flask_lock = PTHREAD_MUTEX_INITIALIZER;
 #define FLASK_LOCK() pthread_mutex_lock (&flask_lock)
 #define FLASK_UNLOCK() pthread_mutex_unlock (&flask_lock)
@@ -282,7 +282,7 @@ void flask_json (int res_h, int status, const char *json)
 	m_free (h);
 }
 
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 
 typedef struct {
 	int client_fd;

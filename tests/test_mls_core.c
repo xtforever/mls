@@ -4,7 +4,7 @@
    We undefine the one from mls.h before including greatest.h */
 #undef ASSERT
 #include "greatest.h"
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 #include <pthread.h>
 #endif
 #include <string.h>
@@ -146,7 +146,7 @@ TEST test_m_dub (void)
 	PASS ();
 }
 
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 #define MLS_THREAD_COUNT 8
 #define MLS_THREAD_ITERS 1000
 
@@ -294,7 +294,7 @@ GREATEST_SUITE (mls_core_suite)
 	RUN_TEST (test_m_clear);
 	RUN_TEST (test_m_del_remove);
 	RUN_TEST (test_m_dub);
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 	RUN_TEST (test_m_put_threaded);
 	RUN_TEST (test_m_alloc_free_threaded);
 #endif

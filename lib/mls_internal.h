@@ -4,19 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Default MLS_THREAD_SAFE to 1 on Unix/POSIX platforms where
-   pthreads is universally available. Users can override with
-   -DMLS_THREAD_SAFE=0 on platforms without pthreads. */
-#ifndef MLS_THREAD_SAFE
-#if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
-	defined(__FreeBSD__)
-#define MLS_THREAD_SAFE 1
-#else
-#define MLS_THREAD_SAFE 0
-#endif
-#endif
-
-#ifdef MLS_THREAD_SAFE
+/* MLS_THREAD_SAFE is always defined (0 or 1) by mls_base.h, which every
+   includer of this internal header pulls in first. Value-based `#if` so
+   that -DMLS_THREAD_SAFE=0 actually disables threading. */
+#if MLS_THREAD_SAFE
 #include <pthread.h>
 typedef pthread_rwlock_t mls_rwlock_t;
 

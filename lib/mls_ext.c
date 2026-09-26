@@ -1270,13 +1270,13 @@ size_t m_count_allocated (void)
 	}
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		if (l->lock)
 			pthread_rwlock_rdlock (l->lock);
 #endif
 		if (l->data && l->free_hdl != 255)
 			count++;
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		if (l->lock)
 			pthread_rwlock_unlock (l->lock);
 #endif
@@ -1301,14 +1301,14 @@ size_t m_total_bytes (void)
 	}
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		if (l->lock)
 			pthread_rwlock_rdlock (l->lock);
 #endif
 		if (l->data && l->free_hdl != 255 &&
 		    !(l->free_hdl & MFREE_NOALLOC))
 			total += l->max * l->w;
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		if (l->lock)
 			pthread_rwlock_unlock (l->lock);
 #endif
@@ -1350,7 +1350,7 @@ void m_debug_print (FILE *fp)
 		 "Type", "Len", "Cap", "Data");
 	for (int idx = 0; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		if (l->lock)
 			pthread_rwlock_rdlock (l->lock);
 #endif
@@ -1361,7 +1361,7 @@ void m_debug_print (FILE *fp)
 				 idx, h, l->free_hdl, l->l, l->max,
 				 (void *)l->data);
 		}
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 		if (l->lock)
 			pthread_rwlock_unlock (l->lock);
 #endif

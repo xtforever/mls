@@ -81,9 +81,11 @@ foreach(tgt mls_base mls_ext)
     endif()
 
     if(MLS_THREAD_SAFE)
-        target_compile_definitions(${tgt} PRIVATE MLS_THREAD_SAFE)
+        target_compile_definitions(${tgt} PUBLIC MLS_THREAD_SAFE=1)
         find_package(Threads REQUIRED)
         target_link_libraries(${tgt} PUBLIC Threads::Threads)
+    else()
+        target_compile_definitions(${tgt} PUBLIC MLS_THREAD_SAFE=0)
     endif()
 
     # Link maths and dl (used by some modules)

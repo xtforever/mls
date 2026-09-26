@@ -26,6 +26,19 @@ extern "C" {
 #include <string.h>
 #include <unistd.h>
 
+/* Default MLS_THREAD_SAFE to 1 on Unix/POSIX platforms where pthreads is
+   universally available. Override with -DMLS_THREAD_SAFE=0 to disable.
+   Always defined (0 or 1) so value-based `#if MLS_THREAD_SAFE` works
+   everywhere, including this umbrella header's consumers. */
+#ifndef MLS_THREAD_SAFE
+#if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
+	defined(__FreeBSD__)
+#define MLS_THREAD_SAFE 1
+#else
+#define MLS_THREAD_SAFE 0
+#endif
+#endif
+
 #ifndef is_empty
 #define is_empty(s) (!((s) && *(s)))
 #endif

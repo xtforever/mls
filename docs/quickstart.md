@@ -2,6 +2,49 @@
 
 In fünf Minuten von null zum ersten laufenden Programm.
 
+## Eine Datei kopieren, fertig
+
+`mls` gibt es auch als einzelnen Header (stb-Stil). Für ein neues Projekt
+kopierst du einfach **eine** Datei aus diesem Repo — kein Build-System,
+keine weiteren Quellen nötig:
+
+- `mls_core.h` — Kern (Arrays, Strings, Listen, Tabellen, Tools)
+- `mls_full.h` — zusätzlich `m_http`, `m_hdf`, `m_http_server`, `m_flask`
+
+```bash
+cp mls_core.h dein_projekt/
+```
+
+In **genau einer** `.c`-Datei das Implementierungs-Makro setzen und den Header
+als Erstes einbinden; alle anderen Dateien binden ihn nur ein:
+
+```c
+// main.c
+#define MLS_CORE_IMPLEMENTATION
+#include "mls_core.h"   // muss vor <stdio.h> etc. stehen
+#include <stdio.h>
+
+int main(void)
+{
+    m_init();
+    int h = m_alloc(10, sizeof(int), MFREE);
+    int v = 42;
+    m_put(h, &v);
+    printf("%d\n", INT(h, 0));   // 42
+    m_free(h);
+    m_destruct();
+    return 0;
+}
+```
+
+```bash
+gcc -std=c11 main.c -o prog -lpthread -lm -ldl
+```
+
+Pthreads sind auf Unix standardmäßig aktiv (`-DMLS_THREAD_SAFE=0` schaltet sie
+ab). Beide Header werden von `python3 generate_amalgam.py` aus `lib/` erzeugt;
+`python3 generate_amalgam.py --check` prüft sie.
+
 ## Voraussetzungen
 
 - C99-Compiler (GCC/Clang), `make` oder CMake

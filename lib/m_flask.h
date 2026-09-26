@@ -26,7 +26,7 @@ void flask_register (const char *name, flask_handler_t handler);
  */
 void flask_run (const char *hdf_path);
 
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 /**
  * @brief Run the server using one detached worker thread per client.
  */

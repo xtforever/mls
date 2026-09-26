@@ -1,6 +1,6 @@
 #include "../lib/mls.h"
 
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 
 #include <assert.h>
 #include <pthread.h>

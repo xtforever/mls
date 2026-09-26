@@ -135,3 +135,29 @@ m_foreach(h, i, wert) {
 ```
 
 `m_foreach` startet bei `-1` und läuft bis `m_len(h)`.
+
+## Richtlinie: Handles statt Zeiger
+
+MLS übergibt und liefert Handles **als Wert** (`int`). Vermeide Zeiger,
+insbesondere In/Out-Zeiger, nur um ein Handle „zurückzugeben".
+
+```c
+// gut — Handle als Wert, Rückgabewert ist das (evtl. neue) Handle
+int h = s_printf(0, 0, "x");     // 0 = neu anlegen
+h = s_app(h, "y", NULL);         // wächst in place, gibt dasselbe Handle zurück
+```
+
+```c
+// schlecht — In/Out-Zeiger nur, um ein neues Handle mitzuteilen
+void append(int *h, const char *s);   // *h kann sich unerwartet ändern
+```
+
+- Handle-Parameter sind `int`, nicht `int *`.
+- `h == 0` heißt „neu anlegen"; die Funktion gibt das Handle zurück. Muss der
+  Aufrufer ein neues Handle behalten, weist er es seiner Variablen neu zu.
+- Fehler kommen über Rückgabewert / `mls_errno`, nicht über Ausgabezeiger.
+- Einzige Ausnahme sind Funktionen, die ohnehin Speicher liefern (`mls_safe`
+  gibt `void *`, `m_read` füllt ein `void **`), sowie `m_next`/`m_foreach`.
+
+Der Gewinn: kein `&`, keine Null-Zeiger-Prüfungen, kein Aliasing — das Handle
+ist die Identität, der Rückgabewert das Ergebnis.

@@ -25,8 +25,10 @@ LDLIBS+=-ldl -lm
 thread_safe ?= 1
 
 ifeq ($(thread_safe),1)
-CFLAGS+=-DMLS_THREAD_SAFE
+CFLAGS+=-DMLS_THREAD_SAFE=1
 LDLIBS+=-lpthread
+else
+CFLAGS+=-DMLS_THREAD_SAFE=0
 endif
 
 %.tab.c %.tab.h: %.y

@@ -1945,8 +1945,72 @@ int s_readln (int buf, FILE *fp)
 	return m_len (buf) - 1;
 }
 
+/**
+ * Trims leading/trailing whitespace from a NUL-terminated string in place.
+ * The base pointer is preserved so the caller can still free() it.
+ */
+static void trim_space_c (char *s)
+{
+	char *a = s;
+	char *b;
+	while (*a && isspace ((unsigned char)*a))
+		a++;
+	b = a + strlen (a);
+	while (b > a && isspace ((unsigned char)b[-1]))
+		*--b = 0;
+	memmove (s, a, (size_t)(b - a) + 1);
+}
+
+/**
+ * Reads one line from a file and splits it into its fields, separated by the
+ * literal string sep, into an m-array of string handles (MFREE_EACH: free the
+ * result with m_free(), access a field with m_str (INT (list, i))). An empty
+ * or NULL sep makes the whole line a single field. If strip is non-zero,
+ * leading/trailing whitespace of every field is removed. A non-zero dest is
+ * reused, its previous field handles freed first. Convenient for reading e.g.
+ * CSV or colon-separated files (/etc/passwd with sep ":").
+ *
+ * @param dest Handle of the resulting m-array, or 0 to allocate a new one.
+ * @param fp The file to read.
+ * @param sep The literal separator string; empty/NULL keeps the whole line
+ *            as a single field.
+ * @param strip Non-zero to trim whitespace around each field.
+ * @return The handle of the m-array of fields, or EOF when no line is left.
+ */
+int s_read_fields (int dest, FILE *fp, const char *sep, int strip)
+{
+	if (!fp)
+		return EOF;
+
+	int line = s_new ();
+	if (s_readln (line, fp) == EOF) {
+		m_free (line);
+		return EOF;
+	}
+
+	if (dest) { /* free previous field handles, then clear */
+		int p, *d;
+		m_foreach (dest, p, d) m_free (*d);
+		m_clear (dest);
+	} else
+		dest = m_alloc (16, sizeof (int), MFREE_EACH);
+
+	if (is_empty (sep)) { /* whole line is a single field */
+		if (strip)
+			s_trim (line);
+		m_put (dest, &line); /* transfer ownership, do not m_free(line) */
+		return dest;
+	}
+
+	int pattern = s_dup (sep);
+	dest = s_msplit_trim (dest, line, pattern, strip);
+	m_free (pattern);
+	m_free (line);
+	return dest;
+}
+
 /* Ring buffer lock — protects concurrent put/get on shared ring buffers */
-#ifdef MLS_THREAD_SAFE
+#if MLS_THREAD_SAFE
 static pthread_mutex_t ring_lock = PTHREAD_MUTEX_INITIALIZER;
 #define RING_LOCK() pthread_mutex_lock (&ring_lock)
 #define RING_UNLOCK() pthread_mutex_unlock (&ring_lock)
