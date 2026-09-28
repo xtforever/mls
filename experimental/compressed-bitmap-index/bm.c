@@ -534,6 +534,11 @@ int64_t bm_prev0 (int bs, bm_bit_t from)
 			return (int64_t)CH_BITPOS (c) - 1;
 		w = chunk_len (prv);
 	}
+	/* exhausted down to chunk 0: the implicit gap before it (if any)
+	   is still full of zeros */
+	struct chunk *c0 = mls_safe (bs, 0);
+	if (c0 && (CH_BITPOS (c0) > 0))
+		return (int64_t)CH_BITPOS (c0) - 1;
 	return BM_NONE;
 }
 
@@ -561,6 +566,9 @@ static int bm_op (int bs2, int bs0, int bs1, bm_bit_t start, bm_bit_t count,
 	if (count == 0)
 		return bs2;
 	uint64_t end = (uint64_t)start + count - 1;
+	if (end > (uint64_t)UINT32_MAX)
+		end = UINT32_MAX; /* out-of-domain tail: clamp, else sw<<6 wraps
+				   */
 	uint64_t sw0 = start >> 6, sw1 = end >> 6;
 	for (uint64_t sw = sw0; sw <= sw1; sw++) {
 		uint64_t a = word_get (bs0, (uint32_t)sw);
@@ -632,12 +640,17 @@ int bm_split (int bs, bm_bit_t n)
 		return -1;
 	}
 	uint32_t bpos = CH_BITPOS (c) + (uint32_t)off * BM_WORD;
-	chunk_to_inline (c);
 	if (!m_ins_safe (bs, (size_t)i + 1, 1)) {
+		/* restore the truncated first half: OOM must not lose data */
+		if (m_setlen_safe (h0, len) == 0)
+			m_write_safe (h0, off, mls (h2, 0), len - off);
 		m_free (h2);
 		return -1;
 	}
+	/* re-fetch: m_ins may have realloc'd the list backing array */
+	c = mls (bs, (size_t)i);
 	struct chunk *p = mls (bs, (size_t)i + 1);
+	chunk_to_inline (c);
 	p->bitpos = bpos;
 	p->data = h2;
 	chunk_to_inline (p);
@@ -683,10 +696,15 @@ int bm_merge (int bs, int ci)
 			chunk_word (c1, w);
 	int h0 = CH_INLINE (c0) ? 0 : CH_HANDLE (c0);
 	int h1 = CH_INLINE (c1) ? 0 : CH_HANDLE (c1);
+	/* delete before re-pointing c0: a failed delete must leave the list
+	   (and c0's data handle) untouched */
+	if (m_del_safe (bs, (size_t)ci + 1) != 0) {
+		m_free (h);
+		return -1;
+	}
+	c0 = mls (bs, (size_t)ci); /* re-fetch: m_del may have realloc'd it */
 	c0->bitpos = (uint32_t)(s0 << 6);
 	c0->data = h;
-	if (m_del_safe (bs, (size_t)ci + 1) != 0)
-		return -1;
 	if (h0)
 		m_free (h0);
 	if (h1)

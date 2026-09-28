@@ -109,7 +109,8 @@ def generate_html(all_docs):
             html += f'<h3>{func["name"]}</h3>\n'
             html += f'<pre><code>{func["signature"]}</code></pre>\n'
             if func['description']:
-                html += f'<p>{func["description"].replace("\\n", "<br>")}</p>\n'
+                desc = func['description'].replace('\n', '<br>')
+                html += f'<p>{desc}</p>\n'
             
             if func['params']:
                 html += '<div class="params"><strong>Parameters:</strong><ul>'
@@ -126,10 +127,11 @@ def generate_html(all_docs):
     return html
 
 def main():
+    # Nur Dateien mit Doxygen-Kommentaren (sonst leere Abschnitte).
     source_files = [
-        'lib/mls.c',
+        'lib/mls_base.c',
+        'lib/mls_ext.c',
         'lib/m_tool.c',
-        'lib/m_table.c',
         'lib/m_extra.c'
     ]
     os.makedirs('docs/api', exist_ok=True)
