@@ -26,6 +26,7 @@ struct imdb_db {
 	const uint32_t *ids;	  /* [n] */
 	const uint16_t *years;	  /* [n] */
 	const float *idf_sum;	  /* [n] Summe IDF der Titel-Tokens */
+	const uint8_t *types;	  /* [n] Titeltyp (imdb_type) */
 	const uint32_t *dict_off; /* [t+1] String-Offsets */
 	const char *dict;
 	const uint32_t *postings; /* [p] */
@@ -263,6 +264,8 @@ struct imdb_db *imdb_open (const char *path)
 			goto invalid;
 		if (!sec_fits (&h, (size_t)st.st_size, IMDB_SEC_IDF_SUM, N * 4))
 			goto invalid;
+		if (!sec_fits (&h, (size_t)st.st_size, IMDB_SEC_TYPES, N))
+			goto invalid;
 		if (!sec_fits (&h, (size_t)st.st_size, IMDB_SEC_DICT_OFF,
 			       (T + 1) * 4))
 			goto invalid;
@@ -298,6 +301,7 @@ struct imdb_db *imdb_open (const char *path)
 			(const uint16_t *)(db->base + h.off[IMDB_SEC_YEARS]);
 		db->idf_sum =
 			(const float *)(db->base + h.off[IMDB_SEC_IDF_SUM]);
+		db->types = (const uint8_t *)(db->base + h.off[IMDB_SEC_TYPES]);
 		db->dict_off =
 			(const uint32_t *)(db->base + h.off[IMDB_SEC_DICT_OFF]);
 		db->dict = (const char *)(db->base + h.off[IMDB_SEC_DICT]);
@@ -403,6 +407,15 @@ static int hit_cmp (const void *a, const void *b)
 		return 1;
 	if (kx > ky)
 		return -1;
+	/* Typ (Serie) nur als Tiebreak, nicht additiv - sonst verdraengt
+	 * ein generischer Serientitel ("Star Trek") den spezifischeren. */
+	if (x->thit != y->thit)
+		return x->thit ? -1 : 1;
+	/* Mehr gematchte Tokens = spezifischer (z. B. "Alice im Wunderland"
+	 * mit 2 statt "Moria" mit 1); schlaegt das IDF-Gewicht, weil ein
+	 * einzelnes seltenes Token sonst einen Mehrwort-Titel ueberstimmt. */
+	if (x->nmatch != y->nmatch)
+		return x->nmatch > y->nmatch ? -1 : 1;
 	if (x->weight < y->weight)
 		return 1;
 	if (x->weight > y->weight)
@@ -414,8 +427,20 @@ static int hit_cmp (const void *a, const void *b)
 	return 0;
 }
 
+int imdb_is_stop (const struct imdb_db *db, const char *tok)
+{
+	int m = dict_find (db, tok);
+	if (m < 0)
+		return 1; /* unbekannt: traegt nichts zum Score bei */
+	uint32_t df = db->post_off[m + 1] - db->post_off[m];
+	uint32_t cutoff = db->n / 20;
+	if (!cutoff)
+		cutoff = 1;
+	return df > cutoff;
+}
+
 int imdb_search (const struct imdb_db *cdb, const char *query, int year_hint,
-		 int topk, struct imdb_hit *out, int outcap)
+		 int want_series, int topk, struct imdb_hit *out, int outcap)
 {
 	if (topk <= 0 || outcap <= 0)
 		return 0;
@@ -535,11 +560,13 @@ int imdb_search (const struct imdb_db *cdb, const char *query, int year_hint,
 					db->hits[ncand].rec = r;
 					db->hits[ncand].score = 0.0f;
 					db->hits[ncand].weight = wq;
+					db->hits[ncand].nmatch = 1;
 					ncand++;
 				} else {
 					struct imdb_hit *h =
 						&db->hits[db->pos[r]];
 					h->weight += wq;
+					h->nmatch++;
 				}
 			}
 		}
@@ -561,9 +588,14 @@ int imdb_search (const struct imdb_db *cdb, const char *query, int year_hint,
 				sc = 1.0;
 			db->hits[i].score = (float)sc;
 			db->hits[i].yhit =
-				(year_hint && (int)db->years[r] == year_hint)
+				(year_hint > 0 && db->years[r] > 0 &&
+				 abs ((int)db->years[r] - year_hint) <= 1)
 					? 1
 					: 0;
+			db->hits[i].thit = (want_series > 0 &&
+					    IMDB_TYPE_IS_SERIES (db->types[r]))
+						   ? 1
+						   : 0;
 		}
 
 		if (ncand) {
@@ -601,6 +633,13 @@ int imdb_year (const struct imdb_db *db, uint32_t rec)
 	if (rec >= db->n)
 		return 0;
 	return db->years[rec];
+}
+
+uint8_t imdb_type (const struct imdb_db *db, uint32_t rec)
+{
+	if (rec >= db->n)
+		return IMDB_T_OTHER;
+	return db->types[rec];
 }
 
 void imdb_id (const struct imdb_db *db, uint32_t rec, char *buf, size_t cap)

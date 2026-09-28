@@ -26,16 +26,19 @@
 struct imdb_db;
 
 struct imdb_hit {
-	uint32_t rec; /* Record-Index in der DB */
-	float score;  /* IDF-Jaccard, <= 1.0 */
-	float weight; /* Summe IDF der gematchten Query-Tokens (Tiebreak) */
-	uint8_t yhit; /* 1 = Record-Jahr passt zu year_hint */
+	uint32_t rec;	 /* Record-Index in der DB */
+	float score;	 /* IDF-Jaccard, <= 1.0 */
+	float weight;	 /* Summe IDF der gematchten Query-Tokens */
+	uint16_t nmatch; /* Anzahl gematchter Query-Tokens (Tiebreak) */
+	uint8_t yhit;	 /* 1 = Record-Jahr passt zu year_hint */
+	uint8_t thit;	 /* 1 = Record-Typ passt zu want_series */
 };
 
 /* Bonus fuer einen Jahres-Treffer bei der Kandidatenauswahl: gross genug,
  * um gleich gute Treffer verschiedener Jahre zu trennen, klein genug, um
  * einen klar besseren Titel ohne Jahres-Treffer nicht zu verdraengen.
- * Wirkt nur auf Treffer mit score >= IMDB_SCORE_MIN. */
+ * Wirkt nur auf Treffer mit score >= IMDB_SCORE_MIN. Der Titeltyp
+ * (want_series) wirkt nur als Tiebreak, nicht additiv. */
 #define IMDB_YEAR_BONUS 0.15f
 #define IMDB_SCORE_MIN 0.4f
 
@@ -45,14 +48,19 @@ void imdb_close (struct imdb_db *db);
 
 /* Sucht query in db. Schreibt hoechstens min(topk,outcap) Treffer nach out
  * (nach score absteigend, Tiebreak rec aufsteigend) und gibt die Zahl der
- * geschriebenen Treffer zurueck. year_hint > 0 gibt Recordern mit diesem
- * Jahr einen Epsilon-Bonus. */
+ * geschriebenen Treffer zurueck. year_hint > 0 bevorzugt dieses Jahr;
+ * want_series > 0 bevorzugt Serien (tvSeries/tvMiniSeries/miniSeries). */
 int imdb_search (const struct imdb_db *db, const char *query, int year_hint,
-		 int topk, struct imdb_hit *out, int outcap);
+		 int want_series, int topk, struct imdb_hit *out, int outcap);
 
-/* Read-only Zugriffe. Bei rec ausserhalb [0,N): "" / 0 / "tt0000000". */
+/* 1, wenn Token stoppend ist (df > N/20) oder unbekannt. */
+int imdb_is_stop (const struct imdb_db *db, const char *tok);
+
+/* Read-only Zugriffe. Bei rec ausserhalb [0,N): "" / 0 / "tt0000000" / OTHER.
+ */
 const char *imdb_title (const struct imdb_db *db, uint32_t rec);
 int imdb_year (const struct imdb_db *db, uint32_t rec);
+uint8_t imdb_type (const struct imdb_db *db, uint32_t rec);
 void imdb_id (const struct imdb_db *db, uint32_t rec, char *buf, size_t cap);
 
 /* Normalisiert src byteweise (identisch zum frueheren mls-Imdb-Normalizer):

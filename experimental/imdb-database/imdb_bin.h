@@ -4,15 +4,15 @@
 /* Gemeinsames Binaerformat fuer Build-Tool (imdb_build.c) und Reader
  * (imdb_db.c). Little-Endian, x86-64, alle Sektionen 8-Byte-aligned.
  *
- *   Header (104 B):
+ *   Header (112 B):
  *     char     magic[8]   "IMDBBIN1"
- *     uint32_t version    1
+ *     uint32_t version    5
  *     uint32_t endian     0x01020304
  *     uint32_t n_records  N
  *     uint32_t n_tokens   T
  *     uint32_t n_postings P
  *     uint32_t reserved   0
- *     uint64_t off[9]     Sektionsoffsets (off[8] = Start post_off)
+ *     uint64_t off[10]    Sektionsoffsets (off[9] = Start types)
  *
  *   Sektionen (Index = off[]-Index):
  *     0 title_off u32[N+1]   Offset ins Titelblob; letzter = titles_len
@@ -25,22 +25,17 @@
  *     7 postings  u32[P]     CSR, je Token rec aufsteigend, je (Token,rec)
  *                            genau EINMAL (Set-Semantik)
  *     8 post_off  u32[T+1]   CSR-Zeilenoffset je Token in postings
+ *     9 types     u8[N]      Titeltyp (enum imdb_type)
  *
- * HINWEIS zum Auftragsformat: Die Auftragsbeschreibung nennt dict_off
- * zugleich als CSR-Zeilenoffset ("df = dict_off[i+1]-dict_off[i]") und
- * verlangt in der Validierung "dict_off[T]==dict_len" sowie eine
- * Binaersuche ueber dict. Das ist widerspruechlich: Ein Array kann nicht
- * gleichzeitig Byte-Offsets in den Stringblob und Posting-Anzahlen sein.
- * Aufgeloest wird das, indem dict_off die String-Offsets haelt (erfuellt
- * die Validierung + Binaersuche) und die CSR-Zeilenoffsets in der 9.
- * Sektion post_off liegen. off[9] ist im Auftrag als "Sektionsoffsets"
- * beschrieben, es waren nur 8 Sektionen benannt.
+ * dict_off haelt die String-Offsets in dict (fuer Binaersuche +
+ * Validierung "dict_off[T]==dict_len"); die CSR-Zeilenoffsets liegen in
+ * post_off, weil ein Array nicht beides zugleich sein kann.
  */
 
 #include <stdint.h>
 
 #define IMDB_BIN_MAGIC "IMDBBIN1"
-#define IMDB_BIN_VERSION 4u /* v4: idf_sum ohne Stop-Woerter */
+#define IMDB_BIN_VERSION 5u /* v5: Titeltyp (types-Sektion) */
 #define IMDB_BIN_ENDIAN 0x01020304u
 
 enum imdb_section {
@@ -53,8 +48,27 @@ enum imdb_section {
 	IMDB_SEC_DICT = 6,
 	IMDB_SEC_POSTINGS = 7,
 	IMDB_SEC_POST_OFF = 8,
-	IMDB_SEC_COUNT = 9
+	IMDB_SEC_TYPES = 9,
+	IMDB_SEC_COUNT = 10
 };
+
+/* Kompakter Titeltyp (aus title.basics; aka-Records erben den Typ ihres
+ * titleId). miniSeries/tvMiniSeries sind zusammengefasst. */
+enum imdb_type {
+	IMDB_T_OTHER = 0,
+	IMDB_T_MOVIE = 1,
+	IMDB_T_TVMOVIE = 2,
+	IMDB_T_TVSERIES = 3,
+	IMDB_T_MINISERIES = 4,
+	IMDB_T_TVSHORT = 5,
+	IMDB_T_TVSPECIAL = 6,
+	IMDB_T_SHORT = 7,
+	IMDB_T_VIDEO = 8,
+	IMDB_T_SPECIAL = 9
+};
+
+#define IMDB_TYPE_IS_SERIES(t)                                                 \
+	((t) == IMDB_T_TVSERIES || (t) == IMDB_T_MINISERIES)
 
 struct imdb_bin_header {
 	char magic[8];
@@ -64,13 +78,13 @@ struct imdb_bin_header {
 	uint32_t n_tokens;
 	uint32_t n_postings;
 	uint32_t reserved;
-	uint64_t off[9];
+	uint64_t off[10];
 };
 
-_Static_assert (sizeof (uint32_t) == 4, "uint32_t muss 4 Byte sein");
-_Static_assert (sizeof (uint16_t) == 2, "uint16_t muss 2 Byte sein");
-_Static_assert (sizeof (uint64_t) == 8, "uint64_t muss 8 Byte sein");
-_Static_assert (sizeof (struct imdb_bin_header) == 104,
-		"Header muss 104 Byte sein");
+_Static_assert(sizeof (uint32_t) == 4, "uint32_t muss 4 Byte sein");
+_Static_assert(sizeof (uint16_t) == 2, "uint16_t muss 2 Byte sein");
+_Static_assert(sizeof (uint64_t) == 8, "uint64_t muss 8 Byte sein");
+_Static_assert(sizeof (struct imdb_bin_header) == 112,
+	       "Header muss 112 Byte sein");
 
 #endif

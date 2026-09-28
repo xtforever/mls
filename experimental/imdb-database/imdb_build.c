@@ -60,6 +60,7 @@ static int buf_put (struct buf *b, const void *src, size_t n)
 
 static int push_u32 (struct buf *b, uint32_t v) { return buf_put (b, &v, 4); }
 static int push_u16 (struct buf *b, uint16_t v) { return buf_put (b, &v, 2); }
+static int push_u8 (struct buf *b, uint8_t v) { return buf_put (b, &v, 1); }
 
 static void buf_free (struct buf *b)
 {
@@ -126,8 +127,8 @@ static int build (const char *tsv, const char *out)
 	}
 
 	struct buf titles = {0}, title_off = {0}, ids = {0}, years = {0},
-		   tokblob = {0}, occ = {0}, dict = {0}, dict_off = {0},
-		   postings = {0}, post_off = {0};
+		   types = {0}, tokblob = {0}, occ = {0}, dict = {0},
+		   dict_off = {0}, postings = {0}, post_off = {0};
 	char *line = NULL, *norm = NULL;
 	char **toks = NULL;
 	size_t linecap = 0, normcap = 0, tokscap = 0;
@@ -149,7 +150,16 @@ static int build (const char *tsv, const char *out)
 		if (!t2)
 			continue;
 		*t2 = 0;
-		const char *id = line, *ys = t1 + 1, *title = t2 + 1;
+		char *t3 = strchr (t2 + 1, '\t');
+		const char *id = line, *ys = t1 + 1, *title;
+		uint8_t type = 0;
+		if (t3) { /* 4 Spalten: titleId year type title */
+			*t3 = 0;
+			type = (uint8_t)atoi (t2 + 1);
+			title = t3 + 1;
+		} else { /* 3 Spalten (Alt-TSV): type = 0 */
+			title = t2 + 1;
+		}
 		if (!*id || !*title)
 			continue;
 
@@ -179,6 +189,8 @@ static int build (const char *tsv, const char *out)
 		if (!push_u32 (&ids, (uint32_t)idv))
 			goto nomem;
 		if (!push_u16 (&years, yv))
+			goto nomem;
+		if (!push_u8 (&types, type))
 			goto nomem;
 
 		size_t need = imdb_norm (title, NULL, 0);
@@ -341,7 +353,7 @@ static int build (const char *tsv, const char *out)
 	}
 
 	/* Offsets berechnen */
-	uint64_t off[9];
+	uint64_t off[10];
 	off[0] = sizeof (struct imdb_bin_header);
 	off[1] = align8 (off[0] + (uint64_t)(n + 1) * 4);
 	off[2] = align8 (off[1] + titles.len);
@@ -351,6 +363,7 @@ static int build (const char *tsv, const char *out)
 	off[6] = align8 (off[5] + (uint64_t)(T + 1) * 4);
 	off[7] = align8 (off[6] + dict.len);
 	off[8] = align8 (off[7] + (uint64_t)nocc * 4);
+	off[9] = align8 (off[8] + (uint64_t)(T + 1) * 4);
 
 	/* Schreiben */
 	FILE *of = fopen (out, "wb");
@@ -378,7 +391,8 @@ static int build (const char *tsv, const char *out)
 		 write_section (of, dict_off.p, (size_t)(T + 1) * 4) &&
 		 write_section (of, dict.p, dict.len) &&
 		 write_section (of, postings.p, nocc * 4) &&
-		 write_section (of, post_off.p, (size_t)(T + 1) * 4);
+		 write_section (of, post_off.p, (size_t)(T + 1) * 4) &&
+		 write_section (of, types.p, (size_t)n);
 	if (fclose (of) != 0)
 		ok = 0;
 	if (!ok) {
@@ -404,6 +418,7 @@ out:
 	buf_free (&title_off);
 	buf_free (&ids);
 	buf_free (&years);
+	buf_free (&types);
 	buf_free (&tokblob);
 	buf_free (&occ);
 	buf_free (&dict);
