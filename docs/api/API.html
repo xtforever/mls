@@ -1262,6 +1262,18 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>buf Handle of the string buffer.</code></li><li><code>fp File pointer.</code></li></ul></div>
 <p class="returns">Returns: <code>The length of the line read, or EOF.</code></p>
 </section><hr>
+<section id="trim_space_c">
+<h3>trim_space_c</h3>
+<pre><code>static void trim_space_c(char *s)</code></pre>
+<p>Trims leading/trailing whitespace from a NUL-terminated string in place.<br>The base pointer is preserved so the caller can still free() it.</p>
+</section><hr>
+<section id="s_read_fields">
+<h3>s_read_fields</h3>
+<pre><code>int s_read_fields(int dest, FILE *fp, const char *sep, int strip)</code></pre>
+<p>Reads one line from a file and splits it into its fields, separated by the<br>literal string sep, into an m-array of string handles (MFREE_EACH: free the<br>result with m_free(), access a field with m_str (INT (list, i))). An empty<br>or NULL sep makes the whole line a single field. If strip is non-zero,<br>leading/trailing whitespace of every field is removed. A non-zero dest is<br>reused, its previous field handles freed first. Convenient for reading e.g.<br>CSV or colon-separated files (/etc/passwd with sep ":").<br><br>as a single field.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Handle of the resulting m-array, or 0 to allocate a new one.</code></li><li><code>fp The file to read.</code></li><li><code>sep The literal separator string; empty/NULL keeps the whole line</code></li><li><code>strip Non-zero to trim whitespace around each field.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the m-array of fields, or EOF when no line is left.</code></p>
+</section><hr>
 <section id="ring_create">
 <h3>ring_create</h3>
 <pre><code>int ring_create(int size)</code></pre>
@@ -1334,15 +1346,15 @@
 <section id="s_trim_left_c">
 <h3>s_trim_left_c</h3>
 <pre><code>int s_trim_left_c(int h, const char *chars)</code></pre>
-<p>Trims specific characters from the left side of a string.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>chars A string containing characters to trim. If NULL, trims whitespace.</code></li></ul></div>
+<p>Trims specific characters from the left side of a string.<br><br>whitespace.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>chars A string containing characters to trim. If NULL, trims</code></li></ul></div>
 <p class="returns">Returns: <code>A new handle containing the trimmed string.</code></p>
 </section><hr>
 <section id="s_trim_right_c">
 <h3>s_trim_right_c</h3>
 <pre><code>int s_trim_right_c(int h, const char *chars)</code></pre>
-<p>Trims specific characters from the right side of a string.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>chars A string containing characters to trim. If NULL, trims whitespace.</code></li></ul></div>
+<p>Trims specific characters from the right side of a string.<br><br>whitespace.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>h The string handle.</code></li><li><code>chars A string containing characters to trim. If NULL, trims</code></li></ul></div>
 <p class="returns">Returns: <code>A new handle containing the trimmed string.</code></p>
 </section><hr>
 <section id="s_reverse">

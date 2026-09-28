@@ -3434,6 +3434,45 @@ Reads a line from a file into an m-array string buffer.
 
 ---
 
+### `trim_space_c`
+
+**Signature:**
+```c
+static void trim_space_c(char *s)
+```
+
+Trims leading/trailing whitespace from a NUL-terminated string in place.
+The base pointer is preserved so the caller can still free() it.
+
+---
+
+### `s_read_fields`
+
+**Signature:**
+```c
+int s_read_fields(int dest, FILE *fp, const char *sep, int strip)
+```
+
+Reads one line from a file and splits it into its fields, separated by the
+literal string sep, into an m-array of string handles (MFREE_EACH: free the
+result with m_free(), access a field with m_str (INT (list, i))). An empty
+or NULL sep makes the whole line a single field. If strip is non-zero,
+leading/trailing whitespace of every field is removed. A non-zero dest is
+reused, its previous field handles freed first. Convenient for reading e.g.
+CSV or colon-separated files (/etc/passwd with sep ":").
+
+as a single field.
+
+**Parameters:**
+- dest Handle of the resulting m-array, or 0 to allocate a new one.
+- fp The file to read.
+- sep The literal separator string; empty/NULL keeps the whole line
+- strip Non-zero to trim whitespace around each field.
+
+**Returns:** The handle of the m-array of fields, or EOF when no line is left.
+
+---
+
 ### `ring_create`
 
 **Signature:**
@@ -3610,9 +3649,11 @@ int s_trim_left_c(int h, const char *chars)
 
 Trims specific characters from the left side of a string.
 
+whitespace.
+
 **Parameters:**
 - h The string handle.
-- chars A string containing characters to trim. If NULL, trims whitespace.
+- chars A string containing characters to trim. If NULL, trims
 
 **Returns:** A new handle containing the trimmed string.
 
@@ -3627,9 +3668,11 @@ int s_trim_right_c(int h, const char *chars)
 
 Trims specific characters from the right side of a string.
 
+whitespace.
+
 **Parameters:**
 - h The string handle.
-- chars A string containing characters to trim. If NULL, trims whitespace.
+- chars A string containing characters to trim. If NULL, trims
 
 **Returns:** A new handle containing the trimmed string.
 

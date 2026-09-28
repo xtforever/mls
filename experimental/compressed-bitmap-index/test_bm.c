@@ -116,6 +116,16 @@ static void test_scans (void)
 	assert (bm_prev0 (bs, 101) == 101);
 	assert (bm_prev0 (bs, 1000) == 999);
 
+	/* prev0 sees the implicit-zero gap BEFORE the first chunk */
+	int g = bm_create ();
+	for (int i = 128; i < 192; i++)
+		bm_set (g, (bm_bit_t)i);
+	assert (bm_chunks (g) == 1);
+	assert (bm_prev0 (g, 150) == 127);
+	assert (bm_prev0 (g, 191) == 127);
+	assert (bm_prev0 (g, 200) == 200);
+	bm_destroy (g);
+
 	/* full word: first zero is just past it */
 	int f = bm_create ();
 	for (int i = 0; i < 64; i++)
@@ -175,6 +185,13 @@ static void test_setops (void)
 	assert (bm_or (c, c, bb, 0, R) == c);
 	for (int i = 0; i < R; i++)
 		assert (bm_test (c, (bm_bit_t)i) == (a[i] | b[i]));
+
+	/* out-of-domain tail (start + count > 2^32): clamped, no stray write */
+	int nch = bm_chunks (ba);
+	assert (bm_or (ba, ba, ba, 0xFFFFFFFF, 2) == ba);
+	assert (bm_chunks (ba) == nch);
+	for (int i = 0; i < R; i++)
+		assert (bm_test (ba, (bm_bit_t)i) == a[i]);
 
 	bm_destroy (c);
 	bm_destroy (r_and);

@@ -177,6 +177,9 @@ int64_t bm_prev0(int bs, bm_bit_t from);  /* largest clear bit <= from */
 
 `bm_next0`/`bm_prev0` treat a `from` that lands in an implicit gap as an
 immediate hit (the gap is zero). `bm_next1`/`bm_prev1` skip gaps.
+`bm_prev0` includes the gap *before* the first chunk: if every materialised
+word down to chunk 0 is full and chunk 0 does not start at word 0, it returns
+`bitpos(chunk 0) - 1`.
 
 ## 6. Bitset operations
 
@@ -208,7 +211,8 @@ Semantics:
 
 Implementation is a word loop from `word_of(start)` to `word_of(start +
 count - 1)`; use `uint64_t` for the end computation so `start + count` cannot
-wrap.
+wrap. A tail beyond bit `2^32 - 1` is clamped to the domain (word index
+`2^26 - 1`), so `sw << 6` can never wrap a `uint32_t`.
 
 ## 7. Housekeeping
 
