@@ -342,6 +342,20 @@ int m_wrapcstr (char *s)
 	int len = strlen (s) + 1;
 	return new_list (s, len, len, 1, MFREE_NOALLOC);
 }
+/* zero-copy wrap a c-string array into an m-array of string handles
+   (MFREE_EACH: free the result with m_free(); the strings are owned by the
+   caller and must outlive the list). The result feeds s_implode_q(). */
+int m_wrapstrhandles (const char **list, int nelem)
+{
+	int m = m_alloc (nelem > 0 ? nelem : 1, sizeof (int), MFREE_EACH);
+	if (list)
+		for (int i = 0; i < nelem; i++) {
+			int h = list[i] ? m_wrapcstr ((char *)list[i])
+					: s_ccstr ("");
+			m_put (m, &h);
+		}
+	return m;
+}
 /**
  * Initializes the MLS library system.
  * Allocates the master handle list and registers default free handlers.
@@ -756,9 +770,11 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		size_t nbytes = cnt * width;
 		if (cnt > 0 && nbytes / cnt != width)
 			ERR ("Integer overflow in slice");
-		/* ponytail: copy src to temp and release src lock before
-		   locking dest — avoids lock-order-inversion (rwlock → master)
-		 */
+		/* ponytail: threaded builds copy src to a temp and drop the src
+		   lock before taking the dest lock — avoids
+		   lock-order-inversion (rwlock → master). Non-threaded builds
+		   have no locks to invert and copy straight across. */
+#if MLS_THREAD_SAFE
 		lst_t src_lp = lock_handle (m, 0);
 		void *tmp = malloc (nbytes);
 		if (!tmp)
@@ -770,6 +786,24 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		lst_write (dst_lp, offs, tmp, cnt);
 		unlock_handle (dst_lp);
 		free (tmp);
+#else
+		/* dest may equal m (m_mcopy shifts in place), so grow first and
+		   memmove to stay overlap-safe. */
+		lst_t dst_lp = lock_handle (dest, 1);
+		if (dest == m) {
+			if (offs + cnt > dst_lp->max)
+				lst_resize (dst_lp, offs + cnt);
+			if (offs + cnt > dst_lp->l)
+				dst_lp->l = offs + cnt;
+			memmove (lst (dst_lp, offs), lst (dst_lp, (size_t)a),
+				 nbytes);
+		} else {
+			lst_t src_lp = lock_handle (m, 0);
+			lst_write (dst_lp, offs, lst (src_lp, (size_t)a), cnt);
+			unlock_handle (src_lp);
+		}
+		unlock_handle (dst_lp);
+#endif
 	}
 	return dest;
 }
@@ -1641,6 +1675,14 @@ int _m_wrapints (int ln, const char *fn, const char *fun, int *list, int nelem)
 int _m_wrapcstr (int ln, const char *fn, const char *fun, char *s)
 {
 	int m_uaf = m_wrapcstr (s);
+	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
+	return m_uaf;
+}
+
+int _m_wrapstrhandles (int ln, const char *fn, const char *fun,
+		       const char **list, int nelem)
+{
+	int m_uaf = m_wrapstrhandles (list, nelem);
 	// _debug_create_list(m_uaf, __FUNCTION__, ln, fn, fun );
 	return m_uaf;
 }

@@ -25,11 +25,13 @@ int main (void)
 	/* multi-char separator, one line, then EOF */
 	FILE *fp = mem ("a::b::c\n");
 	f = s_read_fields (f, fp, "::", 0);
-	assert (f != EOF && m_len (f) == 3);
+	assert (f && m_len (f) == 3);
 	assert (strcmp (fv (f, 0), "a") == 0);
 	assert (strcmp (fv (f, 1), "b") == 0);
 	assert (strcmp (fv (f, 2), "c") == 0);
-	assert (s_read_fields (f, fp, "::", 0) == EOF);
+	assert (m_len (s_read_fields (f, fp, "::", 0)) == 0);
+	/* repeated EOF reuses the same handle, still empty (no leak) */
+	assert (s_read_fields (f, fp, "::", 0) == f);
 	fclose (fp);
 
 	/* dest reuse + trim, two lines */
@@ -44,7 +46,7 @@ int main (void)
 	assert (strcmp (fv (f, 0), "4") == 0);
 	assert (strcmp (fv (f, 1), "bob") == 0);
 	assert (strcmp (fv (f, 2), "6") == 0);
-	assert (s_read_fields (f, fp, ",", 1) == EOF);
+	assert (m_len (s_read_fields (f, fp, ",", 1)) == 0);
 	fclose (fp);
 
 	/* no trim keeps spaces; trailing separator -> empty last field */
@@ -91,6 +93,11 @@ int main (void)
 	assert (strcmp (fv (f, 0), "wheel") == 0);
 	assert (strcmp (fv (f, 3), "") == 0);
 	fclose (fp);
+
+	/* NULL fp -> empty list, still a valid handle */
+	int none = s_read_fields (0, NULL, ",", 0);
+	assert (none > 0 && m_len (none) == 0);
+	m_free (none);
 
 	m_free (f);
 	m_destruct ();

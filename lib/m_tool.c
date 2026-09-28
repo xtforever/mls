@@ -231,6 +231,7 @@ int vas_printf (int m, int p, const char *format, va_list ap)
 		return -1;
 	vsnprintf (tmp, (size_t)len, format, ap);
 	m_write (m, (size_t)p, tmp, (size_t)len);
+	m_setlen (m, (size_t)len + p);
 	free (tmp);
 	return m;
 }
@@ -1064,20 +1065,47 @@ int s_msplit_trim (int dest, int src, int pattern, int trim)
  */
 int s_implode (int dest, int srcs, int seperator)
 {
+	return s_implode_q (dest, srcs, seperator, 0);
+}
+
+/**
+ * Like s_implode(), but optionally quotes every element. With quote == '\''
+ * or '"' each element is wrapped in that character and any occurrence of it
+ * inside the element is doubled, so the result stays well formed for SQL/CSV
+ * (e.g. 'O''Brien'). quote == 0 joins without quoting, exactly like
+ * s_implode(); an empty/NULL separator just concatenates the elements.
+ *
+ * @param dest Destination handle. If 0, a new one is allocated.
+ * @param srcs Handle of the m-array of string handles.
+ * @param seperator Handle of the separator string buffer.
+ * @param quote Quote character: 0 for none, or '\'' / '"'.
+ * @return The handle of the destination string buffer.
+ */
+int s_implode_q (int dest, int srcs, int seperator, char quote)
+{
 	if (dest == 0)
 		dest = s_new ();
 	else
 		m_clear (dest);
-	if (srcs <= 0 || m_len (srcs) == 0 || s_isempty (seperator))
+	if (srcs <= 0 || m_len (srcs) == 0)
 		goto leave;
 
 	int p, *d;
 	m_foreach (srcs, p, d)
 	{
-		if (p) {
+		if (p)
 			m_slice (dest, m_len (dest), seperator, 0, -2);
+		if (!quote) {
+			m_slice (dest, m_len (dest), *d, 0, -2);
+			continue;
 		}
-		m_slice (dest, m_len (dest), *d, 0, -2);
+		m_putc (dest, quote);
+		for (char *s = m_str (*d); *s; s++) {
+			m_putc (dest, *s);
+			if (*s == quote)
+				m_putc (dest, quote);
+		}
+		m_putc (dest, quote);
 	}
 leave:
 	m_putc (dest, 0);
@@ -1108,6 +1136,16 @@ int s_strcpy_c (int out, const char *s)
 	s_app1 (out, (char *)s);
 	return out;
 }
+
+/**
+ * Copies a MLS-style string into an string buffer.
+ *
+ * @param out Handle of the destination string buffer. If <= 0, a new one is
+ * allocated.
+ * @param s The MLS-style string.
+ * @return The handle of the string buffer.
+ */
+int s_strcpy (int out, int in) { return s_slice (out, 0, in, 0, -1); }
 
 /**
  * Prints a string buffer followed by a newline.
@@ -1975,25 +2013,27 @@ static void trim_space_c (char *s)
  * @param sep The literal separator string; empty/NULL keeps the whole line
  *            as a single field.
  * @param strip Non-zero to trim whitespace around each field.
- * @return The handle of the m-array of fields, or EOF when no line is left.
+ * @return The handle of the m-array of fields. At end of input (or when fp is
+ *         NULL) this is an empty list (0 fields), never EOF; test with
+ *         m_len (result) == 0.
  */
 int s_read_fields (int dest, FILE *fp, const char *sep, int strip)
 {
-	if (!fp)
-		return EOF;
-
-	int line = s_new ();
-	if (s_readln (line, fp) == EOF) {
-		m_free (line);
-		return EOF;
-	}
-
 	if (dest) { /* free previous field handles, then clear */
 		int p, *d;
 		m_foreach (dest, p, d) m_free (*d);
 		m_clear (dest);
 	} else
 		dest = m_alloc (16, sizeof (int), MFREE_EACH);
+
+	if (!fp)
+		return dest; /* end of input -> empty list */
+
+	int line = s_new ();
+	if (s_readln (line, fp) == EOF) {
+		m_free (line);
+		return dest; /* end of input -> empty list */
+	}
 
 	if (is_empty (sep)) { /* whole line is a single field */
 		if (strip)

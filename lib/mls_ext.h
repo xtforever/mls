@@ -72,6 +72,8 @@ int _m_wrapcstr (int ln, const char *fn, const char *fun, char *s);
 int _m_wrapints (int ln, const char *fn, const char *fun, int *list, int nelem);
 int _m_wrapstrings (int ln, const char *fn, const char *fun, char **list,
 		    int nelem);
+int _m_wrapstrhandles (int ln, const char *fn, const char *fun,
+		       const char **list, int nelem);
 int _s_cstrdup (int ln, const char *fn, const char *fun, const char *s);
 int _s_ccstr (int ln, const char *fn, const char *fun, const char *s);
 
@@ -121,6 +123,7 @@ int s_cstrdup (const char *s);
 int m_wrapstrings (char **list, int nelem);
 int m_wrapints (int *list, int nelem);
 int m_wrapcstr (char *s);
+int m_wrapstrhandles (const char **list, int nelem);
 
 #ifdef __plusplus
 }
@@ -149,6 +152,9 @@ int m_wrapcstr (char *s);
 
 #define m_wrapstrings(s, n)                                                    \
 	_m_wrapstrings (__LINE__, __FILE__, __FUNCTION__, (s), (n))
+
+#define m_wrapstrhandles(s, n)                                                 \
+	_m_wrapstrhandles (__LINE__, __FILE__, __FUNCTION__, (s), (n))
 
 #define s_cstrdup(s) _s_cstrdup (__LINE__, __FILE__, __FUNCTION__, (s))
 
