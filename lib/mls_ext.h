@@ -17,6 +17,23 @@ void m_destruct ();
 */
 int m_reg_freefn (free_fn_t free_fn);
 
+/* Block-scoped auto-free handle type: `tmls h = ...;` declares h and frees it
+   when its block is left. Plain `int` handles are NOT auto-freed and must be
+   freed with m_free().
+   Always initialize it (`tmls h = ...;`): an uninitialized tmls holds garbage
+   and is passed to m_free on scope exit.
+   ponytail: the cleanup calls the real m_free, not the MLS_DEBUG _m_free
+   wrapper (defined at the bottom of this header), so the automatic free carries
+   no __LINE__/__FILE__ context. On compilers without __attribute__((cleanup))
+   (MSVC) tmls degrades to plain int and manual m_free() is required. */
+static inline void m_free_cleanup (int *hp) { m_free (*hp); }
+
+#if defined(__GNUC__) || defined(__clang__)
+#define tmls int __attribute__ ((cleanup (m_free_cleanup)))
+#else
+#define tmls int
+#endif
+
 int m_is_freed (int h);
 int m_is_valid (int h);
 int m_free_hdl (int h);
