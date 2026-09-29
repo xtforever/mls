@@ -1,0 +1,10 @@
+# Build-Kontext klein halten: grosse Datasets/Indizes/Binaries nicht an den
+# Docker-Daemon senden. Ins Image kommen nur die vier C-Quellen + web/server.py.
+*.gz
+*.tsv
+*.bin
+*.exed
+*.od
+movies-db
+x
+testdata

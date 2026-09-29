@@ -1,0 +1,13 @@
+services:
+  movdb:
+    build: .
+    image: movdb-frontend
+    ports:
+      - "8000:8000"
+    volumes:
+      # movies.bin / movies-meta.bin liegen im Host-Verzeichnis, nur lesen.
+      - ./:/data:ro
+    environment:
+      MOVDB_BIN: /data/movies.bin
+      MOVDB_META: /data/movies-meta.bin
+    restart: unless-stopped

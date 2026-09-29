@@ -226,6 +226,26 @@ Dedupliziert `movies-guess.tsv` nach Titel und zeigt alphabetisch (max.
 | `movies.bin` | `MOVDB001` (siehe Kommentar in `movdb.c`) |
 | `movies-meta.bin` | `MOVMETA1` (Zusatzinfo je tt-ID, siehe `movdb.c`) |
 
+## Docker-Frontend
+
+`Dockerfile` + `docker-compose.yml` bauen `movdb.exed` und starten ein
+kleines Web-Frontend (`web/server.py`, nur Python-Stdlib) mit
+Titel-Suche und Meta-Filtern (Genre, Rating, Jahresbereich, Typ).
+
+```bash
+docker compose build
+docker compose up -d          # http://localhost:8000
+docker compose down
+```
+
+- Die DB-Dateien `movies.bin` und `movies-meta.bin` muessen im
+  Projektverzeichnis liegen (gitignored) und werden **read-only** nach
+  `/data` gemountet (`MOVDB_BIN`/`MOVDB_META`).
+- Der Build-Kontext wird per `.dockerignore` klein gehalten (Datasets/
+  Indizes gehen nicht an den Docker-Daemon).
+- Port/Verhalten per Umgebung: `PORT` (8000), `BIND` (0.0.0.0).
+- Endpunkte: `/` (UI), `/api/search?q=...&genre=...&min_rating=...&year_range=A-B&type=...`, `/healthz`.
+
 ## Bekannte Einschränkungen
 
 - `movdb`-Query liefert Treffer in Record-Reihenfolge (kein Ranking),
