@@ -11,6 +11,10 @@
  * empty record yields one empty field, so blank lines are dropped too). At end
  * of input s_read_fields() yields an empty list (0 fields), ending the loop.
  *
+ * Temporaries are `tmls` handles (auto-freed at block end), so there are no
+ * trailing m_free()s: the whole body lives in one inner block, closed before
+ * m_destruct().
+ *
  * Single-header build (needs mls_core.h next to the project root; it is the
  * release/single-threaded preset with the config baked in):
  *     cc -std=c11 examples/csv2insert.c -o csv2insert -lpthread -lm -ldl
@@ -28,40 +32,39 @@ int main (void)
 {
 	m_init ();
 
-	/* cols[] -> list of handles -> "id, name, cnt, ref, verify" */
-	int sep = s_dup (", ");
-	int col_list = m_wrapstrhandles (cols, NCOLS);
-	int names = s_implode_q (0, col_list, sep, 0);
-	int head = s_printf (0, -1, "insert into datax ( %s ) values (",
-			     m_str (names));
+	/* Inner block: tmls handles are freed when it ends, before
+	 * m_destruct(). */
+	{
+		/* cols[] -> list of handles -> "id, name, cnt, ref, verify" */
+		tmls sep = s_dup (", ");
+		tmls col_list = m_wrapstrhandles (cols, NCOLS);
+		tmls names = s_implode_q (0, col_list, sep, 0);
+		tmls head =
+			s_printf (0, -1, "insert into datax ( %s ) values (",
+				  m_str (names));
 
-	int fields = 0;
-	int sql = 0;
+		tmls fields = 0;
+		tmls sql = 0;
 
-	for (;;) {
-		fields = s_read_fields (fields, stdin, ",", 1);
-		if (m_len (fields) == 0)
-			break; /* end of input */
+		for (;;) {
+			fields = s_read_fields (fields, stdin, ",", 1);
+			if (m_len (fields) == 0)
+				break; /* end of input */
 
-		/* empty record -> 1 field, so this also drops blanks */
-		if (m_len (fields) != NCOLS ||
-		    (NCOLS == 1 && CHAR (INT (fields, 0), 0) == 0))
-			continue; /* wrong format: skip silently */
+			/* empty record -> 1 field, so this also drops blanks */
+			if (m_len (fields) != NCOLS ||
+			    (NCOLS == 1 && CHAR (INT (fields, 0), 0) == 0))
+				continue; /* wrong format: skip silently */
 
-		/* quote and join the fields: 1,2,3 -> '1', '2', '3' */
-		int values = s_implode_q (0, fields, sep, '\'');
-		m_clear (sql);
-		sql = s_printf (sql, -1, "%s %s);", m_str (head),
-				m_str (values));
-		s_puts (sql);
-		m_free (values);
-	}
+			/* quote and join the fields: 1,2,3 -> '1', '2', '3' */
+			tmls values = s_implode_q (0, fields, sep, '\'');
+			m_clear (sql);
+			sql = s_printf (sql, -1, "%s %s);", m_str (head),
+					m_str (values));
+			s_puts (sql);
+		}
+	} /* sep, col_list, names, head, fields, sql auto-freed here */
 
-	m_free (sql);
-	m_free (head);
-	m_free (names);
-	m_free (col_list);
-	m_free (sep);
 	m_destruct ();
 	return 0;
 }
