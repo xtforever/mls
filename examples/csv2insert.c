@@ -45,6 +45,7 @@ int main (void)
 
 		tmls fields = 0;
 		tmls sql = 0;
+		tmls values = 0;
 
 		for (;;) {
 			fields = s_read_fields (fields, stdin, ",", 1);
@@ -56,14 +57,16 @@ int main (void)
 			    (NCOLS == 1 && CHAR (INT (fields, 0), 0) == 0))
 				continue; /* wrong format: skip silently */
 
-			/* quote and join the fields: 1,2,3 -> '1', '2', '3' */
-			tmls values = s_implode_q (0, fields, sep, '\'');
+			/* quote and join the fields: 1,2,3 -> '1', '2', '3';
+			 * s_implode_q clears dest, so values is reused each
+			 * record */
+			values = s_implode_q (values, fields, sep, '\'');
 			m_clear (sql);
 			sql = s_printf (sql, -1, "%s %s);", m_str (head),
 					m_str (values));
 			s_puts (sql);
 		}
-	} /* sep, col_list, names, head, fields, sql auto-freed here */
+	} /* sep, col_list, names, head, fields, sql, values auto-freed here */
 
 	m_destruct ();
 	return 0;
