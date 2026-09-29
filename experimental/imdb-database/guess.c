@@ -241,6 +241,30 @@ static int is_date_dir (const char *s)
 	return groups >= 2;
 }
 
+/* Sammelordner benennen eine Sammlung, nicht den einzelnen Film: Marker
+ * wie "Collection"/"Sammlung". Ein Titel-Kandidat daraus ist oft der
+ * Sammlungs-/Darstellername (z. B. "Belmondo") und darf den Dateinamen
+ * nicht ueberstimmen. Bewusst NICHT enthalten: "Komplett"/"Complete"
+ * (Staffel-Packs sind eine gueltige Titelquelle) und Jahresspannen
+ * ("1979-1985", trifft sonst Titelzahlen wie "Blade Runner 2049"). */
+static int is_collection_dir (const char *s)
+{
+	static const char *mark[] = {"collection", "sammlung",	"boxset",
+				     "anthology",  "filmreihe", "werkschau",
+				     NULL};
+	char low[512];
+	size_t n = strlen (s);
+	if (n >= sizeof low)
+		n = sizeof low - 1;
+	for (size_t i = 0; i < n; i++)
+		low[i] = (char)tolower ((unsigned char)s[i]);
+	low[n] = 0;
+	for (int i = 0; mark[i]; i++)
+		if (strstr (low, mark[i]))
+			return 1;
+	return 0;
+}
+
 /* Rauschen aus Tokens filtern; *year = letztes gefundenes Jahrestoken.
  * Schreibt die verbleibenden Tokens space-getrennt nach out und gibt die
  * Laenge zurueck (0 = nur Rauschen bzw. Puffer zu klein). */
@@ -487,6 +511,8 @@ static int cand_current (const char *path, char cands[][1024], int max,
 
 		if (is_date_dir (comp[i]))
 			continue;
+		if (i >= 1 && is_collection_dir (comp[i]))
+			continue;
 		imdb_norm (comp[i], norm, sizeof norm);
 		int nt = imdb_split (norm, tok, 256);
 		int nc = denoise (tok, nt, &year, cands[ncan], sizeof cands[0]);
@@ -572,6 +598,8 @@ static int cand_year_impl (const char *path, char cands[][1024], int max,
 			continue;
 		if (is_date_dir (chunk))
 			continue; /* "2025-09": Jahr ist kein Filmjahr */
+		if (ci != nch - 1 && is_collection_dir (chunk))
+			continue; /* Sammelordner, kein Filmtitel */
 		if (!*file_year)
 			*file_year = year;
 		char buf[1024];

@@ -31,6 +31,9 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	grep -q 'Call the Midwife' /tmp/imdb-guess.out
 	grep -q 'Mord im Mittsommer' /tmp/imdb-guess.out
 	grep -q 'SOKO Leipzig' /tmp/imdb-guess.out
+	# Ein Sammlungsordner ("...Collection...") darf nicht als Titel
+	# durchschlagen; der Dateiname (Cartouche) ist massgeblich.
+	! grep -q 'Belmondo (2003)' /tmp/imdb-guess.out
 	# movdb: Roundtrip build -> query ueber den Mini-Index (TSV-Ausgabe).
 	./$(TARGET) /tmp/imdb-mini.bin testdata/mini-movies.txt --tsv > /tmp/imdb-mini-guess.tsv 2> /dev/null
 	./$(MOVDB) build /tmp/imdb-mini-guess.tsv /tmp/imdb-mini-movdb.bin
