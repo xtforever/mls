@@ -20,7 +20,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 
-FILES=(title.basics.tsv.gz title.akas.tsv.gz)
+FILES=(title.basics.tsv.gz title.akas.tsv.gz title.ratings.tsv.gz)
 
 for f in "${FILES[@]}"; do
     out="$DIR/$f"

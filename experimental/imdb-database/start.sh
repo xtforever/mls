@@ -76,3 +76,18 @@ else
 	./guess.exed "$IDX" "$MOVIES" --tsv >movies-guess.tsv
 fi
 echo "-> movies-guess.tsv ($(wc -l <movies-guess.tsv) Zeilen)"
+
+# Zusatzinfo je Film (Rating, Stimmen, Genres, Laufzeit, Typ) aus den
+# IMDb-Datasets, per tt-ID verknuepft, in ein separates mmap-File.
+if [[ -x movdb.exed ]]; then
+	meta_args=()
+	[[ -s title.ratings.tsv.gz ]] && meta_args+=(--ratings title.ratings.tsv.gz)
+	[[ -s title.basics.tsv.gz ]] && meta_args+=(--basics title.basics.tsv.gz)
+	if ((${#meta_args[@]})); then
+		echo "== meta =="
+		./movdb.exed meta movies-guess.tsv movies-meta.bin "${meta_args[@]}"
+		echo "-> movies-meta.bin ($(wc -c <movies-meta.bin) Bytes)"
+	else
+		echo "[warn] title.ratings/basics fehlen, ueberspringe Meta" >&2
+	fi
+fi

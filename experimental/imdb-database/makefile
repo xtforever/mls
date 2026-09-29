@@ -15,7 +15,7 @@ $(MOVDB): movdb.od imdb_db.od
 
 # Header-Aenderungen sollen einen Rebuild ausloesen.
 guess.od imdb_db.od imdb_build.od: imdb_db.h imdb_bin.h
-movdb.od: imdb_db.h
+movdb.od: imdb_db.h imdb_bin.h
 
 # Selfcheck: Mini-Bin aus testdata/mini-imdb.tsv bauen und guess.exed
 # dagegen laufen lassen. Faellt, falls Build, Titel-Extraktion oder Suche
@@ -39,6 +39,11 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	./$(MOVDB) build /tmp/imdb-mini-guess.tsv /tmp/imdb-mini-movdb.bin
 	./$(MOVDB) query /tmp/imdb-mini-movdb.bin 1883 | grep -q '^1883'
 	./$(MOVDB) query /tmp/imdb-mini-movdb.bin mord mittsommer | grep -q 'Mord im Mittsommer'
+	# movdb meta: Zusatzinfo per tt-ID joinen (separates mmap-File).
+	./$(MOVDB) meta /tmp/imdb-mini-guess.tsv /tmp/imdb-mini-meta.bin --ratings testdata/mini-ratings.tsv --basics testdata/mini-basics.tsv
+	./$(MOVDB) get /tmp/imdb-mini-meta.bin tt9000004 | grep -q '7.5'
+	./$(MOVDB) get /tmp/imdb-mini-meta.bin tt9000004 | grep -q 'Drama,Western'
+	./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin /tmp/imdb-mini-movdb.bin 1883 | grep -q 'Drama,Western'
 
 # Vollen Index bauen (laedt Datasets ueber download.sh) und Binaerindex
 # erzeugen.

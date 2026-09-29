@@ -23,6 +23,10 @@ movies-guess.tsv          path \t title \t year \t id \t score
    │  movdb.exed build
    ▼
 movies.bin                kleine Such-DB (Titel-Tokens, AND-Suche)
+   │  movdb.exed meta        (title.ratings + title.basics per tt-ID)
+   ▼
+movies-meta.bin           Zusatzinfo je tt-ID (Rating, Stimmen, Genres,
+                          Laufzeit, Typ, Jahr) — separates mmap-File
 ```
 
 ## Voraussetzungen
@@ -53,13 +57,20 @@ make clean      # *.exed *.od entfernen
 ```
 
 `start.sh` ruft `make`, dann `download.sh`, dann `guess.exed` auf und
-schreibt `movies-guess.tsv`.
+schreibt `movies-guess.tsv`. Sind die Datasets vorhanden, baut es danach
+per `movdb.exed meta` noch `movies-meta.bin` (Zusatzinfo je tt-ID).
 
-Fuer die Datenbank anschliessend:
+Fuer die Such-DB anschliessend:
 
 ```bash
 ./movdb.exed build movies-guess.tsv movies.bin
 ./movdb.exed query movies.bin mord mittsommer
+
+# Zusatzinfo je Film (Rating/Stimmen/Genres/Laufzeit) per tt-ID:
+./movdb.exed meta movies-guess.tsv movies-meta.bin \
+    --ratings title.ratings.tsv.gz --basics title.basics.tsv.gz
+./movdb.exed get movies-meta.bin tt0118480
+./movdb.exed query --meta movies-meta.bin movies.bin stargate sg 1
 ```
 
 > **Pfade:** `guess.exed` matcht intern auf den um Sammlungs-Prefixe
@@ -75,11 +86,11 @@ Fuer die Datenbank anschliessend:
 
 ### `download.sh`
 
-Laedt `title.basics.tsv.gz` und `title.akas.tsv.gz` von
-`https://datasets.imdbws.com` ins Skriptverzeichnis und baut daraus
-`imdb_index.tsv` (basics-Titel + deutschsprachige aka-Titel, angereichert
-um Jahr und Titeltyp). Danach `imdb_index.bin`, falls
-`imdb_build.exed` vorhanden ist.
+Laedt `title.basics.tsv.gz`, `title.akas.tsv.gz` und
+`title.ratings.tsv.gz` von `https://datasets.imdbws.com` ins
+Skriptverzeichnis und baut daraus `imdb_index.tsv` (basics-Titel +
+deutschsprachige aka-Titel, angereichert um Jahr und Titeltyp). Danach
+`imdb_index.bin`, falls `imdb_build.exed` vorhanden ist.
 
 Idempotent: vorhandene Dateien werden uebersprungen, der Index nur neu
 gebaut, wenn er aelter als die Quelldaten ist.
@@ -135,13 +146,28 @@ Titel-Tokens).
 
 ```bash
 ./movdb.exed build <movies-guess.tsv> <out.bin>
-./movdb.exed query <out.bin> <term>...     # UND-Suche ueber Titel-Tokens
+./movdb.exed query [--meta <meta.bin>] <out.bin> <term>...  # UND-Suche
+./movdb.exed meta <movies-guess.tsv> <meta.bin> [--ratings F] [--basics F]
+./movdb.exed get <meta.bin> <tt-id>...
 ./movdb.exed --selftest
 ```
 
-`query` gibt Treffer als TSV (`title \t year \t id \t path`) nach stdout
-und `N Treffer` nach stderr; Exitcode 1, wenn nichts passt. Zeilen ohne
-Titel (nicht erraten) werden beim `build` uebersprungen.
+`query` gibt Treffer als TSV nach stdout und `N Treffer` nach stderr;
+Exitcode 1, wenn nichts passt. Zeilen ohne Titel (nicht erraten) werden
+beim `build` uebersprungen. Ohne `--meta`: `title year id path`. Mit
+`--meta`: `title year id rating votes runtime genres path`.
+
+`meta` baut ein **separates mmap-File** mit Zusatzinfo je IMDb-titel-id.
+`--ratings` (title.ratings: `averageRating`, `numVotes`) und `--basics`
+(title.basics: Typ, Jahr, Laufzeit, Genres, Adult) sind optional und
+werden per tt-ID mit den IDs aus `movies-guess.tsv` verknuepft; `.gz`
+wird per `zcat` gelesen. `get` schlaegt einzelne IDs nach
+(`id rating votes runtime genres type year adult`).
+
+```bash
+$ ./movdb.exed get movies-meta.bin tt0118480
+tt0118480	8.4	110850	44	Action,Adventure,Drama	3	1997	0
+```
 
 ### `start.sh`
 
@@ -173,6 +199,7 @@ Dedupliziert `movies-guess.tsv` nach Titel und zeigt alphabetisch (max.
 | `imdb_index.bin` | `IMDBBIN1` (siehe `imdb_bin.h`) |
 | `movies-guess.tsv` | `path \t title \t year \t id \t score` |
 | `movies.bin` | `MOVDB001` (siehe Kommentar in `movdb.c`) |
+| `movies-meta.bin` | `MOVMETA1` (Zusatzinfo je tt-ID, siehe `movdb.c`) |
 
 ## Bekannte Einschränkungen
 
