@@ -44,6 +44,10 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	./$(MOVDB) get /tmp/imdb-mini-meta.bin tt9000004 | grep -q '7.5'
 	./$(MOVDB) get /tmp/imdb-mini-meta.bin tt9000004 | grep -q 'Drama,Western'
 	./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin /tmp/imdb-mini-movdb.bin 1883 | grep -q 'Drama,Western'
+	# movdb query: Meta-Filter (Genre/Rating) ueber das Meta-File.
+	./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin --genre western /tmp/imdb-mini-movdb.bin | grep -q '^1883'
+	./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin --min-rating 7.0 /tmp/imdb-mini-movdb.bin | grep -q '^1883'
+	! ./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin --genre western /tmp/imdb-mini-movdb.bin | grep -q 'Mord im Mittsommer'
 
 # Vollen Index bauen (laedt Datasets ueber download.sh) und Binaerindex
 # erzeugen.

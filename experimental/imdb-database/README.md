@@ -146,7 +146,8 @@ Titel-Tokens).
 
 ```bash
 ./movdb.exed build <movies-guess.tsv> <out.bin>
-./movdb.exed query [--meta <meta.bin>] <out.bin> <term>...  # UND-Suche
+./movdb.exed query [--meta M] [--genre G] [--min-rating R] \
+                   [--min-votes N] [--year Y] [--type T] <out.bin> [term...]
 ./movdb.exed meta <movies-guess.tsv> <meta.bin> [--ratings F] [--basics F]
 ./movdb.exed get <meta.bin> <tt-id>...
 ./movdb.exed --selftest
@@ -156,6 +157,25 @@ Titel-Tokens).
 Exitcode 1, wenn nichts passt. Zeilen ohne Titel (nicht erraten) werden
 beim `build` uebersprungen. Ohne `--meta`: `title year id path`. Mit
 `--meta`: `title year id rating votes runtime genres path`.
+
+Sind Titelbegriffe angegeben, werden sie als UND-Suche ueber die
+Titel-Tokens mit den Meta-Filtern kombiniert; ohne Titelbegriffe liefert
+der Filter alle passenden Records. Meta-Filter brauchen `--meta`:
+
+| Filter | Bedeutung |
+|---|---|
+| `--genre G` | Genre muss enthalten sein (Gross-/Kleinschreibung egal); mehrfach = alle |
+| `--min-rating R` | Rating >= R (z. B. `8.0`) |
+| `--min-votes N` | Stimmen >= N |
+| `--year Y` | startYear == Y |
+| `--type T` | `movie`, `tvSeries`/`series`, `tvMovie`, `miniSeries`, `short`, `video`, `tvSpecial`, `tvShort`, `special`, `other` |
+
+```bash
+# Alle Action-Titel mit Rating >= 8.0, inkl. Metadaten
+./movdb.exed query --meta movies-meta.bin --genre action --min-rating 8.0 movies.bin
+# Titel-Suche und Genre kombinieren
+./movdb.exed query --meta movies-meta.bin --genre action movies.bin goldfinger
+```
 
 `meta` baut ein **separates mmap-File** mit Zusatzinfo je IMDb-titel-id.
 `--ratings` (title.ratings: `averageRating`, `numVotes`) und `--basics`

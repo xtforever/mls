@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -714,6 +715,90 @@ static int meta_get (const char *path, int nid, char **ids)
 	return 0;
 }
 
+/* ---- Meta-Filter ---- */
+struct qfilter {
+	uint32_t genres; /* alle gesetzten Genre-Bits muessen passen */
+	uint16_t min_rating10;
+	uint32_t min_votes;
+	uint16_t year; /* 0 = egal */
+	uint8_t type;
+	int has_type;
+};
+
+static int qfilter_active (const struct qfilter *q)
+{
+	return q->genres || q->min_rating10 || q->min_votes || q->year ||
+	       q->has_type;
+}
+
+/* Genre-Name -> Bitindex, -1 = unbekannt. */
+static int genre_bit (const char *name)
+{
+	for (int i = 0; GENRES[i]; i++)
+		if (!strcasecmp (name, GENRES[i]))
+			return i;
+	return -1;
+}
+
+/* Typ-Name -> enum imdb_type, -1 = unbekannt. */
+static int type_from_name (const char *s)
+{
+	static const struct {
+		const char *n;
+		uint8_t v;
+	} T[] = {{"movie", IMDB_T_MOVIE},
+		 {"tvmovie", IMDB_T_TVMOVIE},
+		 {"tvseries", IMDB_T_TVSERIES},
+		 {"series", IMDB_T_TVSERIES},
+		 {"miniseries", IMDB_T_MINISERIES},
+		 {"tvminiseries", IMDB_T_MINISERIES},
+		 {"tvshort", IMDB_T_TVSHORT},
+		 {"tvspecial", IMDB_T_TVSPECIAL},
+		 {"short", IMDB_T_SHORT},
+		 {"video", IMDB_T_VIDEO},
+		 {"special", IMDB_T_SPECIAL},
+		 {"other", IMDB_T_OTHER},
+		 {NULL, 0}};
+	for (int i = 0; T[i].n; i++)
+		if (!strcasecmp (s, T[i].n))
+			return T[i].v;
+	return -1;
+}
+
+static int meta_match (const struct movmeta_entry *e, const struct qfilter *q)
+{
+	if (!e)
+		return 0;
+	if (q->genres && (e->genres & q->genres) != q->genres)
+		return 0;
+	if (q->min_rating10 && e->rating10 < q->min_rating10)
+		return 0;
+	if (q->min_votes && e->votes < q->min_votes)
+		return 0;
+	if (q->year && e->year != q->year)
+		return 0;
+	if (q->has_type && e->type != q->type)
+		return 0;
+	return 1;
+}
+
+/* Extrahiert das ID-Feld (tt...) aus einem Record in idbuf. */
+static int rec_id (const char *rec, char *idbuf, size_t cap)
+{
+	const char *t1 = strchr (rec, '\t');
+	const char *t2 = t1 ? strchr (t1 + 1, '\t') : NULL;
+	const char *t3 = t2 ? strchr (t2 + 1, '\t') : NULL;
+	if (!t1 || !t2 || !t3)
+		return 0;
+	const char *idp = t2 + 1;
+	size_t l = (size_t)(t3 - idp);
+	if (l >= cap)
+		l = cap - 1;
+	memcpy (idbuf, idp, l);
+	idbuf[l] = 0;
+	return 1;
+}
+
 /* ---- query ---- */
 /* Gibt einen Record aus; mit Meta: title year id rating votes runtime
  * genres path, sonst den rohen Record. */
@@ -775,8 +860,17 @@ static int dict_find (const char *dict, const uint32_t *doff, uint32_t T,
 }
 
 static int query (const char *bin, const char *metapath, int nterm,
-		  char **terms)
+		  char **terms, const struct qfilter *q)
 {
+	if (qfilter_active (q) && !metapath) {
+		fprintf (stderr,
+			 "movdb: Meta-Filter brauchen --meta <meta.bin>\n");
+		return 2;
+	}
+	if (nterm == 0 && !qfilter_active (q)) {
+		fprintf (stderr, "movdb: kein Suchbegriff und kein Filter\n");
+		return 2;
+	}
 	int fd = open (bin, O_RDONLY);
 	if (fd < 0) {
 		fprintf (stderr, "movdb: %s: %s\n", bin, strerror (errno));
@@ -829,6 +923,10 @@ static int query (const char *bin, const char *metapath, int nterm,
 	}
 	int first = 1;
 	int matched = 0;
+	if (nterm == 0) { /* nur Filter: alle Records als Startmenge */
+		memset (hit, 0xff, (h->n_rec + 7) / 8);
+		first = 0;
+	}
 	for (int t = 0; t < nterm; t++) {
 		char norm[512];
 		imdb_norm (terms[t], norm, sizeof norm);
@@ -865,8 +963,16 @@ static int query (const char *bin, const char *metapath, int nterm,
 	}
 	for (uint32_t r = 0; r < h->n_rec; r++)
 		if (hit[r >> 3] & (1u << (r & 7))) {
-			print_rec (rec_blob + rec_off[r],
-				   have_meta ? &mm : NULL);
+			const char *rec = rec_blob + rec_off[r];
+			if (qfilter_active (q)) {
+				char idb[16];
+				const struct movmeta_entry *e = NULL;
+				if (rec_id (rec, idb, sizeof idb))
+					e = meta_find (&mm, parse_tt (idb));
+				if (!meta_match (e, q))
+					continue;
+			}
+			print_rec (rec, have_meta ? &mm : NULL);
 			matched++;
 		}
 done:
@@ -907,16 +1013,62 @@ int main (int argc, char **argv)
 	}
 	if (argc >= 4 && !strcmp (argv[1], "get"))
 		return meta_get (argv[2], argc - 3, argv + 3);
-	if (argc >= 4 && !strcmp (argv[1], "query")) {
+	if (argc >= 2 && !strcmp (argv[1], "query")) {
 		int i = 2;
 		const char *meta = NULL;
-		if (!strcmp (argv[i], "--meta") && i + 1 < argc) {
-			meta = argv[i + 1];
-			i += 2;
+		struct qfilter q;
+		memset (&q, 0, sizeof q);
+		while (i < argc) {
+			if (!strcmp (argv[i], "--meta") && i + 1 < argc) {
+				meta = argv[++i];
+				i++;
+			} else if (!strcmp (argv[i], "--genre") &&
+				   i + 1 < argc) {
+				int b = genre_bit (argv[++i]);
+				if (b < 0) {
+					fprintf (stderr,
+						 "movdb: unbekanntes Genre "
+						 "'%s'\n",
+						 argv[i]);
+					return 2;
+				}
+				q.genres |= 1u << b;
+				i++;
+			} else if (!strcmp (argv[i], "--min-rating") &&
+				   i + 1 < argc) {
+				q.min_rating10 =
+					(uint16_t)(atof (argv[++i]) * 10.0 +
+						   0.5);
+				i++;
+			} else if (!strcmp (argv[i], "--min-votes") &&
+				   i + 1 < argc) {
+				q.min_votes =
+					(uint32_t)strtoul (argv[++i], NULL, 10);
+				i++;
+			} else if (!strcmp (argv[i], "--year") &&
+				   i + 1 < argc) {
+				q.year = (uint16_t)atoi (argv[++i]);
+				i++;
+			} else if (!strcmp (argv[i], "--type") &&
+				   i + 1 < argc) {
+				int t = type_from_name (argv[++i]);
+				if (t < 0) {
+					fprintf (
+						stderr,
+						"movdb: unbekannter Typ '%s'\n",
+						argv[i]);
+					return 2;
+				}
+				q.type = (uint8_t)t;
+				q.has_type = 1;
+				i++;
+			} else {
+				break;
+			}
 		}
 		if (i >= argc)
 			goto usage;
-		return query (argv[i], meta, argc - i - 1, argv + i + 1);
+		return query (argv[i], meta, argc - i - 1, argv + i + 1, &q);
 	}
 usage:
 	fprintf (stderr,
@@ -924,7 +1076,10 @@ usage:
 		 "       %s meta <movies-guess.tsv> <meta.bin> "
 		 "[--ratings F] [--basics F]\n"
 		 "       %s get <meta.bin> <tt-id>...\n"
-		 "       %s query [--meta <meta.bin>] <out.bin> <term>...\n",
+		 "       %s query [--meta <meta.bin>] [--genre G] "
+		 "[--min-rating R]\n"
+		 "              [--min-votes N] [--year Y] [--type T] "
+		 "<out.bin> [term...]\n",
 		 argv[0], argv[0], argv[0], argv[0]);
 	return 2;
 }
