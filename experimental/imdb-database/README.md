@@ -147,7 +147,8 @@ Titel-Tokens).
 ```bash
 ./movdb.exed build <movies-guess.tsv> <out.bin>
 ./movdb.exed query [--meta M] [--genre G] [--min-rating R] \
-                   [--min-votes N] [--year Y] [--type T] <out.bin> [term...]
+                   [--min-votes N] [--year Y] [--year-range A-B] \
+                   [--type T] <out.bin> [term...]
 ./movdb.exed meta <movies-guess.tsv> <meta.bin> [--ratings F] [--basics F]
 ./movdb.exed get <meta.bin> <tt-id>...
 ./movdb.exed --selftest
@@ -168,6 +169,7 @@ der Filter alle passenden Records. Meta-Filter brauchen `--meta`:
 | `--min-rating R` | Rating >= R (z. B. `8.0`) |
 | `--min-votes N` | Stimmen >= N |
 | `--year Y` | startYear == Y |
+| `--year-range A-B` | startYear in [A,B] (inklusiv); offen: `A-` bzw. `-B` |
 | `--type T` | `movie`, `tvSeries`/`series`, `tvMovie`, `miniSeries`, `short`, `video`, `tvSpecial`, `tvShort`, `special`, `other` |
 
 ```bash
@@ -175,6 +177,9 @@ der Filter alle passenden Records. Meta-Filter brauchen `--meta`:
 ./movdb.exed query --meta movies-meta.bin --genre action --min-rating 8.0 movies.bin
 # Titel-Suche und Genre kombinieren
 ./movdb.exed query --meta movies-meta.bin --genre action movies.bin goldfinger
+# Jahreszeitraum (inklusiv) / offene Grenzen
+./movdb.exed query --meta movies-meta.bin --year-range 1930-1933 movies.bin
+./movdb.exed query --meta movies-meta.bin --year-range 2020- movies.bin
 ```
 
 `meta` baut ein **separates mmap-File** mit Zusatzinfo je IMDb-titel-id.

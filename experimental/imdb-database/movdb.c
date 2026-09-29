@@ -720,15 +720,18 @@ struct qfilter {
 	uint32_t genres; /* alle gesetzten Genre-Bits muessen passen */
 	uint16_t min_rating10;
 	uint32_t min_votes;
-	uint16_t year; /* 0 = egal */
+	uint16_t year;	   /* exakt, 0 = egal */
+	uint16_t year_min; /* Jahresbereich, 0 = unbeschraenkt */
+	uint16_t year_max;
 	uint8_t type;
 	int has_type;
+	int has_range;
 };
 
 static int qfilter_active (const struct qfilter *q)
 {
 	return q->genres || q->min_rating10 || q->min_votes || q->year ||
-	       q->has_type;
+	       q->has_type || q->has_range;
 }
 
 /* Genre-Name -> Bitindex, -1 = unbekannt. */
@@ -777,6 +780,14 @@ static int meta_match (const struct movmeta_entry *e, const struct qfilter *q)
 		return 0;
 	if (q->year && e->year != q->year)
 		return 0;
+	if (q->has_range) {
+		if (e->year == 0)
+			return 0; /* unbekanntes Jahr passt in keinen Bereich */
+		if (q->year_min && e->year < q->year_min)
+			return 0;
+		if (q->year_max && e->year > q->year_max)
+			return 0;
+	}
 	if (q->has_type && e->type != q->type)
 		return 0;
 	return 1;
@@ -1049,6 +1060,25 @@ int main (int argc, char **argv)
 				   i + 1 < argc) {
 				q.year = (uint16_t)atoi (argv[++i]);
 				i++;
+			} else if (!strcmp (argv[i], "--year-range") &&
+				   i + 1 < argc) {
+				const char *s = argv[++i];
+				const char *dash = strchr (s, '-');
+				long a = (dash && dash != s) ? atol (s) : 0;
+				long b =
+					(dash && dash[1]) ? atol (dash + 1) : 0;
+				if (!dash || (!a && !b) || a < 0 || b < 0 ||
+				    a > 9999 || b > 9999 || (a && b && a > b)) {
+					fprintf (stderr,
+						 "movdb: --year-range A-B "
+						 "erwartet, nicht '%s'\n",
+						 s);
+					return 2;
+				}
+				q.year_min = (uint16_t)a;
+				q.year_max = (uint16_t)b;
+				q.has_range = 1;
+				i++;
 			} else if (!strcmp (argv[i], "--type") &&
 				   i + 1 < argc) {
 				int t = type_from_name (argv[++i]);
@@ -1078,8 +1108,9 @@ usage:
 		 "       %s get <meta.bin> <tt-id>...\n"
 		 "       %s query [--meta <meta.bin>] [--genre G] "
 		 "[--min-rating R]\n"
-		 "              [--min-votes N] [--year Y] [--type T] "
-		 "<out.bin> [term...]\n",
+		 "              [--min-votes N] [--year Y] "
+		 "[--year-range A-B] [--type T]\n"
+		 "              <out.bin> [term...]\n",
 		 argv[0], argv[0], argv[0], argv[0]);
 	return 2;
 }
