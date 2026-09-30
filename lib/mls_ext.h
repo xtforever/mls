@@ -22,11 +22,20 @@ int m_reg_freefn (free_fn_t free_fn);
    freed with m_free().
    Always initialize it (`tmls h = ...;`): an uninitialized tmls holds garbage
    and is passed to m_free on scope exit.
-   ponytail: the cleanup calls the real m_free, not the MLS_DEBUG _m_free
-   wrapper (defined at the bottom of this header), so the automatic free carries
-   no __LINE__/__FILE__ context. On compilers without __attribute__((cleanup))
-   (MSVC) tmls degrades to plain int and manual m_free() is required. */
+   In debug builds the cleanup routes through the _m_free() wrapper so the free
+   is recorded in the debug list; the recorded site is the cleanup itself (this
+   header), since a cleanup attribute cannot capture the caller's line. On
+   compilers without __attribute__((cleanup)) (MSVC) tmls degrades to plain int
+   and manual m_free() is required. */
+#if defined(MLS_DEBUG) && !defined(MLS_DEBUG_DISABLE)
+int _m_free (int ln, const char *fn, const char *fun, int m);
+static inline void m_free_cleanup (int *hp)
+{
+	_m_free (__LINE__, __FILE__, __FUNCTION__, *hp);
+}
+#else
 static inline void m_free_cleanup (int *hp) { m_free (*hp); }
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #define tmls int __attribute__ ((cleanup (m_free_cleanup)))
