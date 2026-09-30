@@ -63,8 +63,8 @@ def strip_disable_define(lines):
 def split_debug_epilogue(lines):
     """mls_ext.h: the trailing MLS_DEBUG macro block is stripped here and re-emitted
     between the two implementation halves (see build())."""
-    for i, ln in enumerate(lines):
-        if ln.strip() == DEBUG_MACRO_IF:
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip() == DEBUG_MACRO_IF:
             return lines[:i], lines[i:]
     raise SystemExit("mls_ext.h: debug macro block not found")
 
