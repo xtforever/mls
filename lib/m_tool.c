@@ -220,19 +220,19 @@ int vas_printf (int m, int p, const char *format, va_list ap)
 	len = vsnprintf (0, 0, format, copy1);
 	va_end (copy1);
 	len++;
+
+	// create a buffer 	
 	if (m <= 0) {
-		m = s_new ();
+		m = m_alloc( len, 1, MFREE );
 		p = 0;
+	} else { // re-use buffer and resize 
+		if (p < 0 || p > m_len (m) ) {
+			p = s_strlen (m);
+		}
 	}
-	if (p < 0 || p > m_len (m))
-		p = s_strlen (m);
-	char *tmp = malloc ((size_t)len);
-	if (!tmp)
-		return -1;
-	vsnprintf (tmp, (size_t)len, format, ap);
-	m_write (m, (size_t)p, tmp, (size_t)len);
 	m_setlen (m, (size_t)len + p);
-	free (tmp);
+	// buffer has correct size, now put our string at offset p
+	vsnprintf ( mls(m,p), (size_t)len, format, ap);	
 	return m;
 }
 
