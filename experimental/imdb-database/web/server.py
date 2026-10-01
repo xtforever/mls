@@ -218,13 +218,40 @@ JOB = Job()
 
 
 # -------------------------------------------------------------- Seite
+# Wartungs-Aktionen: (API-Name, Beschriftung, Hilfe).
+ACTIONS = [
+    ("update-imdb", "IMDb-Daten aktualisieren",
+     "L\u00e4dt title.basics/akas/ratings von datasets.imdbws.com und baut den "
+     "Titelindex imdb_index.bin neu. N\u00f6tig, wenn neue Titel dazukommen; "
+     "danach \u201eTitel neu raten\u201c ausf\u00fchren."),
+    ("reindex", "Titel neu raten + Such-DB bauen",
+     "R\u00e4t die Filmtitel aus movies-db neu (guess.exed) und baut daraus "
+     "movies.bin + movies-meta.bin. Braucht einen vorhandenen Index, "
+     "l\u00e4dt nichts herunter."),
+    ("rebuild-db", "Nur Such-DB neu bauen (schnell)",
+     "Baut movies.bin + movies-meta.bin aus der vorhandenen "
+     "movies-guess.tsv. \u00c4ndert keine Zuordnungen."),
+    ("rebuild", "Komplett-Durchlauf (inkl. Download)",
+     "Alles in einem: Datasets laden, Index bauen, Titel raten, Such-DB "
+     "bauen. Dauert am l\u00e4ngsten."),
+]
+LABELS = {name: label for name, label, _ in ACTIONS}
+
+
+def maint_pane():
+    cards = "".join(
+        f'<div class="act"><button data-action="{n}">{label}</button>'
+        f'<p>{help}</p></div>' for n, label, help in ACTIONS)
+    return MAINT_PANE.replace("{{ACTIONS}}", cards)
+
+
 def page():
     genres = "".join(
         f'<label class="cb"><input type="checkbox" name="genre" '
         f'value="{g}">{g}</label>' for g in GENRES)
     types = "".join(f'<option value="{t}">{t}</option>' for t in TYPES)
     tab = '<button data-tab="maint">Wartung</button>' if MAINT else ""
-    pane = MAINT_PANE if MAINT else ""
+    pane = maint_pane() if MAINT else ""
     return (PAGE.replace("{{GENRES}}", genres)
                 .replace("{{TYPES}}", types)
                 .replace("{{MAINT_TAB}}", tab)
@@ -233,13 +260,13 @@ def page():
 
 MAINT_PANE = """
 <section id="tab-maint" hidden>
- <div class="actions">
-  <button data-action="update-imdb">IMDb aktualisieren</button>
-  <button data-action="reindex">Teil-Rebuild (raten)</button>
-  <button data-action="rebuild-db">DB-Rebuild (ohne raten)</button>
-  <button data-action="rebuild">Komplett-Rebuild</button>
-  <label class="cb"><input type="checkbox" id="force">Datasets neu laden</label>
- </div>
+ <p class="hint">F&uuml;hrt Pipeline-Schritte im Datenverzeichnis aus. Es
+  l&auml;uft immer nur ein Job; die Ausgabe steht unten. Seite offen lassen,
+  bis der Job fertig ist.</p>
+ <div class="actions">{{ACTIONS}}</div>
+ <label class="cb"><input type="checkbox" id="force">Datasets neu laden
+  (--force, nur bei &bdquo;IMDb-Daten aktualisieren&ldquo; und
+  &bdquo;Komplett-Durchlauf&ldquo;)</label>
  <div id="mstatus">bereit</div>
  <pre id="mlog"></pre>
 </section>"""
@@ -280,7 +307,12 @@ PAGE = """<!doctype html>
    background:#f5c518;color:#000;font-size:11px;font-weight:700;
    text-decoration:none;vertical-align:middle}
  a.imdb:hover{background:#ffd94a}
- .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+ .hint{color:#aaa;font-size:12px;margin:0 0 12px;max-width:760px}
+ .actions{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));
+   gap:10px;margin-bottom:12px}
+ .act{background:#1b1b1b;border:1px solid #333;border-radius:6px;padding:10px}
+ .act button{width:100%}
+ .act p{margin:8px 0 0;font-size:12px;color:#aaa;line-height:1.45}
  #mstatus{color:#aaa;margin-bottom:8px}
  #mlog{background:#0c0c0c;border:1px solid #333;border-radius:4px;padding:10px;
    max-height:55vh;overflow:auto;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace}
@@ -347,7 +379,7 @@ async function poll(){
  if(!ms) return;
  try{
   const j=await (await fetch('/api/maintenance')).json();
-  ms.textContent = j.status==='running' ? ('l\\u00e4uft: '+j.name+' \\u2026')
+  ms.textContent = j.status==='running' ? ('l\u00e4uft: '+(j.label||j.name)+' \u2026')
     : j.status==='idle' ? 'bereit'
     : j.status+(j.rc!=null?(' (rc='+j.rc+')'):'');
   ml.textContent=j.log||'';
@@ -388,6 +420,7 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/maintenance":
             snap = JOB.snapshot()
             snap["enabled"] = MAINT
+            snap["label"] = LABELS.get(snap["name"], snap["name"])
             self._send(json.dumps(snap).encode(), "application/json")
         elif u.path == "/healthz":
             self._send(b'{"ok":true}', "application/json")

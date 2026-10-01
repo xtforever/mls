@@ -69,4 +69,11 @@ assert srv._steps("nope", False) is None
 ok, err = srv.JOB.start("nope", False)
 assert not ok and "unbekannt" in err, (ok, err)
 
+# Wartung: jeder Button hat Beschriftung + Hilfe, Namen decken _steps ab
+assert {n for n, _, _ in srv.ACTIONS} == {
+    "update-imdb", "reindex", "rebuild-db", "rebuild"}
+pane = srv.maint_pane()
+assert "IMDb-Daten aktualisieren" in pane and "imdb_index.bin" in pane, pane
+assert srv.LABELS["reindex"].startswith("Titel neu raten")
+
 print("web/server.py: ok")
