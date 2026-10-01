@@ -11,6 +11,8 @@ Argumentliste auf (kein Shell). Konfiguration per Umgebungsvariablen:
   MOVDB_GUESS_EXE      Pfad zu guess.exed       (Default /app/guess.exed)
   MOVDB_IMDB_BUILD_EXE Pfad zu imdb_build.exed  (Default /app/imdb_build.exed)
   MOVDB_MAINTENANCE    1/0, Wartungs-Tab     (Default 1)
+  MOVDB_PLAYER_URL     URL des lokalen Play-Agenten
+                       (Default http://127.0.0.1:8765)
   PORT         HTTP-Port                 (Default 8000)
   BIND         Bind-Adresse              (Default 0.0.0.0)
 
@@ -37,6 +39,8 @@ MAINT = os.environ.get("MOVDB_MAINTENANCE", "1").lower() not in (
     "0", "false", "no", "off", "")
 PORT = int(os.environ.get("PORT", "8000"))
 BIND = os.environ.get("BIND", "0.0.0.0")
+# Lokaler Play-Agent auf dem Desktop (siehe web/player_agent.py).
+PLAYER_URL = os.environ.get("MOVDB_PLAYER_URL", "http://127.0.0.1:8765")
 
 # Pfade im Datenverzeichnis (vom Container read-write gemountet).
 DOWNLOAD = os.path.join(DATA, "download.sh")
@@ -255,7 +259,10 @@ def page():
     return (PAGE.replace("{{GENRES}}", genres)
                 .replace("{{TYPES}}", types)
                 .replace("{{MAINT_TAB}}", tab)
-                .replace("{{MAINT_PANE}}", pane))
+                .replace("{{MAINT_PANE}}", pane)
+                # json.dumps: Env-Wert wird als gueltiges JS-String-Literal
+                # eingebettet, damit Quotes/Backslashes das Skript nicht brechen.
+                .replace("{{PLAYER_URL}}", json.dumps(PLAYER_URL)))
 
 
 MAINT_PANE = """
@@ -303,6 +310,8 @@ PAGE = """<!doctype html>
    vertical-align:top}
  th{color:#aaa;font-weight:600}
  td.path{max-width:520px;word-break:break-all;color:#8ab}
+ td.play{width:1%;white-space:nowrap}
+ button.play{padding:2px 9px}
  a.imdb{display:inline-block;margin-left:6px;padding:0 4px;border-radius:3px;
    background:#f5c518;color:#000;font-size:11px;font-weight:700;
    text-decoration:none;vertical-align:middle}
@@ -337,16 +346,20 @@ PAGE = """<!doctype html>
 <main>
  <section id="tab-search">
   <div id="status"></div>
-  <table>
-   <thead><tr><th>Titel</th><th>Jahr</th><th>ID</th><th>Rating</th>
-    <th>Stimmen</th><th>Min</th><th>Genres</th><th>Pfad</th></tr></thead>
-   <tbody id="tb"></tbody>
-  </table>
+  <label class="cb">Play-Token <input id="ptok" placeholder="Play-Token"
+   size="28"></label>
+   <table>
+    <thead><tr><th>Play</th><th>Titel</th><th>Jahr</th><th>ID</th><th>Rating</th>
+     <th>Stimmen</th><th>Min</th><th>Genres</th><th>Pfad</th></tr></thead>
+    <tbody id="tb"></tbody>
+   </table>
  </section>
  {{MAINT_PANE}}
 </main>
 <script>
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
+const attr=s=>esc(s).replace(/"/g,'&quot;');
+const PLAYER_URL={{PLAYER_URL}};
 const tabs=[...document.querySelectorAll('nav.tabs button')];
 function showTab(id){
  tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
@@ -356,7 +369,9 @@ function showTab(id){
 tabs.forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 
 const f=document.getElementById('f'),tb=document.getElementById('tb'),
-      st=document.getElementById('status');
+      st=document.getElementById('status'),ptok=document.getElementById('ptok');
+ptok.value=localStorage.getItem('movdb_ptok')||'';
+ptok.addEventListener('input',()=>localStorage.setItem('movdb_ptok',ptok.value));
 f.addEventListener('submit',async e=>{
  e.preventDefault();
  st.textContent='suche\\u2026'; tb.innerHTML='';
@@ -366,12 +381,29 @@ f.addEventListener('submit',async e=>{
   if(j.error){st.textContent='Fehler: '+j.error;return}
   st.textContent=j.note||(j.count+' Treffer');
   tb.innerHTML=j.rows.map(x=>'<tr>'+
+    '<td class="play">'+(x.path?
+      '<button class="play" data-path="'+attr(x.path)+'">\u25b6</button>':'')+
+    '</td>'+
     '<td>'+esc(x.title)+(x.imdb?' <a class="imdb" href="'+esc(x.imdb)+
       '" target="_blank" rel="noopener noreferrer">IMDb</a>':'')+'</td>'+
     ['year','id','rating','votes','runtime','genres']
       .map(k=>'<td>'+esc(x[k])+'</td>').join('')+
     '<td class="path">'+esc(x.path)+'</td></tr>').join('');
  }catch(err){st.textContent='Fehler: '+err}
+});
+
+tb.addEventListener('click',async e=>{
+ const b=e.target.closest('button.play'); if(!b) return;
+ const token=ptok.value.trim();
+ if(!token){st.textContent='Play-Token fehlt';return}
+ try{
+  const r=await fetch(PLAYER_URL+'/play',{method:'POST',
+    headers:{'Content-Type':'application/json','X-Movdb-Play':token},
+    body:JSON.stringify({path:b.dataset.path})});
+  const j=await r.json();
+  st.textContent=j.ok?('gestartet: '+b.dataset.path)
+    :('Play-Fehler: '+(j.error||r.status));
+ }catch(err){st.textContent='Play-Fehler: '+err}
 });
 
 const ms=document.getElementById('mstatus'),ml=document.getElementById('mlog');

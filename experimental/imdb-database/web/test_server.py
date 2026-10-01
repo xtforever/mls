@@ -5,6 +5,7 @@ Prueft: mehrere Genres -> je ein --genre, Reihenfolge (Flags vor DB-Datei
 vor Termen) und tolerante UTF-8-Dekodierung von Pfaden.
 """
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -75,5 +76,13 @@ assert {n for n, _, _ in srv.ACTIONS} == {
 pane = srv.maint_pane()
 assert "IMDb-Daten aktualisieren" in pane and "imdb_index.bin" in pane, pane
 assert srv.LABELS["reindex"].startswith("Titel neu raten")
+
+# PLAYER_URL wird als gueltiges JS-String-Literal eingebettet (kein JS-Bruch)
+srv.PLAYER_URL = 'http://x/";alert(1)//\\'
+html = srv.page()
+assert "{{PLAYER_URL}}" not in html, "Platzhalter darf nicht uebrig bleiben"
+line = next(l for l in html.splitlines() if l.startswith("const PLAYER_URL="))
+lit = line[len("const PLAYER_URL="):].rstrip(";")
+assert json.loads(lit) == srv.PLAYER_URL, lit
 
 print("web/server.py: ok")

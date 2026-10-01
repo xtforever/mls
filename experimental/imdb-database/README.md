@@ -247,7 +247,9 @@ docker compose down
 - Der Build-Kontext wird per `.dockerignore` klein gehalten (Datasets/
   Indizes gehen nicht an den Docker-Daemon).
 - Port/Verhalten per Umgebung: `PORT` (8000), `BIND` (0.0.0.0),
-  `MOVDB_MAINTENANCE` (1 = Wartungs-Tab an, 0 = aus).
+  `MOVDB_MAINTENANCE` (1 = Wartungs-Tab an, 0 = aus),
+  `MOVDB_PLAYER_URL` (URL des lokalen Play-Agenten, Default
+  `http://127.0.0.1:8765`; siehe „Video-Player“).
 - Endpunkte: `/` (UI), `/api/search?q=...&genre=...&min_rating=...&year_range=A-B&type=...`,
   `/api/maintenance` (Status), `POST /api/maintenance/<aktion>`, `/healthz`.
 - Genres sind Checkboxen; mehrere ausgewaehlte Genres werden UND-verknuepft
@@ -270,6 +272,64 @@ bleiben.
 `POST` verlangt den Header `X-Movdb: 1` (CSRF-Schutz). Es gibt **keine
 Authentifizierung** — nur lokal/LAN betreiben oder einen Reverse-Proxy mit
 Auth davor setzen. Abschaltbar per `MOVDB_MAINTENANCE=0`.
+
+### Video-Player (lokaler Play-Agent)
+
+Der Play-Button im Suchtreffer startet den Player auf dem **Desktop**, nicht
+im Container. Dazu laeuft `web/player_agent.py` (nur Stdlib) ausserhalb von
+Docker, nur an `127.0.0.1` gebunden. Die Server-Wurzel wird per sshfs
+read-only gemountet und die DB-Pfade **verbatim** uebernommen
+(`/8tbmv1/a.mkv` -> `~/mnt/server/8tbmv1/a.mkv`):
+
+```bash
+mkdir -p ~/mnt/server
+sshfs user@server:/ ~/mnt/server -o ro
+MOVDB_LOCAL_ROOT=~/mnt/server python3 web/player_agent.py   # Token ausgeben
+```
+
+Das Token einmal ins Feld „Play-Token“ eintragen (bleibt im `localStorage`).
+Der Agent startet nur Dateien unter den erlaubten Wurzeln mit erlaubter
+Endung; Token-Pflicht per Header `X-Movdb-Play`.
+
+| Env | Default | Bedeutung |
+|---|---|---|
+| `MOVDB_PLAYER` | `mpv` | Player-Programm |
+| `MOVDB_LOCAL_ROOT` | `~/mnt/server` | Mount der Server-Wurzel |
+| `MOVDB_PATH_MAP` | – | zusaetzliche Praefixe `REMOTE=LOCAL;...` |
+| `MOVDB_PLAY_ROOTS` | `MOVDB_LOCAL_ROOT` | erlaubte Wurzeln (`os.pathsep`) |
+| `MOVDB_PLAY_EXT` | Video-Endungen | erlaubte Dateiendungen |
+| `MOVDB_PLAY_ORIGIN` | `http://localhost:8000` | erlaubte UI-Origins |
+| `MOVDB_PLAY_PORT` | `8765` | Agent-Port |
+| `MOVDB_PLAY_TOKEN` | zufaellig | Shared Secret |
+| `MOVDB_MOUNT_CMD` | – | On-Demand-Mount bei Play (Argv, z. B. `movdb-mount`) |
+
+Das Container-Frontend erreicht den Agenten ueber `MOVDB_PLAYER_URL`
+(Default `http://127.0.0.1:8765`).
+
+#### Client installieren
+
+`web/install-client.sh` richtet auf dem Client (Desktop) alles ein – kein
+sudo, idempotent:
+
+```bash
+./web/install-client.sh --server user@server --ui-origin http://server:8000
+```
+
+Installiert Agent, Konfiguration mit stabilem Token
+(`~/.config/movdb/player.env`, 0600), Launcher
+`~/.local/bin/movdb-play-agent`, sshfs-Helfer `~/.local/bin/movdb-mount`
+(`up`/`down`/`print`) und einen systemd-User-Dienst. Optionen:
+`--mount-service` richtet zusaetzlich einen Mount-Dienst ein (sinnvoll mit
+`--ssh-key`), `--no-service` schaltet systemd ab, `--uninstall [--purge]`
+entfernt alles. `--mount-on-play` laesst den Agenten bei Play selbst mounten
+(Default, sobald `--server`/`--remote` gesetzt ist) und schreibt
+`MOVDB_MOUNT_CMD`; `--no-mount-on-play` schaltet das ab (dann Mount vorher per
+Dienst oder `movdb-mount up`). Die `--ui-origin` muss der Origin entsprechen,
+unter der die Suche im Browser geoeffnet wird (Default
+`http://localhost:8000`).
+
+Grenzen: nur gleicher Desktop/Loopback, keine Auth, kein TLS. Eine
+HTTPS-UI kann `http://127.0.0.1:8765` nicht erreichen (Mixed Content).
 
 ## Bekannte Einschränkungen
 
