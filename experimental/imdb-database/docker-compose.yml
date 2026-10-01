@@ -5,9 +5,14 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # movies.bin / movies-meta.bin liegen im Host-Verzeichnis, nur lesen.
-      - ./:/data:ro
+      # Schreibzugriff fuer Wartungs-Jobs (movies.bin/meta, Index, Datasets).
+      - ./:/data
+    # Als Host-User laufen, damit Wartungs-Ausgaben dem Host gehoeren.
+    # Bei abweichender UID/GID: MOVDB_UID/MOVDB_GID setzen (id -u / id -g).
+    user: "${MOVDB_UID:-1001}:${MOVDB_GID:-1001}"
     environment:
       MOVDB_BIN: /data/movies.bin
       MOVDB_META: /data/movies-meta.bin
+      MOVDB_DATA: /data
+      MOVDB_MAINTENANCE: "1"
     restart: unless-stopped

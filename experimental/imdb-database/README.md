@@ -228,9 +228,9 @@ Dedupliziert `movies-guess.tsv` nach Titel und zeigt alphabetisch (max.
 
 ## Docker-Frontend
 
-`Dockerfile` + `docker-compose.yml` bauen `movdb.exed` und starten ein
-kleines Web-Frontend (`web/server.py`, nur Python-Stdlib) mit
-Titel-Suche und Meta-Filtern (Genre, Rating, Jahresbereich, Typ).
+`Dockerfile` + `docker-compose.yml` bauen die C-Tools und starten ein
+kleines Web-Frontend (`web/server.py`, nur Python-Stdlib) mit zwei Tabs:
+**Suche** (Titel + Meta-Filter) und **Wartung** (Pipeline-Jobs).
 
 ```bash
 docker compose build
@@ -238,15 +238,38 @@ docker compose up -d          # http://localhost:8000
 docker compose down
 ```
 
-- Die DB-Dateien `movies.bin` und `movies-meta.bin` muessen im
-  Projektverzeichnis liegen (gitignored) und werden **read-only** nach
-  `/data` gemountet (`MOVDB_BIN`/`MOVDB_META`).
+- Das Projektverzeichnis wird **read-write** nach `/data` gemountet
+  (`MOVDB_DATA`), damit Wartungs-Jobs `movies.bin`/`movies-meta.bin`,
+  Index und Datasets schreiben koennen.
+- Der Container laeuft als Host-User (`user:` in der Compose-Datei,
+  Default `1001`). Bei abweichender UID/GID `MOVDB_UID`/`MOVDB_GID`
+  setzen (`id -u` / `id -g`), sonst schlagen Schreibzugriffe fehl.
 - Der Build-Kontext wird per `.dockerignore` klein gehalten (Datasets/
   Indizes gehen nicht an den Docker-Daemon).
-- Port/Verhalten per Umgebung: `PORT` (8000), `BIND` (0.0.0.0).
-- Endpunkte: `/` (UI), `/api/search?q=...&genre=...&min_rating=...&year_range=A-B&type=...`, `/healthz`.
+- Port/Verhalten per Umgebung: `PORT` (8000), `BIND` (0.0.0.0),
+  `MOVDB_MAINTENANCE` (1 = Wartungs-Tab an, 0 = aus).
+- Endpunkte: `/` (UI), `/api/search?q=...&genre=...&min_rating=...&year_range=A-B&type=...`,
+  `/api/maintenance` (Status), `POST /api/maintenance/<aktion>`, `/healthz`.
 - Genres sind Checkboxen; mehrere ausgewaehlte Genres werden UND-verknuepft
   (jedes als eigenes `--genre`), passend zu `movdb query`.
+
+### Wartungs-Tab
+
+Feste Allowlist, kein Nutzer-Input in den Kommandos; ein Job gleichzeitig
+(globales Lock), Ausgabe im Job-Log. `movies.bin`/`movies-meta.bin` werden
+atomar per `tmp`+`mv` ersetzt, damit laufende Suchen (mmap) ungestoert
+bleiben.
+
+| Aktion | Kommando |
+|---|---|
+| `update-imdb` | `download.sh` (Datasets + `imdb_index.bin`) |
+| `reindex` | `guess.exed` + `movdb build` + `movdb meta` (kein Download) |
+| `rebuild-db` | `movdb build` + `movdb meta` (aus vorhandener `movies-guess.tsv`) |
+| `rebuild` | `download.sh` + `reindex` |
+
+`POST` verlangt den Header `X-Movdb: 1` (CSRF-Schutz). Es gibt **keine
+Authentifizierung** — nur lokal/LAN betreiben oder einen Reverse-Proxy mit
+Auth davor setzen. Abschaltbar per `MOVDB_MAINTENANCE=0`.
 
 ## Bekannte Einschränkungen
 

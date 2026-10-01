@@ -51,4 +51,19 @@ r = srv.search({})
 assert r["count"] == 0 and "note" in r, r
 assert len(calls) == n, "leere Anfrage darf movdb nicht aufrufen"
 
+# Wartung: feste Allowlist, force nur beim Download, unbekannt -> Fehler
+assert srv._steps("update-imdb", False)[0][0] == srv.DOWNLOAD
+assert srv._steps("rebuild", True)[0] == [srv.DOWNLOAD, "--force"]
+
+
+def _argv(step):
+    return step[0] if isinstance(step, tuple) else step
+
+
+assert all("download.sh" not in " ".join(_argv(s))
+           for s in srv._steps("reindex", False))
+assert srv._steps("nope", False) is None
+ok, err = srv.JOB.start("nope", False)
+assert not ok and "unbekannt" in err, (ok, err)
+
 print("web/server.py: ok")

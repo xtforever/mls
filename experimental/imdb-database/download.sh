@@ -103,8 +103,12 @@ fi
 
 # Binaerindex nur neu bauen, wenn er fehlt oder aelter als der TSV-Index ist.
 bin="$DIR/imdb_index.bin"
-build="$DIR/imdb_build.exed"
-if [[ -x "$build" ]]; then
+# PATH zuerst (Container: /app/imdb_build.exed), sonst neben dem Skript.
+build="$(command -v imdb_build.exed || true)"
+if [[ -z "$build" || ! -x "$build" ]]; then
+    build="$DIR/imdb_build.exed"
+fi
+if [[ -n "$build" && -x "$build" ]]; then
     if [[ ! -s "$bin" || "$index" -nt "$bin" ]]; then
         echo "[bin ] $index -> $bin"
         "$build" "$index" "$bin"
@@ -112,5 +116,5 @@ if [[ -x "$build" ]]; then
         echo "[skip] $bin ist aktuell"
     fi
 else
-    echo "[warn] $build fehlt (make imdb_build.exed); ueberspringe Binaerindex" >&2
+    echo "[warn] imdb_build.exed nicht gefunden (make imdb_build.exed); ueberspringe Binaerindex" >&2
 fi
