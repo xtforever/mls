@@ -17,6 +17,32 @@ void m_destruct ();
 */
 int m_reg_freefn (free_fn_t free_fn);
 
+/* Block-scoped auto-free handle type: `tmls h = ...;` declares h and frees it
+   when its block is left. Plain `int` handles are NOT auto-freed and must be
+   freed with m_free().
+   Always initialize it (`tmls h = ...;`): an uninitialized tmls holds garbage
+   and is passed to m_free on scope exit.
+   In debug builds the cleanup routes through the _m_free() wrapper so the free
+   is recorded in the debug list; the recorded site is the cleanup itself (this
+   header), since a cleanup attribute cannot capture the caller's line. On
+   compilers without __attribute__((cleanup)) (MSVC) tmls degrades to plain int
+   and manual m_free() is required. */
+#if defined(MLS_DEBUG) && !defined(MLS_DEBUG_DISABLE)
+int _m_free (int ln, const char *fn, const char *fun, int m);
+static inline void m_free_cleanup (int *hp)
+{
+	_m_free (__LINE__, __FILE__, __FUNCTION__, *hp);
+}
+#else
+static inline void m_free_cleanup (int *hp) { m_free (*hp); }
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#define tmls int __attribute__ ((cleanup (m_free_cleanup)))
+#else
+#define tmls int
+#endif
+
 int m_is_freed (int h);
 int m_is_valid (int h);
 int m_free_hdl (int h);
@@ -72,6 +98,8 @@ int _m_wrapcstr (int ln, const char *fn, const char *fun, char *s);
 int _m_wrapints (int ln, const char *fn, const char *fun, int *list, int nelem);
 int _m_wrapstrings (int ln, const char *fn, const char *fun, char **list,
 		    int nelem);
+int _m_wrapstrhandles (int ln, const char *fn, const char *fun,
+		       const char **list, int nelem);
 int _s_cstrdup (int ln, const char *fn, const char *fun, const char *s);
 int _s_ccstr (int ln, const char *fn, const char *fun, const char *s);
 
@@ -121,6 +149,7 @@ int s_cstrdup (const char *s);
 int m_wrapstrings (char **list, int nelem);
 int m_wrapints (int *list, int nelem);
 int m_wrapcstr (char *s);
+int m_wrapstrhandles (const char **list, int nelem);
 
 #ifdef __plusplus
 }
@@ -149,6 +178,9 @@ int m_wrapcstr (char *s);
 
 #define m_wrapstrings(s, n)                                                    \
 	_m_wrapstrings (__LINE__, __FILE__, __FUNCTION__, (s), (n))
+
+#define m_wrapstrhandles(s, n)                                                 \
+	_m_wrapstrhandles (__LINE__, __FILE__, __FUNCTION__, (s), (n))
 
 #define s_cstrdup(s) _s_cstrdup (__LINE__, __FILE__, __FUNCTION__, (s))
 

@@ -38,6 +38,7 @@ cleaned up by `m_destruct()`.
 |---|---|
 | `m_alloc(max, w, free_hdl)` | Create a list. `free_hdl`: `MFREE`, `MFREE_STR`, `MFREE_EACH` |
 | `m_free(h)` | Free a handle (safe on `h <= 0`) |
+| `tmls h = ...;` | Block-scoped auto-free handle; freed at block end (GCC/Clang `cleanup`, plain `int` elsewhere) |
 | `m_is_freed(h)` | Check if slot is freed (safe, no crash) |
 | `m_is_valid(h)` | Inverse of `m_is_freed` |
 | `m_dub(m)` | Duplicate handle (writable copy of NOALLOC wraps) |

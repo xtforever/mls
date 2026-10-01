@@ -96,6 +96,39 @@ void test_m_slice_inplace ()
 	printf ("m_slice in-place test passed.\n");
 }
 
+void test_m_slice_self ()
+{
+	printf ("Testing m_slice with dest == src (in-place overlap)...\n");
+
+	/* forward overlap: shifting [0..3] right by 2 -> [0,1,0,1,2,3] */
+	int m = m_alloc (10, sizeof (int), MFREE);
+	for (int i = 0; i < 10; i++)
+		m_put (m, &i);
+	m_slice (m, 2, m, 0, 3);
+	assert (m_len (m) == 6);
+	assert (INT (m, 0) == 0);
+	assert (INT (m, 1) == 1);
+	assert (INT (m, 2) == 0);
+	assert (INT (m, 3) == 1);
+	assert (INT (m, 4) == 2);
+	assert (INT (m, 5) == 3);
+	m_free (m);
+
+	/* backward overlap: shifting [2..5] left to 0 -> [2,3,4,5] */
+	m = m_alloc (10, sizeof (int), MFREE);
+	for (int i = 0; i < 10; i++)
+		m_put (m, &i);
+	m_slice (m, 0, m, 2, 5);
+	assert (m_len (m) == 4);
+	assert (INT (m, 0) == 2);
+	assert (INT (m, 1) == 3);
+	assert (INT (m, 2) == 4);
+	assert (INT (m, 3) == 5);
+	m_free (m);
+
+	printf ("m_slice self test passed.\n");
+}
+
 int main ()
 {
 	trace_level = 1;
@@ -105,6 +138,7 @@ int main ()
 	test_m_slice_negative ();
 	test_s_slice_basic ();
 	test_m_slice_inplace ();
+	test_m_slice_self ();
 
 	m_destruct ();
 	printf ("All slice tests completed successfully.\n");

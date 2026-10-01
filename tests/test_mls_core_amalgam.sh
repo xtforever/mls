@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
-# Build the mls_core.h single-header test in four configurations and run it
-# with trace_level selected on the command line:
+# Build the mls single-header test in four configurations, one per generated
+# convenience preset header, and run it with trace_level selected on the
+# command line:
 #
-#   1. release       (-DMLS_THREAD_SAFE=0)
-#   2. debug         (-DMLS_THREAD_SAFE=0 -DMLS_DEBUG)
-#   3. thread        (-DMLS_THREAD_SAFE=1)
-#   4. thread-debug  (-DMLS_THREAD_SAFE=1 -DMLS_DEBUG)
+#   1. release       mls_core.h      (release, single-threaded)
+#   2. debug         mls_cored.h     (debug, single-threaded)
+#   3. thread        mls_coremt.h    (release, multithread)
+#   4. thread-debug  mls_coredmt.h   (debug, multithread)
 #
 # For each binary, trace_level=0 must produce no "[mls trace" output and
 # trace_level=1 must produce at least one. Non-thread builds must not
@@ -26,11 +27,12 @@ pass() { PASS=$((PASS + 1)); printf '  PASS: %s\n' "$1"; }
 fail() { FAIL=$((FAIL + 1)); printf '  FAIL: %s\n' "$1"; }
 
 run_config() {
-	local name="$1" cflags="$2" libs="$3" bin out rc traces has_pthread
-	echo "== $name ($cflags) =="
+	local name="$1" header="$2" libs="$3" bin out rc traces has_pthread
+	echo "== $name ($header) =="
 
 	# shellcheck disable=SC2086
-	if ! "$CC" -std=c11 -I"$ROOT" $cflags "$SRC" -o "$BUILD/$name" $libs; then
+	if ! "$CC" -std=c11 -I"$ROOT" -DMLS_TEST_HEADER="\"$header\"" \
+		"$SRC" -o "$BUILD/$name" $libs; then
 		fail "$name (compile)"
 		return
 	fi
@@ -75,10 +77,10 @@ run_config() {
 	esac
 }
 
-run_config release      "-DMLS_THREAD_SAFE=0"             "-lm -ldl"
-run_config debug        "-DMLS_THREAD_SAFE=0 -DMLS_DEBUG" "-lm -ldl"
-run_config thread       "-DMLS_THREAD_SAFE=1"             "-lpthread -lm -ldl"
-run_config thread-debug "-DMLS_THREAD_SAFE=1 -DMLS_DEBUG" "-lpthread -lm -ldl"
+run_config release      "../mls_core.h"     "-lm -ldl"
+run_config debug        "../mls_cored.h"    "-lm -ldl"
+run_config thread       "../mls_coremt.h"   "-lpthread -lm -ldl"
+run_config thread-debug "../mls_coredmt.h"  "-lpthread -lm -ldl"
 
 echo
 echo "amalgam test: $PASS passed, $FAIL failed"

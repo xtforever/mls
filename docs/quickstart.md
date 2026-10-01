@@ -126,6 +126,32 @@ U32(h,i)   U64(h,i)    PTR(h,i)     STR(h,i)
 Für Strings: `m_str(h)` liefert den `char*`-Puffer eines Byte-Arrays,
 `CHARP(h)` ist das Gleiche als Makro.
 
+## Temporäre Handles automatisch freigeben: `tmls`
+
+`tmls` ist ein Handle, das am Ende seines Blocks automatisch freigegeben wird —
+ideal für Zwischenergebnisse, die man sonst leicht vergisst:
+
+```c
+m_init();
+{
+    tmls h = m_alloc(4, sizeof(int), MFREE);   // tmls statt int
+    int v = 42;
+    m_put(h, &v);
+    printf("%d\n", INT(h, 0));                 // 42
+}                                              // h wird hier automatisch freigegeben
+m_destruct();
+```
+
+- `m_free(h)` entfällt: die Freigabe passiert beim Verlassen des Blocks.
+- Nur für **temporäre** Handles gedacht. Dauerhafte Handles bleiben `int` und
+  werden weiterhin explizit mit `m_free` freigegeben.
+- **Immer initialisieren:** ein `tmls h;` ohne Zuweisung enthält Müll und wird
+  beim Blockende an `m_free` übergeben.
+- Basiert auf `__attribute__((cleanup))` (GCC/Clang). Ohne diese Unterstützung
+  (z. B. MSVC) ist `tmls` ein normales `int` — dann manuell freigeben.
+- Die automatische Freigabe ruft das echte `m_free` auf (nicht den
+  `MLS_DEBUG`-Wrapper), liefert also keine `__LINE__/__FILE__`-Diagnose.
+
 ## Strings
 
 ```c

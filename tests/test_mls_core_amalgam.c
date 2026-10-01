@@ -1,17 +1,23 @@
-/* Test for the generated single-header amalgam mls_core.h.
+/* Test for the generated single-header amalgam.
  *
- * Built in four configurations (see test_mls_core_amalgam.sh):
- *   non-debug / debug  x  non-thread / thread
+ * Built in four configurations (see test_mls_core_amalgam.sh), one per
+ * convenience preset header:
+ *   mls_core.h (release, ST)   mls_coremt.h (release, MT)
+ *   mls_cored.h (debug, ST)    mls_coredmt.h (debug, MT)
  * and run with a selectable trace_level (argv[1]).
  *
  * Exercises a few create / append / dump / free ops and self-checks the
  * results with plain asserts. No test framework, no extra deps.
  *
- *   cc -std=c11 -I.. test_mls_core_amalgam.c -o t -lpthread -lm -ldl
+ *   cc -std=c11 -I.. -DMLS_TEST_HEADER='"../mls_core.h"' \
+ *      test_mls_core_amalgam.c -o t -lpthread -lm -ldl
  *   ./t 1        # trace_level = 1
  */
 #define MLS_CORE_IMPLEMENTATION
-#include "../mls_core.h"
+#ifndef MLS_TEST_HEADER
+#define MLS_TEST_HEADER "../mls_core.h"
+#endif
+#include MLS_TEST_HEADER
 
 #define CHECK(cond, msg)                                                       \
 	do {                                                                   \

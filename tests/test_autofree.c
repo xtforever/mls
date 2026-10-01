@@ -90,6 +90,26 @@ void test_mis_freed_logic ()
 	printf ("m_is_freed logic test passed.\n");
 }
 
+void test_scoped ()
+{
+	printf ("Testing tmls (block-scoped auto-free)...\n");
+	int saved = 0;
+	{
+		tmls h = m_alloc (4, sizeof (int), MFREE);
+		int val = 42;
+		m_put (h, &val);
+		saved = h;
+		assert (m_is_freed (h) == 0);
+	}
+	/* h left its block -> auto-freed by the cleanup attribute */
+#if defined(__GNUC__) || defined(__clang__)
+	assert (m_is_freed (saved) == 1);
+#else
+	m_free (saved); /* tmls is a no-op without cleanup support */
+#endif
+	printf ("tmls test passed.\n");
+}
+
 int main ()
 {
 	trace_level = 1;
@@ -100,6 +120,7 @@ int main ()
 	test_mfree_str ();
 	test_mfree_each ();
 	test_custom_free ();
+	test_scoped ();
 
 	m_destruct ();
 	printf ("All auto-free tests completed successfully.\n");
