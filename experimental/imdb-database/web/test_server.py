@@ -30,6 +30,7 @@ def fake_run(argv, **kw):
            b"Action,Adventure,Thriller\t/p/\x81bad.mkv\n")
     out += (b"Shogun\t2024\ttt2788316\t8.6\t253174\t60\t"
             b"Action,Adventure,Drama\t/p/shogun.mkv\n")
+    out += b"Kaputt\t2020\tnoid\t-\t0\t0\t-\t/p/x.mkv\n"
     return R(out)
 
 
@@ -41,9 +42,11 @@ assert argv.count("--genre") == 2, argv
 assert argv[argv.index("--genre") + 1] == "Action", argv
 assert argv[argv.index("--min-rating") + 1] == "8.0", argv
 assert argv[-1] == srv.BIN, argv            # keine Terme -> Datei zuletzt
-assert r["count"] == 2, r
+assert r["count"] == 3, r
 assert r["rows"][0]["title"] == "Goldfinger", r
 assert "bad.mkv" in r["rows"][0]["path"], r  # ungueltiges UTF-8 -> kein Crash
+assert r["rows"][0]["imdb"] == "https://www.imdb.com/de/title/tt0058150/", r
+assert r["rows"][2]["imdb"] == "", r         # keine tt-ID -> kein Link
 
 # leere Anfrage liefert Hinweis, kein Subprozess
 n = len(calls)

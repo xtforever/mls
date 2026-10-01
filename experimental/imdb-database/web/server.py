@@ -100,7 +100,12 @@ def search(params):
     for line in out.splitlines():
         f = line.split("\t")
         if len(f) >= len(COLS):
-            rows.append(dict(zip(COLS, f[:len(COLS)])))
+            row = dict(zip(COLS, f[:len(COLS)]))
+            tid = row["id"]
+            row["imdb"] = (f"https://www.imdb.com/de/title/{tid}/"
+                           if tid.startswith("tt") and tid[2:].isdigit()
+                           else "")
+            rows.append(row)
     return {"count": len(rows), "rows": rows}
 
 
@@ -271,6 +276,10 @@ PAGE = """<!doctype html>
    vertical-align:top}
  th{color:#aaa;font-weight:600}
  td.path{max-width:520px;word-break:break-all;color:#8ab}
+ a.imdb{display:inline-block;margin-left:6px;padding:0 4px;border-radius:3px;
+   background:#f5c518;color:#000;font-size:11px;font-weight:700;
+   text-decoration:none;vertical-align:middle}
+ a.imdb:hover{background:#ffd94a}
  .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
  #mstatus{color:#aaa;margin-bottom:8px}
  #mlog{background:#0c0c0c;border:1px solid #333;border-radius:4px;padding:10px;
@@ -325,7 +334,9 @@ f.addEventListener('submit',async e=>{
   if(j.error){st.textContent='Fehler: '+j.error;return}
   st.textContent=j.note||(j.count+' Treffer');
   tb.innerHTML=j.rows.map(x=>'<tr>'+
-    ['title','year','id','rating','votes','runtime','genres']
+    '<td>'+esc(x.title)+(x.imdb?' <a class="imdb" href="'+esc(x.imdb)+
+      '" target="_blank" rel="noopener noreferrer">IMDb</a>':'')+'</td>'+
+    ['year','id','rating','votes','runtime','genres']
       .map(k=>'<td>'+esc(x[k])+'</td>').join('')+
     '<td class="path">'+esc(x.path)+'</td></tr>').join('');
  }catch(err){st.textContent='Fehler: '+err}
