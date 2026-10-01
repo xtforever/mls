@@ -26,7 +26,8 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	grep -q 'This Is Going to Hurt' /tmp/imdb-guess.out
 	grep -q 'Kopfgeldjaeger des Teufels\|Kopfgeldjäger des Teufels' /tmp/imdb-guess.out
 	grep -q 'Life on Mars' /tmp/imdb-guess.out
-	grep -q '^0.50  1883' /tmp/imdb-guess.out
+	# "1883" ist ein 1800er-Jahr: raus aus den Query-Tokens, Titel-Treffer.
+	grep -q '^1.00  1883' /tmp/imdb-guess.out
 	grep -q 'Das 10te' /tmp/imdb-guess.out
 	grep -q 'Call the Midwife' /tmp/imdb-guess.out
 	grep -q 'Mord im Mittsommer' /tmp/imdb-guess.out

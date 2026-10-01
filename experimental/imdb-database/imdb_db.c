@@ -599,14 +599,54 @@ int imdb_search (const struct imdb_db *cdb, const char *query, int year_hint,
 		}
 
 		if (ncand) {
-			qsort (db->hits, ncand, sizeof *db->hits, hit_cmp);
+			/* Top-k-Einbausortierung statt Full-qsort: hit_cmp ist
+			 * eine strenge Totalordnung (rec ist je Suche
+			 * eindeutig), daher sind die ersten nout Elemente
+			 * identisch mit qsort+memcpy. O(ncand*nout) statt
+			 * O(ncand*log ncand) - bei grossen ncand (haeufige
+			 * Query-Tokens) der dominante Kostenanteil. */
 			int nout = (int)ncand;
 			if (nout > topk)
 				nout = topk;
 			if (nout > outcap)
 				nout = outcap;
-			memcpy (out, db->hits, (size_t)nout * sizeof *out);
-			res = nout;
+			if (nout ==
+			    (int)ncand) { /* topk >= ncand: wie bisher */
+				qsort (db->hits, ncand, sizeof *db->hits,
+				       hit_cmp);
+				memcpy (out, db->hits,
+					(size_t)nout * sizeof *out);
+				res = nout;
+			} else {
+				size_t ns =
+					0; /* beste Kandidaten in out[0..ns) */
+				for (size_t i = 0; i < ncand; i++) {
+					struct imdb_hit h = db->hits[i];
+					if (ns >= (size_t)nout &&
+					    hit_cmp (&h, &out[nout - 1]) >= 0)
+						continue;
+					int lo = 0, hi = (ns < (size_t)nout)
+								 ? (int)ns
+								 : nout - 1;
+					while (lo < hi) {
+						int mid = (lo + hi) / 2;
+						if (hit_cmp (&h, &out[mid]) < 0)
+							hi = mid;
+						else
+							lo = mid + 1;
+					}
+					size_t tail =
+						(ns < (size_t)nout)
+							? ns - lo
+							: (size_t)nout - 1 - lo;
+					memmove (&out[lo + 1], &out[lo],
+						 tail * sizeof h);
+					out[lo] = h;
+					if (ns < (size_t)nout)
+						ns++;
+				}
+				res = (int)ns;
+			}
 		}
 	}
 
@@ -619,7 +659,8 @@ done:
 	return res;
 }
 
-/* ---------------------------------------------------------------- access */
+/* ----------------------------------------------------------------
+ * access */
 
 const char *imdb_title (const struct imdb_db *db, uint32_t rec)
 {

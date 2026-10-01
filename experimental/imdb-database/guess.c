@@ -50,6 +50,9 @@ static const char *NOISE[] = {
 
 static int tsv_mode = 0;
 
+/* 4-stellige Jahreszahl. IMDb reicht bis in die 1880er, daher 1800er
+ * erlaubt: ein "1894" im Dateinamen ist ein Jahr, kein Titelwort
+ * (vorher blieb es als Zahl-Token im Kandidaten und senkte den Score). */
 static int is_year (const char *t)
 {
 	if (strlen (t) != 4)
@@ -58,7 +61,7 @@ static int is_year (const char *t)
 		if (!isdigit ((unsigned char)t[i]))
 			return 0;
 	int y = atoi (t);
-	return y >= 1900 && y <= 2099;
+	return y >= 1800 && y <= 2099;
 }
 
 static int is_se (const char *t) /* s01e07, s1e7 */
@@ -129,7 +132,7 @@ static int num_to_word (int n, char *out, size_t cap)
 	}
 	int h = n / 100, r = n % 100;
 	if (r) {
-		char sub[64];
+		char sub[32]; /* r<100: max. "ninety nine" (11 Zeichen) */
 		num_to_word (r, sub, sizeof sub);
 		snprintf (out, cap, "%s hundred %s", NUM_WORDS[h], sub);
 	} else
@@ -210,8 +213,9 @@ static void add_num_variant (char cands[][1024], int *ncan, int max)
 		return;
 	char v[1024];
 	if (convert_numbers (cands[*ncan - 1], v, sizeof v)) {
-		strncpy (cands[*ncan], v, sizeof cands[0] - 1);
-		cands[*ncan][sizeof cands[0] - 1] = 0;
+		/* v ist durch convert_numbers begrenzt (<= Laenge des
+		 * Eingabe-Kandidaten < sizeof cands[0]). */
+		snprintf (cands[*ncan], sizeof cands[0], "%s", v);
 		(*ncan)++;
 	}
 }
@@ -279,9 +283,20 @@ static int denoise (char **tok, int ntok, int *year, char *out, size_t cap)
 		 * "it", "up" behalten (2-Zeichen-Noise steht in NOISE). */
 		if (strlen (t) < 2)
 			continue;
-		if (is_year (t)) {
-			*year = atoi (t);
-			continue;
+		/* Jahr, auch an Punctuation geklebt ("(2019)" aus dem
+		 * Jahr-Algo mit Roh-Pfad): kein Titelwort. Reines "2019"
+		 * faellt ebenfalls hier raus (tmp == t). */
+		{
+			char tmp[8];
+			size_t m = 0;
+			for (const char *r = t; *r && m < 7; r++)
+				if (isalnum ((unsigned char)*r))
+					tmp[m++] = *r;
+			tmp[m] = 0;
+			if (is_year (tmp)) {
+				*year = atoi (tmp);
+				continue;
+			}
 		}
 		/* 2-stellige Zahl mit führender Null ("02", "07") ist ein
 		 * Datums-/Episodenfragment, kein Titelwort. */
@@ -320,6 +335,11 @@ static int denoise (char **tok, int ntok, int *year, char *out, size_t cap)
 			const char *s = parts[j];
 			if (strlen (s) < 2 || is_noise (s))
 				continue;
+			/* Eingeklebtes Jahr ("(2019)" -> "2019") ist kein
+			 * Titelwort. Tritt nur im Jahr-Algo auf (roh-Pfad ohne
+			 * Norm). */
+			if (is_year (s))
+				continue;
 			if (n++) {
 				if (o + 1 >= cap)
 					return 0;
@@ -338,8 +358,10 @@ static int denoise (char **tok, int ntok, int *year, char *out, size_t cap)
 	return (int)o;
 }
 
-/* Letzte bis zu 5 Pfad-Elemente: comp[0]=Basisname, comp[1]=davor, ... */
-static void comps (const char *path, char comp[5][512], int *n)
+/* Letzte bis zu 5 Pfad-Elemente: comp[0]=Basisname, comp[1]=davor, ...
+ * (Laenge 1024 = Norm-/Kandidaten-Puffer, groessere Komponenten
+ * waeren sonst still leer statt laenger abgeschnitten). */
+static void comps (const char *path, char comp[5][1024], int *n)
 {
 	char cur[8192];
 	strncpy (cur, path, sizeof cur - 1);
@@ -348,7 +370,7 @@ static void comps (const char *path, char comp[5][512], int *n)
 	while (*n < 5) {
 		char *slash = strrchr (cur, '/');
 		size_t len = slash ? strlen (slash + 1) : strlen (cur);
-		if (len == 0 || len >= 512)
+		if (len == 0 || len >= 1024)
 			break;
 		memcpy (comp[*n], slash ? slash + 1 : cur, len);
 		comp[*n][len] = 0;
@@ -464,8 +486,6 @@ static int hit_better (struct imdb_db *db, int year_hint,
 		if (ht != bt)
 			return ht > bt;
 	}
-	if (h->thit != b->thit)
-		return h->thit > b->thit;
 	if (h->nmatch != b->nmatch)
 		return h->nmatch > b->nmatch;
 	if (h->weight != b->weight)
@@ -497,7 +517,7 @@ struct algo {
 static int cand_current (const char *path, char cands[][1024], int max,
 			 int *file_year, int *want_series)
 {
-	char comp[5][512];
+	char comp[5][1024];
 	int ncomp;
 	comps (path, comp, &ncomp);
 	strip_ext (comp[0]);
@@ -561,7 +581,7 @@ static int find_year (const char *s)
 		}
 		if (n == 4) {
 			int y = atoi (p);
-			if (y >= 1900 && y <= 2099)
+			if (y >= 1800 && y <= 2099) /* wie is_year */
 				return y;
 		}
 		p = q - 1;
@@ -600,6 +620,8 @@ static int cand_year_impl (const char *path, char cands[][1024], int max,
 			continue; /* "2025-09": Jahr ist kein Filmjahr */
 		if (ci != nch - 1 && is_collection_dir (chunk))
 			continue; /* Sammelordner, kein Filmtitel */
+		if (ci == nch - 1)
+			strip_ext (chunk); /* Dateinamen, kein Verzeichnis */
 		if (!*file_year)
 			*file_year = year;
 		char buf[1024];
@@ -864,6 +886,10 @@ static int uniq_find (const struct pkey *u, int nu, const char *s, int len)
 
 static void compute_prefix_cuts (char **paths, int n, int mincnt, int *cut)
 {
+	/* ponytail: max. 8 Prefixe je Pfad im Zaeher; tiefere Baeume
+	 * (>= 9 Ordner) werden abgeschnitten. Root-Prefixe sind die
+	 * relevanten Sammelordner, Upgrade-Pfad: cap vergruessern oder
+	 * nur die laengsten Ketten zaehlen. */
 	size_t cap = (size_t)n * 8 + 16;
 	struct pkey *all = malloc (cap * sizeof *all);
 	struct pkey *uniq = NULL;
@@ -1031,7 +1057,12 @@ int main (int argc, char **argv)
 			paths = np;
 			pcap = nc;
 		}
-		paths[npath++] = strdup (line);
+		char *s = strdup (line);
+		if (!s) {
+			fprintf (stderr, "Speicher ueberlaufen\n");
+			return 1;
+		}
+		paths[npath++] = s;
 	}
 	free (line);
 	fclose (mv);
@@ -1070,9 +1101,13 @@ int main (int argc, char **argv)
 			for (int a = 0; a < NALGO; a++) {
 				if (res[a].hit)
 					malgo[a]++;
+				/* Gleicher Titel kann verschiedene
+				 * Produktionen sein (anderes Jahr) -> ID
+				 * mit vergleichen. */
 				if (res[a].hit != res[0].hit ||
 				    (res[0].hit &&
-				     strcmp (res[a].title, res[0].title)))
+				     (strcmp (res[a].title, res[0].title) ||
+				      strcmp (res[a].id, res[0].id))))
 					agree = 0;
 			}
 			if (agree)

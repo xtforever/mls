@@ -2702,6 +2702,29 @@ Joins an m-array of string handles into a single string buffer.
 
 ---
 
+### `s_implode_q`
+
+**Signature:**
+```c
+int s_implode_q(int dest, int srcs, int seperator, char quote)
+```
+
+Like s_implode(), but optionally quotes every element. With quote == '\''
+or '"' each element is wrapped in that character and any occurrence of it
+inside the element is doubled, so the result stays well formed for SQL/CSV
+(e.g. 'O''Brien'). quote == 0 joins without quoting, exactly like
+s_implode(); an empty/NULL separator just concatenates the elements.
+
+**Parameters:**
+- dest Destination handle. If 0, a new one is allocated.
+- srcs Handle of the m-array of string handles.
+- seperator Handle of the separator string buffer.
+- quote Quote character: 0 for none, or '\'' / '"'.
+
+**Returns:** The handle of the destination string buffer.
+
+---
+
 ### `s_strdup_c`
 
 **Signature:**
@@ -2732,6 +2755,25 @@ allocated.
 **Parameters:**
 - out Handle of the destination string buffer. If <= 0, a new one is
 - s The C-style string.
+
+**Returns:** The handle of the string buffer.
+
+---
+
+### `s_strcpy`
+
+**Signature:**
+```c
+int s_strcpy(int out, int in)
+```
+
+Copies a MLS-style string into an string buffer.
+
+allocated.
+
+**Parameters:**
+- out Handle of the destination string buffer. If <= 0, a new one is
+- s The MLS-style string.
 
 **Returns:** The handle of the string buffer.
 
@@ -3462,6 +3504,8 @@ reused, its previous field handles freed first. Convenient for reading e.g.
 CSV or colon-separated files (/etc/passwd with sep ":").
 
 as a single field.
+NULL) this is an empty list (0 fields), never EOF; test with
+m_len (result) == 0.
 
 **Parameters:**
 - dest Handle of the resulting m-array, or 0 to allocate a new one.
@@ -3469,7 +3513,7 @@ as a single field.
 - sep The literal separator string; empty/NULL keeps the whole line
 - strip Non-zero to trim whitespace around each field.
 
-**Returns:** The handle of the m-array of fields, or EOF when no line is left.
+**Returns:** The handle of the m-array of fields. At end of input (or when fp is
 
 ---
 

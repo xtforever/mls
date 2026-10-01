@@ -995,6 +995,13 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>dest Destination handle. If 0, a new one is allocated.</code></li><li><code>srcs Handle of the m-array of string handles.</code></li><li><code>seperator Handle of the separator string buffer.</code></li></ul></div>
 <p class="returns">Returns: <code>The handle of the destination string buffer.</code></p>
 </section><hr>
+<section id="s_implode_q">
+<h3>s_implode_q</h3>
+<pre><code>int s_implode_q(int dest, int srcs, int seperator, char quote)</code></pre>
+<p>Like s_implode(), but optionally quotes every element. With quote == '\''<br>or '"' each element is wrapped in that character and any occurrence of it<br>inside the element is doubled, so the result stays well formed for SQL/CSV<br>(e.g. 'O''Brien'). quote == 0 joins without quoting, exactly like<br>s_implode(); an empty/NULL separator just concatenates the elements.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>dest Destination handle. If 0, a new one is allocated.</code></li><li><code>srcs Handle of the m-array of string handles.</code></li><li><code>seperator Handle of the separator string buffer.</code></li><li><code>quote Quote character: 0 for none, or '\'' / '"'.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the destination string buffer.</code></p>
+</section><hr>
 <section id="s_strdup_c">
 <h3>s_strdup_c</h3>
 <pre><code>int s_strdup_c(const char *s)</code></pre>
@@ -1007,6 +1014,13 @@
 <pre><code>int s_strcpy_c(int out, const char *s)</code></pre>
 <p>Copies a C-style string into an existing string buffer.<br><br>allocated.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>out Handle of the destination string buffer. If <= 0, a new one is</code></li><li><code>s The C-style string.</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the string buffer.</code></p>
+</section><hr>
+<section id="s_strcpy">
+<h3>s_strcpy</h3>
+<pre><code>int s_strcpy(int out, int in)</code></pre>
+<p>Copies a MLS-style string into an string buffer.<br><br>allocated.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>out Handle of the destination string buffer. If <= 0, a new one is</code></li><li><code>s The MLS-style string.</code></li></ul></div>
 <p class="returns">Returns: <code>The handle of the string buffer.</code></p>
 </section><hr>
 <section id="s_puts">
@@ -1270,9 +1284,9 @@
 <section id="s_read_fields">
 <h3>s_read_fields</h3>
 <pre><code>int s_read_fields(int dest, FILE *fp, const char *sep, int strip)</code></pre>
-<p>Reads one line from a file and splits it into its fields, separated by the<br>literal string sep, into an m-array of string handles (MFREE_EACH: free the<br>result with m_free(), access a field with m_str (INT (list, i))). An empty<br>or NULL sep makes the whole line a single field. If strip is non-zero,<br>leading/trailing whitespace of every field is removed. A non-zero dest is<br>reused, its previous field handles freed first. Convenient for reading e.g.<br>CSV or colon-separated files (/etc/passwd with sep ":").<br><br>as a single field.</p>
+<p>Reads one line from a file and splits it into its fields, separated by the<br>literal string sep, into an m-array of string handles (MFREE_EACH: free the<br>result with m_free(), access a field with m_str (INT (list, i))). An empty<br>or NULL sep makes the whole line a single field. If strip is non-zero,<br>leading/trailing whitespace of every field is removed. A non-zero dest is<br>reused, its previous field handles freed first. Convenient for reading e.g.<br>CSV or colon-separated files (/etc/passwd with sep ":").<br><br>as a single field.<br>NULL) this is an empty list (0 fields), never EOF; test with<br>m_len (result) == 0.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>dest Handle of the resulting m-array, or 0 to allocate a new one.</code></li><li><code>fp The file to read.</code></li><li><code>sep The literal separator string; empty/NULL keeps the whole line</code></li><li><code>strip Non-zero to trim whitespace around each field.</code></li></ul></div>
-<p class="returns">Returns: <code>The handle of the m-array of fields, or EOF when no line is left.</code></p>
+<p class="returns">Returns: <code>The handle of the m-array of fields. At end of input (or when fp is</code></p>
 </section><hr>
 <section id="ring_create">
 <h3>ring_create</h3>
