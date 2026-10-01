@@ -245,6 +245,8 @@ docker compose down
   Indizes gehen nicht an den Docker-Daemon).
 - Port/Verhalten per Umgebung: `PORT` (8000), `BIND` (0.0.0.0).
 - Endpunkte: `/` (UI), `/api/search?q=...&genre=...&min_rating=...&year_range=A-B&type=...`, `/healthz`.
+- Genres sind Checkboxen; mehrere ausgewaehlte Genres werden UND-verknuepft
+  (jedes als eigenes `--genre`), passend zu `movdb query`.
 
 ## Bekannte Einschränkungen
 

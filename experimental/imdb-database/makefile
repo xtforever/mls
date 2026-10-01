@@ -50,6 +50,8 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	! ./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin --genre western /tmp/imdb-mini-movdb.bin | grep -q 'Mord im Mittsommer'
 	./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin --year-range 2021-2023 /tmp/imdb-mini-movdb.bin | grep -q '^1883'
 	! ./$(MOVDB) query --meta /tmp/imdb-mini-meta.bin --year-range 2021-2023 /tmp/imdb-mini-movdb.bin | grep -q 'Mord im Mittsommer'
+	# web/server.py: Mehrfach-Genre + tolerante UTF-8-Dekodierung.
+	python3 web/test_server.py
 
 # Vollen Index bauen (laedt Datasets ueber download.sh) und Binaerindex
 # erzeugen.

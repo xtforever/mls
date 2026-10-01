@@ -34,35 +34,43 @@ TYPES = ["movie", "tvSeries", "tvMovie", "miniSeries", "short", "video",
 COLS = ["title", "year", "id", "rating", "votes", "runtime", "genres", "path"]
 
 
+def _one(params, key, default=""):
+    v = params.get(key)
+    return v[0] if v else default
+
+
 def search(params):
     """Baut die movdb-Argumentliste und liefert das Ergebnis als dict."""
     argv = [EXE, "query", "--meta", META]
-    genre = params.get("genre", "").strip()
-    min_rating = params.get("min_rating", "").strip()
-    year_range = params.get("year_range", "").strip()
-    typ = params.get("type", "").strip()
-    terms = params.get("q", "").split()
-    if genre:
-        argv += ["--genre", genre]
+    genres = [g.strip() for g in params.get("genre", []) if g.strip()]
+    min_rating = _one(params, "min_rating").strip()
+    year_range = _one(params, "year_range").strip()
+    typ = _one(params, "type").strip()
+    terms = _one(params, "q").split()
+    for g in genres:               # mehrere --genre = alle muessen passen
+        argv += ["--genre", g]
     if min_rating:
         argv += ["--min-rating", min_rating]
     if year_range:
         argv += ["--year-range", year_range]
     if typ:
         argv += ["--type", typ]
-    if not terms and not (genre or min_rating or year_range or typ):
+    if not terms and not (genres or min_rating or year_range or typ):
         return {"count": 0, "rows": [],
                 "note": "Bitte Suchbegriff oder Filter angeben."}
     argv.append(BIN)          # Datei vor den Termen -> Terme nie als Flag
     argv += terms
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+        p = subprocess.run(argv, capture_output=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"error": str(e)}
+    # Pfade koennen ungueltiges UTF-8 enthalten -> tolerant dekodieren.
+    out = p.stdout.decode("utf-8", "replace")
+    err = p.stderr.decode("utf-8", "replace")
     if p.returncode not in (0, 1):
-        return {"error": (p.stderr or f"rc={p.returncode}").strip()}
+        return {"error": (err or f"rc={p.returncode}").strip()}
     rows = []
-    for line in p.stdout.splitlines():
+    for line in out.splitlines():
         f = line.split("\t")
         if len(f) >= len(COLS):
             rows.append(dict(zip(COLS, f[:len(COLS)])))
@@ -70,7 +78,9 @@ def search(params):
 
 
 def page():
-    genres = "".join(f'<option>{g}</option>' for g in GENRES)
+    genres = "".join(
+        f'<label class="cb"><input type="checkbox" name="genre" '
+        f'value="{g}">{g}</label>' for g in GENRES)
     types = "".join(f'<option value="{t}">{t}</option>' for t in TYPES)
     return PAGE.replace("{{GENRES}}", genres).replace("{{TYPES}}", types)
 
@@ -87,6 +97,12 @@ PAGE = """<!doctype html>
  h1{font-size:16px;margin:0 0 12px}
  form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
  label{display:flex;flex-direction:column;font-size:12px;color:#aaa;gap:4px}
+ .field{display:flex;flex-direction:column;gap:4px}
+ .cap{font-size:12px;color:#aaa}
+ .genrebox{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));
+   gap:2px 12px;background:#1b1b1b;border:1px solid #444;border-radius:4px;
+   padding:6px 8px;max-height:130px;overflow:auto;min-width:260px}
+ .cb{flex-direction:row;align-items:center;gap:6px;color:#ccc;font-size:12px}
  input,select,button{background:#222;color:#eee;border:1px solid #444;
    border-radius:4px;padding:6px 8px;font:inherit}
  button{background:#2d6cdf;border-color:#2d6cdf;cursor:pointer}
@@ -104,7 +120,8 @@ PAGE = """<!doctype html>
  <h1>movdb &mdash; Filme suchen</h1>
  <form id="f">
   <label>Suche <input name="q" placeholder="mord mittsommer" autofocus></label>
-  <label>Genre <select name="genre"><option value="">(egal)</option>{{GENRES}}</select></label>
+  <div class="field"><span class="cap">Genres (alle gew&auml;hlten)</span>
+   <div class="genrebox">{{GENRES}}</div></div>
   <label>Rating ab <input name="min_rating" placeholder="8.0" size="4"></label>
   <label>Jahre <input name="year_range" placeholder="1930-1933" size="10"></label>
   <label>Typ <select name="type"><option value="">(egal)</option>{{TYPES}}</select></label>
@@ -154,9 +171,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/api/search":
-            params = {k: v[0] for k, v in parse_qs(u.query).items()}
-            body = json.dumps(search(params), ensure_ascii=False).encode()
-            self._send(body, "application/json; charset=utf-8")
+            self._send(json.dumps(search(parse_qs(u.query)),
+                                  ensure_ascii=False).encode(),
+                       "application/json; charset=utf-8")
         elif u.path == "/healthz":
             self._send(b'{"ok":true}', "application/json")
         elif u.path in ("/", "/index.html"):
