@@ -6,7 +6,7 @@ Kurz, von „ohne alles" bis „echter Server".
 
 ```bash
 cd experimental/imdb-database
-python3 web/test_player_agent.py   # Mapping, Allowlist, Token, On-Demand-Mount
+python3 web/test_player_agent.py   # Mapping, Allowlist, Origin, On-Demand-Mount
 python3 web/test_server.py         # Suche-Argv, UI, PLAYER_URL-Escaping
 bash    web/test_e2e.sh            # Suche -> Agent -> sshfs(Fake) -> Player(Fake)
 bash    web/test_install_origin.sh # UI-Origin-Autoerkennung im Installer
@@ -29,11 +29,9 @@ HOME=$T bash web/install-client.sh --uninstall --purge
 ## 3. Echter Praxistest (Server + Desktop)
 
 1. Auf dem Server: `docker compose up -d` → UI unter `http://server:8000`.
-2. Auf dem Client: `./web/install-client.sh --server user@server \
-   --ui-origin http://server:8000`
-3. UI im Browser oeffnen, Token aus der Installer-Ausgabe ins Feld
-   „Play-Token" eintragen (bleibt im `localStorage`).
-4. Suchen, `▶` klicken. Beim ersten Klick mountet der Agent per sshfs
+2. Auf dem Client: `./web/install-client.sh --server user@server`
+   (UI-Origin wird automatisch ermittelt, ggf. `--ui-host`).
+3. Suchen, `▶` klicken. Beim ersten Klick mountet der Agent per sshfs
    (Default) und startet `mpv`.
 
 Pruefen: `mountpoint ~/mnt/server`, `ls ~/mnt/server/<db-pfad>` und
@@ -48,4 +46,3 @@ Pruefen: `mountpoint ~/mnt/server`, `ls ~/mnt/server/<db-pfad>` und
   `403 {"error":"origin"}`.
 - **HTTPS-UI**: `http://127.0.0.1` ist dann Mixed Content → Agent nicht
   erreichbar.
-- **Token**: fehlt/falsch → `403 {"error":"token"}`.

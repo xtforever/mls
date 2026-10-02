@@ -346,8 +346,6 @@ PAGE = """<!doctype html>
 <main>
  <section id="tab-search">
   <div id="status"></div>
-  <label class="cb">Play-Token <input id="ptok" placeholder="Play-Token"
-   size="28"></label>
    <table>
     <thead><tr><th>Play</th><th>Titel</th><th>Jahr</th><th>ID</th><th>Rating</th>
      <th>Stimmen</th><th>Min</th><th>Genres</th><th>Pfad</th></tr></thead>
@@ -369,9 +367,7 @@ function showTab(id){
 tabs.forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 
 const f=document.getElementById('f'),tb=document.getElementById('tb'),
-      st=document.getElementById('status'),ptok=document.getElementById('ptok');
-ptok.value=localStorage.getItem('movdb_ptok')||'';
-ptok.addEventListener('input',()=>localStorage.setItem('movdb_ptok',ptok.value));
+      st=document.getElementById('status');
 f.addEventListener('submit',async e=>{
  e.preventDefault();
  st.textContent='suche\\u2026'; tb.innerHTML='';
@@ -394,11 +390,9 @@ f.addEventListener('submit',async e=>{
 
 tb.addEventListener('click',async e=>{
  const b=e.target.closest('button.play'); if(!b) return;
- const token=ptok.value.trim();
- if(!token){st.textContent='Play-Token fehlt';return}
  try{
   const r=await fetch(PLAYER_URL+'/play',{method:'POST',
-    headers:{'Content-Type':'application/json','X-Movdb-Play':token},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({path:b.dataset.path})});
   const j=await r.json();
   st.textContent=j.ok?('gestartet: '+b.dataset.path)

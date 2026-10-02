@@ -77,8 +77,6 @@ done
 curl -fsS "http://127.0.0.1:$PUI/healthz"  >/dev/null || fail "UI nicht erreichbar"
 curl -fsS "http://127.0.0.1:$PAGT/healthz" >/dev/null || fail "Agent nicht erreichbar"
 
-TOKEN="$(grep '^MOVDB_PLAY_TOKEN=' "$HOME/.config/movdb/player.env" | cut -d= -f2- | tr -d '"')"
-
 # ---- 1) Browser-Suche ----
 BODY="$(curl -fsS "http://127.0.0.1:$PUI/api/search?q=movie")"
 DBPATH="$(printf '%s' "$BODY" | python3 -c 'import sys,json;print(json.load(sys.stdin)["rows"][0]["path"])')"
@@ -87,7 +85,7 @@ DBPATH="$(printf '%s' "$BODY" | python3 -c 'import sys,json;print(json.load(sys.
 play() {
   curl -sS -o "$T/r.json" -w '%{http_code}' -X POST "http://127.0.0.1:$PAGT/play" \
     -H "Origin: http://127.0.0.1:$PUI" -H "Content-Type: application/json" \
-    -H "X-Movdb-Play: $TOKEN" --data "{\"path\": \"$1\"}"
+    --data "{\"path\": \"$1\"}"
 }
 
 # ---- 2) Play vor Mount: Agent mountet selbst und spielt ----

@@ -18,19 +18,16 @@ Konfiguration per Umgebungsvariablen:
   MOVDB_PLAY_ORIGIN erlaubte UI-Origins          (Default
                     http://localhost:8000, mehrere per Komma)
   MOVDB_PLAY_PORT   HTTP-Port                    (Default 8765)
-  MOVDB_PLAY_TOKEN  Shared Secret                (Default: zufaellig)
   MOVDB_MOUNT_CMD   On-Demand-Mount (Argv, z.B. Pfad zu movdb-mount);
                     laeuft, wenn der Zielpfad noch nicht da ist
   MOVDB_MOUNT_WAIT  Wartezeit danach in Sekunden (Default 10)
 
-Sicherheit: Token-Pflicht (X-Movdb-Play, hmac.compare_digest), Host-Header
-gegen DNS-Rebinding, Origin-Allowlist (kein Wildcard, kein Credentials),
-realpath-Containment + Endungs-Allowlist + isfile vor jedem Player-Start.
+Sicherheit: Host-Header gegen DNS-Rebinding, Origin-Allowlist (kein
+Wildcard, kein Credentials), realpath-Containment + Endungs-Allowlist +
+isfile vor jedem Player-Start.
 """
-import hmac
 import json
 import os
-import secrets
 import shlex
 import subprocess
 import threading
@@ -49,7 +46,6 @@ EXTS = {e.strip().lower().lstrip(".")
 ORIGINS = {o.strip() for o in os.environ.get(
     "MOVDB_PLAY_ORIGIN", "http://localhost:8000").split(",") if o.strip()}
 PORT = int(os.environ.get("MOVDB_PLAY_PORT", "8765"))
-TOKEN = os.environ.get("MOVDB_PLAY_TOKEN") or secrets.token_urlsafe(32)
 MOUNT_CMD = shlex.split(os.environ.get("MOVDB_MOUNT_CMD", ""))
 MOUNT_WAIT = float(os.environ.get("MOVDB_MOUNT_WAIT", "10"))
 _MOUNT_LOCK = threading.Lock()
@@ -197,8 +193,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers",
-                             "Content-Type, X-Movdb-Play")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Access-Control-Max-Age", "600")
             self.send_header("Vary", "Origin")
             self.send_header("Content-Length", "0")
@@ -214,11 +209,6 @@ class Handler(BaseHTTPRequestHandler):
             return
         if origin and origin not in ORIGINS:
             self._json(403, {"ok": False, "error": "origin"})
-            return
-        token = self.headers.get("X-Movdb-Play", "")
-        if not hmac.compare_digest(token.encode("utf-8", "ignore"),
-                                   TOKEN.encode("utf-8")):
-            self._json(403, {"ok": False, "error": "token"}, origin)
             return
         try:
             n = int(self.headers.get("Content-Length", "0") or "0")
@@ -244,7 +234,6 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     print(f"movdb Play-Agent auf http://127.0.0.1:{PORT}", flush=True)
-    print(f"Play-Token: {TOKEN}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 

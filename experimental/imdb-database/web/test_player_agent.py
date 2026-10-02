@@ -3,7 +3,7 @@
 
 Laedt das Modul mehrfach mit verschiedenen Env-Werten per importlib und
 ersetzt subprocess durch einen Fake, der die argv sammelt. Prueft Mapping,
-Allowlist (inkl. Symlink-Eskalation), Argv-Bau, HTTP-Token/Origin und dass
+Allowlist (inkl. Symlink-Eskalation), Argv-Bau, HTTP-Origin und dass
 bei Ablehnung nie ein Player gestartet wird.
 """
 import http.client
@@ -22,8 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "player_agent.py")
 ENV_KEYS = ["MOVDB_PLAYER", "MOVDB_LOCAL_ROOT", "MOVDB_PATH_MAP",
             "MOVDB_PLAY_ROOTS", "MOVDB_PLAY_EXT", "MOVDB_PLAY_ORIGIN",
-            "MOVDB_PLAY_PORT", "MOVDB_PLAY_TOKEN", "MOVDB_MOUNT_CMD",
-            "MOVDB_MOUNT_WAIT"]
+            "MOVDB_PLAY_PORT", "MOVDB_MOUNT_CMD", "MOVDB_MOUNT_WAIT"]
 
 calls = []
 run_calls = []
@@ -170,7 +169,7 @@ with tempfile.TemporaryDirectory() as d:
     open(os.path.join(d, "ok.mkv"), "wb").close()
     open(os.path.join(d, "note.txt"), "wb").close()
     m = load({"MOVDB_LOCAL_ROOT": root, "MOVDB_PLAY_ROOTS": d,
-              "MOVDB_PATH_MAP": "", "MOVDB_PLAY_TOKEN": "testtoken",
+              "MOVDB_PATH_MAP": "",
               "MOVDB_PLAY_ORIGIN": "http://localhost:8000"})
     calls.clear()
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), m.Handler)
@@ -178,13 +177,11 @@ with tempfile.TemporaryDirectory() as d:
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{port}"
 
-    def post(token, dbpath, origin=None):
+    def post(dbpath, origin=None):
         req = urllib.request.Request(
             base + "/play", data=json.dumps({"path": dbpath}).encode(),
             method="POST")
         req.add_header("Content-Type", "application/json")
-        if token is not None:
-            req.add_header("X-Movdb-Play", token)
         if origin:
             req.add_header("Origin", origin)
         try:
@@ -214,43 +211,36 @@ with tempfile.TemporaryDirectory() as d:
             assert r.status == 204, r.status
             assert r.headers["Access-Control-Allow-Origin"] == \
                 "http://localhost:8000"
-            assert "X-Movdb-Play" in r.headers["Access-Control-Allow-Headers"]
+            assert "Content-Type" in r.headers["Access-Control-Allow-Headers"]
 
-        st, _ = post(None, ok_rel)              # ohne Token
-        assert st == 403, st
-        st, _ = post("falsch", ok_rel)          # falscher Token
-        assert st == 403, st
-        assert len(calls) == 0, "ohne Token darf kein Player starten"
-
-        st, j = post("testtoken", ok_rel)       # korrekt
+        st, j = post(ok_rel)                    # kein Token noetig
         assert st == 200 and j["ok"] is True, (st, j)
         assert len(calls) == 1, calls
         _argv, _kw = calls[0]
         assert _argv == ["mpv", "--", os.path.join(d, "ok.mkv")], _argv
 
-        st, _ = post("testtoken", rel + "/note.txt")   # falsche Endung
+        st, _ = post(rel + "/note.txt")                # falsche Endung
         assert st == 403, st
-        st, _ = post("testtoken", "/nix/gibts.mkv")    # nicht gemappt/fehlt
+        st, _ = post("/nix/gibts.mkv")                 # nicht gemappt/fehlt
         assert st == 403, st
-        st, _ = post("testtoken", ok_rel, origin="http://evil.example")
+        st, _ = post(ok_rel, origin="http://evil.example")
         assert st == 403, st
 
-        # Host-Header (DNS-Rebinding) -> 403, auch mit gueltigem Token
+        # Host-Header (DNS-Rebinding) -> 403
         assert raw("GET", "/healthz", {"Host": "evil.example"}) == 403
         body = json.dumps({"path": ok_rel}).encode()
         assert raw("POST", "/play",
-                   {"Host": "evil.example", "X-Movdb-Play": "testtoken",
+                   {"Host": "evil.example",
                     "Content-Type": "application/json"}, body) == 403
 
         # OPTIONS mit fremder Origin -> 403
         assert raw("OPTIONS", "/play",
                    {"Origin": "http://evil.example"}) == 403
-        # POST auf unbekannten Pfad -> 404 (vor Token)
-        assert raw("POST", "/nope", {"X-Movdb-Play": "testtoken"}) == 404
-        # Kaputtes JSON mit gueltigem Token -> 400
+        # POST auf unbekannten Pfad -> 404
+        assert raw("POST", "/nope", {}) == 404
+        # Kaputtes JSON -> 400
         assert raw("POST", "/play",
-                   {"X-Movdb-Play": "testtoken",
-                    "Content-Type": "application/json"}, b"{not json") == 400
+                   {"Content-Type": "application/json"}, b"{not json") == 400
 
         assert len(calls) == 1, "abgelehnte Anfragen duerfen nicht starten"
     finally:
@@ -264,7 +254,7 @@ with tempfile.TemporaryDirectory() as d:
     late_abs = os.path.join(d, "late.mkv")
     on_run = lambda argv: open(late_abs, "wb").close()
     m = load({"MOVDB_LOCAL_ROOT": root, "MOVDB_PLAY_ROOTS": d,
-              "MOVDB_PATH_MAP": "", "MOVDB_PLAY_TOKEN": "t2",
+              "MOVDB_PATH_MAP": "",
               "MOVDB_PLAY_ORIGIN": "http://localhost:8000",
               "MOVDB_MOUNT_CMD": "movdb-mount", "MOVDB_MOUNT_WAIT": "1"})
     calls.clear()
@@ -277,7 +267,6 @@ with tempfile.TemporaryDirectory() as d:
             f"http://127.0.0.1:{port}/play",
             data=json.dumps({"path": late_rel}).encode(), method="POST")
         req.add_header("Content-Type", "application/json")
-        req.add_header("X-Movdb-Play", "t2")
         with urllib.request.urlopen(req) as r:
             assert r.status == 200 and json.load(r)["ok"] is True
         assert len(calls) == 1, calls

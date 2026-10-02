@@ -13,7 +13,7 @@
 #
 # Installiert:
 #   ~/.local/lib/movdb/player_agent.py      Agent (Kopie)
-#   ~/.config/movdb/player.env              Konfiguration (0600, Token)
+#   ~/.config/movdb/player.env              Konfiguration (0600)
 #   ~/.local/bin/movdb-play-agent           Launcher
 #   ~/.local/bin/movdb-mount                sshfs-Helfer (up/down/print)
 #   ~/.config/systemd/user/movdb-play-agent.service   (abschaltbar)
@@ -48,13 +48,11 @@ Optionen:
   --mount-on-play     bei Play automatisch mounten (Default, sobald
                       --server/--remote gesetzt ist)
   --no-mount-on-play  kein automatischer Mount bei Play
-  --new-token         neues Token erzeugen (sonst bleibt das vorhandene)
   --uninstall         Agent/Dienste entfernen (Config nur mit --purge)
   --purge             mit --uninstall: auch ~/.config/movdb entfernen
   -h, --help          diese Hilfe
 
-Nach der Installation: Token aus der Ausgabe ins Feld "Play-Token" der
-Such-UI eintragen. Mount: `movdb-mount up` (oder Dienst mit --mount-service).
+Mount: `movdb-mount up` (oder Dienst mit --mount-service).
 EOF
 }
 
@@ -72,7 +70,6 @@ SSH_KEY=""
 NO_SERVICE=0
 MOUNT_SERVICE=0
 MOUNT_ON_PLAY=auto
-NEW_TOKEN=0
 UNINSTALL=0
 PURGE=0
 
@@ -93,7 +90,6 @@ while [ $# -gt 0 ]; do
     --mount-service) MOUNT_SERVICE=1; shift ;;
     --mount-on-play) MOUNT_ON_PLAY=1; shift ;;
     --no-mount-on-play) MOUNT_ON_PLAY=0; shift ;;
-    --new-token) NEW_TOKEN=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --purge) PURGE=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -190,13 +186,6 @@ fi
 mkdir -p "$LIB_DIR" "$BIN_DIR" "$CONF_DIR" "$LOCAL_ROOT"
 install -m 0644 "$AGENT_SRC" "$AGENT_DST"
 
-TOKEN=""
-if [ "$NEW_TOKEN" = 0 ] && [ -f "$ENV_FILE" ]; then
-  TOKEN="$(grep -m1 '^MOVDB_PLAY_TOKEN=' "$ENV_FILE" 2>/dev/null \
-    | cut -d= -f2- | tr -d '"' || true)"
-fi
-[ -n "$TOKEN" ] || TOKEN="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')"
-
 umask 077
 cat > "$ENV_FILE" <<EOF
 # movdb Play-Agent (Client) - erzeugt von install-client.sh
@@ -204,7 +193,6 @@ MOVDB_PLAYER="$PLAYER"
 MOVDB_LOCAL_ROOT="$LOCAL_ROOT"
 MOVDB_PLAY_ORIGIN="$UI_ORIGIN"
 MOVDB_PLAY_PORT="$PORT"
-MOVDB_PLAY_TOKEN="$TOKEN"
 EOF
 if [ "$MOUNT_ON_PLAY" = 1 ]; then
   echo "MOVDB_MOUNT_CMD=\"$MOUNT\"" >> "$ENV_FILE"
@@ -284,7 +272,7 @@ EOF
   systemctl --user enable movdb-play-agent.service >/dev/null 2>&1 \
     || warn "Agent-Dienst nicht aktiviert (systemctl --user verfuegbar?)"
   # restart statt enable --now: ein bereits laufender Dienst muss die neu
-  # geschriebene player.env (Token/Origins) erst nach Neustart laden.
+  # geschriebene player.env (Origins) erst nach Neustart laden.
   systemctl --user restart movdb-play-agent.service >/dev/null 2>&1 \
     || warn "Agent-Dienst nicht (neu) gestartet (systemctl --user verfuegbar?)"
   if [ "$MOUNT_SERVICE" = 1 ]; then
@@ -305,6 +293,5 @@ else
 fi
 info "  Player:   $PLAYER"
 info "  UI-Origin: $UI_ORIGIN"
-info "  Token:    $TOKEN"
 info ""
-info "Token in der Such-UI ins Feld \"Play-Token\" eintragen, dann ▶ klicken."
+info "Fertig. Play-Button in der Such-UI klicken."
