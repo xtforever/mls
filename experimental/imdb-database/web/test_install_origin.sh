@@ -14,8 +14,8 @@ mkdir -p "$T/bin" "$T/home"
 cat > "$T/bin/ssh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
-  *uihost*) printf 'UIHOST\nUIHOST.local\n10.9.9.9\n' ;;
-  *)        printf 'NB-11572\nNB-11572.local\n192.168.178.97\n192.168.178.238\n' ;;
+  *uihost*|*UIHOST*) printf 'UIHOST\nUIHOST.local\n10.9.9.9\n' ;;
+  *)                 printf 'NB-11572\nNB-11572.local\n192.168.178.97\n192.168.178.238\n' ;;
 esac
 EOF
 chmod +x "$T/bin/ssh"
@@ -43,17 +43,19 @@ fresh; run --server user@server --no-detect
 fresh; run --server user@server --ui-port 9000
 want http://localhost:9000; want http://nb-11572.local:9000
 
-# 5) --ui-host: Erkennung gegen den UI-Server, nicht den Medien-Server
-fresh; run --server user@server --ui-host user@uihost
+# 5) --ui-host: Erkennung gegen den UI-Server, nicht den Medien-Server;
+#    Host wird kleingeschrieben (Browsers senden lowercase-Origins)
+fresh; run --server user@server --ui-host user@UIHOST
 want http://uihost:8000
 want http://uihost.local:8000
 want http://10.9.9.9:8000
 case ",$(origin)," in
   *",http://server:8000,"*) fail "--server faelschlich als Origin: $(origin)" ;;
 esac
+case "$(origin)" in *[A-Z]*) fail "Uppercase in Origins: $(origin)" ;; esac
 
 # 6) --ui-host + --no-detect: nur localhost + UI-Host
-fresh; run --server user@server --ui-host user@uihost --no-detect
+fresh; run --server user@server --ui-host user@UIHOST --no-detect
 [ "$(origin)" = "http://localhost:8000,http://uihost:8000" ] || fail "--ui-host/--no-detect: $(origin)"
 
 # 7) SSH-Fehler ist nicht fatal -> Fallback localhost + Host

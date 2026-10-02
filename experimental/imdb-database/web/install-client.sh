@@ -151,7 +151,7 @@ case "$UI_PORT" in ''|*[!0-9]*) die "--ui-port muss eine Zahl sein: $UI_PORT" ;;
 detect_ui_origins() {
   local port="$1" target="$2" key="$3" n host
   local -a origins=("http://localhost:$port")
-  host="${target##*@}"
+  host="$(printf '%s' "${target##*@}" | tr '[:upper:]' '[:lower:]')"
   [ -n "$host" ] && origins+=("http://$host:$port")
   if [ -n "$target" ] && [ "$NO_DETECT" = 0 ] && command -v ssh >/dev/null 2>&1; then
     local -a opts=(-o BatchMode=yes -o ConnectTimeout=5
@@ -281,8 +281,12 @@ WantedBy=default.target
 EOF
   fi
   systemctl --user daemon-reload >/dev/null 2>&1 || true
-  systemctl --user enable --now movdb-play-agent.service >/dev/null 2>&1 \
-    || warn "Agent-Dienst nicht gestartet (systemctl --user verfuegbar?)"
+  systemctl --user enable movdb-play-agent.service >/dev/null 2>&1 \
+    || warn "Agent-Dienst nicht aktiviert (systemctl --user verfuegbar?)"
+  # restart statt enable --now: ein bereits laufender Dienst muss die neu
+  # geschriebene player.env (Token/Origins) erst nach Neustart laden.
+  systemctl --user restart movdb-play-agent.service >/dev/null 2>&1 \
+    || warn "Agent-Dienst nicht (neu) gestartet (systemctl --user verfuegbar?)"
   if [ "$MOUNT_SERVICE" = 1 ]; then
     systemctl --user enable --now movdb-mount.service >/dev/null 2>&1 \
       || warn "Mount-Dienst nicht gestartet (SSH-Key/Netz pruefen)"
