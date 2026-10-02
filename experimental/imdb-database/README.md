@@ -312,7 +312,7 @@ Das Container-Frontend erreicht den Agenten ueber `MOVDB_PLAYER_URL`
 sudo, idempotent:
 
 ```bash
-./web/install-client.sh --server user@server --ui-origin http://server:8000
+./web/install-client.sh --server user@server
 ```
 
 Installiert Agent, Konfiguration mit stabilem Token
@@ -324,9 +324,23 @@ Installiert Agent, Konfiguration mit stabilem Token
 entfernt alles. `--mount-on-play` laesst den Agenten bei Play selbst mounten
 (Default, sobald `--server`/`--remote` gesetzt ist) und schreibt
 `MOVDB_MOUNT_CMD`; `--no-mount-on-play` schaltet das ab (dann Mount vorher per
-Dienst oder `movdb-mount up`). Die `--ui-origin` muss der Origin entsprechen,
-unter der die Suche im Browser geoeffnet wird (Default
-`http://localhost:8000`).
+Dienst oder `movdb-mount up`).
+
+Die erlaubten UI-Origins (`MOVDB_PLAY_ORIGIN`) ermittelt der Installer ohne
+`--ui-origin` selbst: `http://localhost:<ui-port>` plus Host, Hostname,
+`.local`-Name und IPs des UI-Servers (SSH, BatchMode; Fehler sind nicht fatal).
+Als Ziel dient `--ui-host`, sonst der Host aus `--server`/`--remote` (fuer den
+Normalfall, dass UI und sshfs-Server derselbe sind). Port per `--ui-port`
+(Default 8000), abschaltbar mit `--no-detect`. Explizites `--ui-origin`
+(Komma-getrennt) ueberschreibt die Erkennung. Beispiel mit getrenntem
+Medien-/UI-Server:
+
+```bash
+./web/install-client.sh --server otto --ui-host nb-11572.local
+```
+
+Die Origins muessen der Adresse entsprechen, unter der die Suche im Browser
+geoeffnet wird.
 
 Grenzen: nur gleicher Desktop/Loopback, keine Auth, kein TLS. Eine
 HTTPS-UI kann `http://127.0.0.1:8765` nicht erreichen (Mixed Content).

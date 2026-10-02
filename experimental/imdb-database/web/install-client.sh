@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Installiert den lokalen Play-Agenten auf einem Linux-Client, der das
-# movdb-Such-Frontend (Container auf dem Server) benutzt. Kein sudo, keine
-# Netzaktion; idempotent. Der Agent selbst bleibt web/player_agent.py.
+# movdb-Such-Frontend (Container auf dem Server) benutzt. Kein sudo,
+# idempotent. Die UI-Origin wird ohne --ui-origin per SSH ermittelt
+# (Hostname, .local, IPs) und zusammen mit localhost eingetragen; als
+# Ziel dient --ui-host, sonst der Host aus --server/--remote. Der Agent
+# selbst bleibt web/player_agent.py.
 #
+#   ./install-client.sh --server user@server
+#   ./install-client.sh --server user@media --ui-host user@ui
 #   ./install-client.sh --server user@server --ui-origin http://server:8000
 #   ./install-client.sh --help
 #
@@ -27,8 +32,14 @@ Optionen:
   --remote REMOTE     vollstaendiges sshfs-Remote (Default: <server>:/)
   --local-root PATH   lokaler Mount (Default: ~/mnt/server)
   --player NAME       Player-Programm (Default: mpv)
-  --ui-origin ORIGIN  erlaubte UI-Origin(s), Komma-getrennt
-                      (Default: http://localhost:8000)
+  --ui-origin ORIGIN  erlaubte UI-Origin(s), Komma-getrennt (explizit,
+                      ueberschreibt die Erkennung)
+  --ui-host HOST      SSH-Ziel des UI-Servers fuer die Origin-Ermittlung,
+                      falls dieser nicht --server/--remote ist
+                      (Default: Host aus --server/--remote)
+  --ui-port N         Port der Such-UI (Default: 8000); Basis der
+                      automatischen Origin-Ermittlung
+  --no-detect         keine SSH-Origin-Ermittlung (nur localhost + Host)
   --port N            Agent-Port (Default: 8765)
   --agent-src PATH    Pfad zu player_agent.py (Default: neben diesem Skript)
   --ssh-key PATH      IdentityFile fuer sshfs/systemd
@@ -51,7 +62,10 @@ SERVER=""
 REMOTE=""
 LOCAL_ROOT="$HOME/mnt/server"
 PLAYER="mpv"
-UI_ORIGIN="http://localhost:8000"
+UI_ORIGIN=""          # leer = automatisch ermitteln
+UI_HOST=""            # SSH-Ziel UI-Server (leer = Host aus --server/--remote)
+UI_PORT="8000"
+NO_DETECT=0
 PORT="8765"
 AGENT_SRC=""
 SSH_KEY=""
@@ -69,6 +83,9 @@ while [ $# -gt 0 ]; do
     --local-root) LOCAL_ROOT="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
     --player) PLAYER="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
     --ui-origin) UI_ORIGIN="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
+    --ui-host) UI_HOST="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
+    --ui-port) UI_PORT="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
+    --no-detect) NO_DETECT=1; shift ;;
     --port) PORT="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
     --agent-src) AGENT_SRC="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
     --ssh-key) SSH_KEY="${2:?Wert fuer $1 fehlt}"; shift 2 ;;
@@ -124,6 +141,49 @@ if [ -z "$REMOTE" ]; then
 fi
 if [ "$MOUNT_ON_PLAY" = auto ]; then
   if [ -n "$REMOTE" ]; then MOUNT_ON_PLAY=1; else MOUNT_ON_PLAY=0; fi
+fi
+case "$UI_PORT" in ''|*[!0-9]*) die "--ui-port muss eine Zahl sein: $UI_PORT" ;; esac
+
+# ---------------------------------------------------- UI-Origin ermitteln
+# Ohne --ui-origin: localhost + Host aus --ui-host (sonst --server/--remote)
+# + (per SSH) dessen Hostname/.local-Namen/IPs, damit der Browser die UI
+# unter jeder dieser Adressen oeffnen darf. SSH-Fehler sind nicht fatal.
+detect_ui_origins() {
+  local port="$1" target="$2" key="$3" n host
+  local -a origins=("http://localhost:$port")
+  host="${target##*@}"
+  [ -n "$host" ] && origins+=("http://$host:$port")
+  if [ -n "$target" ] && [ "$NO_DETECT" = 0 ] && command -v ssh >/dev/null 2>&1; then
+    local -a opts=(-o BatchMode=yes -o ConnectTimeout=5
+                   -o StrictHostKeyChecking=accept-new)
+    [ -n "$key" ] && opts+=(-i "$key")
+    local names
+    names="$(ssh "${opts[@]}" "$target" '
+      h=$(hostname 2>/dev/null) || exit 0
+      printf "%s\n%s.local\n" "$h" "$h"
+      hf=$(hostname -f 2>/dev/null)
+      [ -n "$hf" ] && [ "$hf" != "$h" ] && printf "%s\n" "$hf"
+      hostname -I 2>/dev/null | tr " " "\n"
+    ' 2>/dev/null || true)"
+    while IFS= read -r n; do
+      [ -n "$n" ] || continue
+      n="$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]')"
+      case "$n" in *[!a-z0-9._-]*) continue ;; esac
+      origins+=("http://$n:$port")
+    done <<< "$names"
+  fi
+  printf '%s\n' "${origins[@]}" | awk '!seen[$0]++' | paste -sd, -
+}
+
+if [ -z "$UI_ORIGIN" ]; then
+  SSH_TARGET="$UI_HOST"
+  if [ -z "$SSH_TARGET" ]; then
+    SSH_TARGET="$SERVER"
+    if [ -z "$SSH_TARGET" ] && [ -n "$REMOTE" ]; then
+      SSH_TARGET="${REMOTE%%:*}"
+    fi
+  fi
+  UI_ORIGIN="$(detect_ui_origins "$UI_PORT" "$SSH_TARGET" "$SSH_KEY")"
 fi
 
 # --------------------------------------------------------------- Dateien

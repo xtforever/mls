@@ -9,6 +9,7 @@ cd experimental/imdb-database
 python3 web/test_player_agent.py   # Mapping, Allowlist, Token, On-Demand-Mount
 python3 web/test_server.py         # Suche-Argv, UI, PLAYER_URL-Escaping
 bash    web/test_e2e.sh            # Suche -> Agent -> sshfs(Fake) -> Player(Fake)
+bash    web/test_install_origin.sh # UI-Origin-Autoerkennung im Installer
 ```
 
 Erwartet: `... : ok` bzw. `PASS: ...`, jeweils Exit 0. `test_e2e.sh` nutzt
