@@ -390,6 +390,103 @@ of the ACM*, 11(3), 147–148. DOI: 10.1145/362929.362947.
 
 ---
 
+### Appendix: the two-minute test — one header, one `cc`
+
+Do not take the word for it. Copy the single-header amalgam and the demo file
+(`examples/handles_demo.c`) into an empty folder and build them with one command:
+
+    python3 generate_amalgam.py            # repo root; writes mls_full.h
+    cc -std=c11 handles_demo.c -o demo -lpthread -lm -ldl
+
+`mls_full.h` is the whole library as one header — arrays, strings, tables, HTTP,
+HDF — with no build system and no `-D` flags. Then:
+
+    $ ./demo
+    0 1 2 3 4 5 6 7
+    live handles after teardown: 0
+
+The first line is an array that starts with room for two and is appended to eight
+times: the handle never changes, there is no `realloc` in the code, and
+`INT(a, i)` is checked. The second line is two nodes that point at each other — a
+cycle — released with a single `m_free(g1)`, with `m_count_allocated()` as proof
+that nothing leaked.
+
+The tripwire is one argument away:
+
+    $ ./demo crash
+    0 1 2 3 4 5 6 7
+    live handles after teardown: 0
+
+    [mls error] mls_full.h:1415 lock_handle_core(): List 5 not allocated
+
+The process exits with status 1 at the point of detection, naming the handle,
+instead of carrying on with a corrupted heap. Build with `-DMLS_DEBUG` and the
+same crash prints a post-mortem that names both the line that freed the handle
+and the line that used it.
+
+```c
+#define MLS_FULL_IMPLEMENTATION
+#include "mls_full.h"
+#include <stdio.h>
+#include <string.h>
+
+/* one node = one handle; its payload is another handle */
+typedef struct {
+	int kind;
+	int data;
+} node_t;
+
+static int node_hdl; /* id of the registered free handler */
+static void free_node (int h) { m_free (((node_t *)mls (h, 0))->data); }
+static int payload (int h) { return ((node_t *)mls (h, 0))->data; }
+
+static int node (int kind, int data)
+{
+	node_t n = {kind, data};
+	int h = m_alloc (0, sizeof (node_t), node_hdl);
+	m_put (h, &n);
+	return h;
+}
+
+int main (int argc, char **argv)
+{
+	m_init ();
+	node_hdl = m_reg_freefn (free_node);
+	size_t base = m_count_allocated ();
+
+	/* 1. one value, not two: the handle survives every resize */
+	int a = m_alloc (2, sizeof (int), MFREE); /* capacity 2 */
+	for (int i = 0; i < 8; i++)
+		m_put (a, &i); /* grows past 2 */
+	for (int i = 0; i < m_len (a); i++)
+		printf ("%d%s", INT (a, i), i + 1 < m_len (a) ? " " : "\n");
+	m_free (a);
+
+	/* 2. teardown is one call: two nodes that point at each other */
+	int g1 = node (0, m_alloc (0, sizeof (int), MFREE_EACH));
+	int g2 = node (0, m_alloc (0, sizeof (int), MFREE_EACH));
+	m_put (payload (g1), &g2); /* g1 -> g2 */
+	m_put (payload (g2), &g1); /* g2 -> g1 (a cycle) */
+	m_free (g1);
+
+	/* 3. leaks you can see, in a release build */
+	printf ("live handles after teardown: %zu\n",
+		m_count_allocated () - base);
+
+	/* 4. use-after-free is loud, not silent: run `./demo crash` */
+	if (argc > 1 && strcmp (argv[1], "crash") == 0) {
+		int h = m_alloc (1, sizeof (int), MFREE);
+		m_free (h);
+		printf ("%d\n", INT (h, 0)); /* exits, with a diagnostic */
+	}
+
+	m_destruct ();
+	return 0;
+}
+```
+
+---
+
 ### Appendix: the claim, in one line
 
 > **C stays C. But the buffer should be a handle, not a pointer and a size.**
