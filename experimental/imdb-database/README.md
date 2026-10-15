@@ -284,12 +284,11 @@ read-only gemountet und die DB-Pfade **verbatim** uebernommen
 ```bash
 mkdir -p ~/mnt/server
 sshfs user@server:/ ~/mnt/server -o ro
-MOVDB_LOCAL_ROOT=~/mnt/server python3 web/player_agent.py   # Token ausgeben
+MOVDB_LOCAL_ROOT=~/mnt/server python3 web/player_agent.py
 ```
 
-Das Token einmal ins Feld „Play-Token“ eintragen (bleibt im `localStorage`).
 Der Agent startet nur Dateien unter den erlaubten Wurzeln mit erlaubter
-Endung; Token-Pflicht per Header `X-Movdb-Play`.
+Endung und nur bei erlaubter UI-Origin (Host- und Origin-Pruefung).
 
 | Env | Default | Bedeutung |
 |---|---|---|
@@ -300,7 +299,6 @@ Endung; Token-Pflicht per Header `X-Movdb-Play`.
 | `MOVDB_PLAY_EXT` | Video-Endungen | erlaubte Dateiendungen |
 | `MOVDB_PLAY_ORIGIN` | `http://localhost:8000` | erlaubte UI-Origins |
 | `MOVDB_PLAY_PORT` | `8765` | Agent-Port |
-| `MOVDB_PLAY_TOKEN` | zufaellig | Shared Secret |
 | `MOVDB_MOUNT_CMD` | – | On-Demand-Mount bei Play (Argv, z. B. `movdb-mount`) |
 
 Das Container-Frontend erreicht den Agenten ueber `MOVDB_PLAYER_URL`
@@ -315,7 +313,7 @@ sudo, idempotent:
 ./web/install-client.sh --server user@server
 ```
 
-Installiert Agent, Konfiguration mit stabilem Token
+Installiert Agent, Konfiguration
 (`~/.config/movdb/player.env`, 0600), Launcher
 `~/.local/bin/movdb-play-agent`, sshfs-Helfer `~/.local/bin/movdb-mount`
 (`up`/`down`/`print`) und einen systemd-User-Dienst. Optionen:
