@@ -1,0 +1,469 @@
+/*
+ * netwatch — MLS showcase: a learned socket allowlist from /proc/net/tcp.
+ *
+ * Modes:
+ *   learn (default) — every second read /proc/net/tcp and remember the network
+ *                     endpoints that matter: every LISTEN socket (a service /
+ *                     backdoor / malicious systemd unit that binds a port) and
+ *                     every ESTABLISHED outbound connection (a C2 / exfil
+ *                     callback). The sorted set is saved every minute.
+ *   exec            — load the allowlist, then scan every second and print each
+ *                     endpoint that is NOT in the allowlist to stdout (one per
+ *                     line, pipeline-/logger-friendly). A new listener is
+ *                     reported with its owner: pid/uid/gid/ppid/comm.
+ *   selftest        — built-in checks (run via `make check`).
+ *   help            — usage, modes, records, signals (also: -h / --help).
+ *
+ * SIGINT (Ctrl-C), SIGTERM (kill / systemctl stop) and SIGUSR1 stop the scan
+ * loop cleanly: learn writes a final checkpoint, then m_destruct() runs.
+ * SIGHUP reloads the allowlist in exec mode (daemon convention).
+ *
+ * Build (single-header amalgam; no per-module .c files):
+ *   make          # gcc -I../.. netwatch.c -o netwatch -lpthread -lm -ldl
+ *   make check
+ *   make baseline # Python reference for net_line_record(): net_line_record.py
+ *
+ * Same shape as procwatch — the library primitives carry over unchanged:
+ *   read /proc file      -> m_strlist_load()          (one line per element)
+ *   set()                -> m_lookup_str()            (sorted dedup, O(log n))
+ *   "\n".join(...)       -> m_qsort(cmp_mstr) + m_strlist_save()
+ * No fork, no `ss`/`netstat` — the raw kernel table is parsed directly.
+ *
+ * Record format (also the allowlist file format), IPv4 only:
+ *   listen  <ip4>:<port>          (state 0A)
+ *   connect <remote-ip4>:<port>   (state 01, source port is ephemeral)
+ *
+ * ponytail: a socket's owner is found by scanning /proc/<pid>/fd for
+ * "socket:[inode]" on demand (only for new listeners). That needs read access
+ * to the target's fds: same uid or root. Unresolvable owners report pid=-.
+ */
+
+#define MLS_CORE_IMPLEMENTATION
+#include "mls_core.h" /* must come first: the header sets _GNU_SOURCE */
+
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define SCAN_INTERVAL 1 /* seconds between /proc scans */
+#define WRITE_EVERY 60	/* scans between checkpoints (≈1 minute) */
+#define DEFAULT_FILE "net.allow"
+
+/* selftest helper: explicit check that stays active without NDEBUG. */
+#define CHECK(cond)                                                            \
+	do {                                                                   \
+		if (!(cond)) {                                                 \
+			fprintf (stderr, "selftest FAILED: %s (%s:%d)\n",      \
+				 #cond, __FILE__, __LINE__);                   \
+			return 1;                                              \
+		}                                                              \
+	} while (0)
+
+/* One watched socket (a parsed /proc/net/tcp line). */
+typedef struct {
+	char text[64];	/* "listen ip:port" / "connect ip:port" */
+	unsigned uid;	/* socket owner uid (from the table) */
+	unsigned inode; /* socket inode, used to map to a pid */
+	int listen;	/* 1 = LISTEN, 0 = ESTABLISHED */
+} sock_rec;
+
+/* SIGINT (Ctrl-C) / SIGTERM / SIGUSR1 request a clean stop: the scan loops
+ * notice the flag, learn writes a final checkpoint, then main tears the library
+ * down. SIGHUP (exec only) asks to reload the allowlist. */
+static volatile sig_atomic_t stop = 0;
+static volatile sig_atomic_t reload = 0;
+
+static void on_stop (int sig)
+{
+	(void)sig;
+	stop = 1; /* async-signal-safe: only set the flag */
+}
+
+static void on_reload (int sig)
+{
+	(void)sig;
+	reload = 1;
+}
+
+static void install_stop_handlers (void)
+{
+	signal (SIGINT, on_stop);  /* Ctrl-C */
+	signal (SIGTERM, on_stop); /* kill / systemctl stop / docker stop */
+	signal (SIGUSR1, on_stop); /* explicit checkpoint-and-stop */
+}
+
+/* Format a /proc/net/tcp IPv4 address (little-endian hex dword) as a.b.c.d. */
+static void ip4_str (unsigned ip, char *out, size_t n)
+{
+	snprintf (out, n, "%u.%u.%u.%u", ip & 0xff, (ip >> 8) & 0xff,
+		  (ip >> 16) & 0xff, (ip >> 24) & 0xff);
+}
+
+/* Parse one /proc/net/tcp line into `r`. Returns 1 for a watched socket
+ * (LISTEN or ESTABLISHED), 0 to ignore the line (header, or a transient state
+ * like TIME_WAIT).
+ * ponytail: IPv4 only — /proc/net/tcp6 is not read (upgrade: inet_ntop). */
+static int net_line_record (const char *line, sock_rec *r)
+{
+	char lip[64], rip[64], st[8];
+	char ips[16];
+	char *ci, *cr;
+	unsigned ip, port;
+
+	if (sscanf (line, " %*d: %63s %63s %7s %*s %*s %*s %u %*u %u", lip, rip,
+		    st, &r->uid, &r->inode) != 5)
+		return 0; /* header or malformed */
+	if (strcmp (st, "0A") != 0 && strcmp (st, "01") != 0)
+		return 0; /* only LISTEN / ESTABLISHED */
+
+	ci = strchr (lip, ':');
+	cr = strchr (rip, ':');
+	if (!ci || !cr)
+		return 0;
+
+	if (strcmp (st, "0A") == 0) { /* LISTEN: the local endpoint */
+		if (sscanf (lip, "%x", &ip) != 1 ||
+		    sscanf (ci + 1, "%x", &port) != 1)
+			return 0;
+		ip4_str (ip, ips, sizeof ips);
+		snprintf (r->text, sizeof r->text, "listen %s:%u", ips, port);
+		r->listen = 1;
+		return 1;
+	}
+
+	/* ESTABLISHED: the remote endpoint (source port is ephemeral). */
+	if (sscanf (rip, "%x", &ip) != 1 || sscanf (cr + 1, "%x", &port) != 1)
+		return 0;
+	ip4_str (ip, ips, sizeof ips);
+	snprintf (r->text, sizeof r->text, "connect %s:%u", ips, port);
+	r->listen = 0;
+	return 1;
+}
+
+/* First number on the "<key>:" line of a /proc status buffer, or 0. */
+static unsigned status_field (const char *buf, const char *key)
+{
+	size_t klen = strlen (key);
+	const char *p = buf;
+	while (p && *p) {
+		if (strncmp (p, key, klen) == 0 && p[klen] == ':')
+			return (unsigned)strtoul (p + klen + 1, NULL, 10);
+		p = strchr (p, '\n');
+		if (p)
+			p++;
+	}
+	return 0;
+}
+
+/* Find the pid owning the socket with `inode` by scanning /proc/<pid>/fd for
+ * the "socket:[inode]" link. Returns -1 if not found or not permitted. */
+static int socket_pid (unsigned inode)
+{
+	int i, j;
+	char **pp, **qq;
+	tmls procs = m_dir_list ("/proc");
+	if (procs <= 0)
+		return -1;
+
+	m_foreach (procs, i, pp)
+	{
+		char *pid = *pp;
+		if (!pid[0] || strspn (pid, "0123456789") != strlen (pid))
+			continue;
+
+		tmls fdpath = s_printf (0, 0, "/proc/%s/fd", pid);
+		tmls fds = m_dir_list (m_str (fdpath));
+		if (fds <= 0)
+			continue;
+
+		m_foreach (fds, j, qq)
+		{
+			tmls link =
+				s_printf (0, 0, "%s/%s", m_str (fdpath), *qq);
+			char buf[64];
+			ssize_t n =
+				readlink (m_str (link), buf, sizeof buf - 1);
+			unsigned ino;
+			if (n <= 0)
+				continue;
+			buf[n] = 0;
+			if (sscanf (buf, "socket:[%u]", &ino) == 1 &&
+			    ino == inode)
+				return atoi (pid);
+		}
+	}
+	return -1;
+}
+
+/* Report a new listener with its owner (pid/uid/gid/ppid/comm). */
+static void report_listener (const sock_rec *r)
+{
+	int pid = socket_pid (r->inode);
+	if (pid < 0) {
+		printf ("%s pid=- uid=%u gid=- ppid=- comm=-\n", r->text,
+			r->uid);
+		fflush (stdout);
+		return;
+	}
+
+	tmls stpath = s_printf (0, 0, "/proc/%d/status", pid);
+	tmls status = m_str_from_file (m_str (stpath));
+	unsigned gid = 0, ppid = 0;
+	if (status >= 0) {
+		gid = status_field (m_str (status), "Gid");
+		ppid = status_field (m_str (status), "PPid");
+	}
+	tmls cpath = s_printf (0, 0, "/proc/%d/comm", pid);
+	tmls comm = m_str_from_file (m_str (cpath));
+	if (comm >= 0)
+		s_trim (comm);
+
+	printf ("%s pid=%d uid=%u gid=%u ppid=%u comm=%s\n", r->text, pid,
+		r->uid, gid, ppid, comm >= 0 ? m_str (comm) : "?");
+	fflush (stdout);
+}
+
+/* Scan /proc/net/tcp and fold every watched endpoint into `list` (a sorted
+ * string-set). With `report` set (exec mode), a record not yet in `list` is
+ * printed to stdout before being remembered, so each new endpoint is reported
+ * once. New listeners are enriched with the owning process. */
+static void scan_net (int list, int report)
+{
+	int i;
+	char **pp;
+	tmls lines =
+		m_strlist_load ("/proc/net/tcp"); /* one line per element */
+	if (lines <= 0)
+		return;
+
+	m_foreach (lines, i, pp)
+	{
+		sock_rec r;
+		if (!net_line_record (*pp, &r))
+			continue;
+		if (m_lookup_str (list, r.text, 1) < 0) { /* unknown */
+			if (report) {
+				if (r.listen)
+					report_listener (&r);
+				else {
+					printf ("%s\n", r.text);
+					fflush (stdout);
+				}
+			}
+			m_lookup_str (list, r.text, 0); /* remember */
+		}
+	}
+}
+
+/* learn: build a cumulative endpoint allowlist, checkpointing every minute, and
+ * once more on Ctrl-C/SIGUSR1 for a clean exit. */
+static int learn (const char *path)
+{
+	int list = m_alloc (0, sizeof (char *), MFREE_STR);
+
+	int sec = 0;
+	for (;;) {
+		scan_net (list, 0);
+		if (stop || sec++ % WRITE_EVERY == 0) {
+			/* first scan, every minute, and on stop */
+			if (m_strlist_save (list, path) != 0)
+				fprintf (stderr, "learn: cannot write %s\n",
+					 path);
+			else
+				fprintf (stderr,
+					 "learn: %d known endpoints -> %s\n",
+					 (int)m_len (list), path);
+			if (stop)
+				break; /* final checkpoint is written */
+		}
+		sleep (SCAN_INTERVAL);
+	}
+	return 0;
+}
+
+/* exec: report each unknown endpoint once, one per line on stdout. SIGINT/
+ * SIGTERM/SIGUSR1 stop cleanly; SIGHUP reloads the allowlist. */
+static int exec_mode (const char *path)
+{
+	int list = m_strlist_load (path);
+	if (list < 0) {
+		fprintf (stderr, "exec: cannot read %s (run learn first)\n",
+			 path);
+		return 1;
+	}
+	m_qsort (list, cmp_mstr); /* normalize a possibly unsorted file */
+	fprintf (stderr, "exec: %d allowed endpoints from %s\n",
+		 (int)m_len (list), path);
+	signal (SIGHUP, on_reload); /* reload the allowlist */
+
+	for (;;) {
+		scan_net (list, 1);
+		if (stop)
+			break;
+		if (reload) { /* SIGHUP: re-read the allowlist */
+			reload = 0;
+			int fresh = m_strlist_load (path);
+			if (fresh > 0) {
+				m_qsort (fresh, cmp_mstr);
+				m_free (list);
+				list = fresh;
+				fprintf (
+					stderr,
+					"exec: reloaded %d endpoints from %s\n",
+					(int)m_len (list), path);
+			} else {
+				fprintf (stderr,
+					 "exec: reload failed, keeping %d "
+					 "endpoints\n",
+					 (int)m_len (list));
+			}
+		}
+		sleep (SCAN_INTERVAL);
+	}
+	return 0;
+}
+
+/* selftest: parser unit test, allowlist round-trip, and a live scan. */
+static int selftest (void)
+{
+	const char *tmp = "/tmp/mls_netwatch_selftest.txt";
+	sock_rec r;
+
+	/* 1) parser: real /proc/net/tcp shapes. */
+	const char *hdr = "  sl  local_address rem_address   st tx_queue "
+			  "rx_queue tr tm->when retrnsmt   uid  timeout inode";
+	const char *listener = "   0: 00000000:CC1F 00000000:0000 0A "
+			       "00000000:00000000 00:00000000 00000000   125   "
+			       "     0 20171 1 0000000000000000 100 0 0 10 0";
+	const char *estab = "   1: 0100007F:1FBB 0100007F:0016 01 "
+			    "00000000:00000000 00:00000000 00000000  1000      "
+			    "  0 99999 1 0000000000000000 100 0 0 10 0";
+	const char *timewait = "   2: 0100007F:1FBB 0100007F:0016 06 "
+			       "00000000:00000000 00:00000000 00000000  1000   "
+			       "     0 88888 1 0000000000000000 100 0 0 10 0";
+
+	CHECK (net_line_record (hdr, &r) == 0);
+	CHECK (net_line_record (timewait, &r) == 0);
+	CHECK (net_line_record (listener, &r) == 1);
+	CHECK (strcmp (r.text, "listen 0.0.0.0:52255") == 0);
+	CHECK (r.listen == 1 && r.uid == 125 && r.inode == 20171);
+	CHECK (net_line_record (estab, &r) == 1);
+	CHECK (strcmp (r.text, "connect 127.0.0.1:22") == 0);
+	CHECK (r.listen == 0 && r.uid == 1000 && r.inode == 99999);
+
+	/* 2) /proc status field extraction. */
+	const char *status = "Name:\tsshd\nUid:\t1000\t1000\t1000\t1000\nGid:"
+			     "\t100\t100\t100\t100\nPPid:\t1234\n";
+	CHECK (status_field (status, "Uid") == 1000);
+	CHECK (status_field (status, "Gid") == 100);
+	CHECK (status_field (status, "PPid") == 1234);
+	CHECK (status_field (status, "Nope") == 0);
+
+	/* 3) set + save/load round-trip. */
+	int a = m_alloc (0, sizeof (char *), MFREE_STR);
+	m_lookup_str (a, "listen 0.0.0.0:22", 0);
+	m_lookup_str (a, "connect 1.2.3.4:443", 0);
+	m_lookup_str (a, "listen 0.0.0.0:22", 0); /* duplicate must not grow */
+	CHECK (m_len (a) == 2);
+	CHECK (m_strlist_save (a, tmp) == 0);
+	int b = m_strlist_load (tmp);
+	CHECK (b > 0 && m_len (b) == 2);
+	CHECK (m_lookup_str (b, "listen 0.0.0.0:22", 1) >= 0);
+	CHECK (m_lookup_str (b, "connect 1.2.3.4:443", 1) >= 0);
+	CHECK (m_lookup_str (b, "listen 0.0.0.0:4444", 1) < 0);
+	remove (tmp);
+
+	/* 4) live scan of the real /proc/net/tcp must not crash. */
+	tmls probe = m_strlist_load ("/proc/net/tcp");
+	CHECK (probe > 0); /* the kernel table exists */
+	int c = m_alloc (0, sizeof (char *), MFREE_STR);
+	scan_net (c, 0);
+
+	/* 5) stop signals set the flag (handlers installed in main). */
+	stop = 0;
+	CHECK (raise (SIGINT) == 0 && stop == 1);
+	stop = 0;
+	CHECK (raise (SIGTERM) == 0 && stop == 1);
+	stop = 0;
+	CHECK (raise (SIGUSR1) == 0 && stop == 1);
+
+	/* 5b) the SIGHUP handler only sets the reload flag (installed in exec).
+	 */
+	reload = 0;
+	on_reload (0);
+	CHECK (reload == 1);
+
+	m_free (c);
+	m_free (b);
+	m_free (a);
+	printf ("selftest OK\n");
+	return 0;
+}
+
+static void print_help (FILE *out)
+{
+	fprintf (out,
+		 "Usage: netwatch [MODE] [FILE]\n"
+		 "\n"
+		 "Modes:\n"
+		 "  learn     (default) build an allowlist from /proc/net/tcp, "
+		 "saved every minute\n"
+		 "  exec      report endpoints not in FILE; new listeners show "
+		 "pid/uid/gid/ppid/comm\n"
+		 "  selftest  run built-in checks and exit\n"
+		 "  help      show this help\n"
+		 "\n"
+		 "FILE is the allowlist path (default: \"%s\").\n"
+		 "\n"
+		 "Records (also the FILE format; IPv4 only):\n"
+		 "  listen  <ip>:<port>          a LISTEN socket (service / "
+		 "backdoor)\n"
+		 "  connect <remote-ip>:<port>   an ESTABLISHED outbound "
+		 "connection (C2 / exfil)\n"
+		 "\n"
+		 "Signals:\n"
+		 "  SIGINT, SIGTERM, SIGUSR1   stop cleanly; learn writes a "
+		 "final checkpoint\n"
+		 "  SIGHUP                     exec only: reload FILE\n"
+		 "\n"
+		 "Examples:\n"
+		 "  netwatch learn                 # run a while to learn the "
+		 "baseline\n"
+		 "  netwatch exec                  # report new endpoints on "
+		 "stdout\n"
+		 "  netwatch exec | logger -t nw   # forward to syslog\n",
+		 DEFAULT_FILE);
+}
+
+int main (int argc, char **argv)
+{
+	const char *mode = argc > 1 ? argv[1] : "learn";
+	const char *path = argc > 2 ? argv[2] : DEFAULT_FILE;
+
+	if (strcmp (mode, "help") == 0 || strcmp (mode, "-h") == 0 ||
+	    strcmp (mode, "--help") == 0) {
+		print_help (stdout);
+		return 0;
+	}
+
+	m_init ();
+	install_stop_handlers (); /* SIGINT / SIGTERM / SIGUSR1 -> clean stop */
+
+	int rc;
+	if (strcmp (mode, "learn") == 0)
+		rc = learn (path);
+	else if (strcmp (mode, "exec") == 0)
+		rc = exec_mode (path);
+	else if (strcmp (mode, "selftest") == 0)
+		rc = selftest ();
+	else {
+		fprintf (stderr, "netwatch: unknown mode '%s'\n\n", mode);
+		print_help (stderr);
+		rc = 2;
+	}
+
+	m_destruct ();
+	return rc;
+}
