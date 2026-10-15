@@ -1,59 +1,60 @@
-# mls_base examples: HDF reader (unsorted), table (sorted), and the universal
-# list structure they share.
+# mls_base examples: HDF reader, table, and the universal list structure.
 #
-#   make              # debug build   -> *.exed (objects .od)
-#   make production=1 # release build -> *.exe  (objects .o)
-#   make run          # build (debug) and run all examples
-#   make minimal      # size-optimized, stripped hdf_dump; prints its size
+#   make                 # every app in APPS, debug + release
+#   make hdf_dump.exed   # debug   (objects .od, -DMLS_DEBUG + ASan)
+#   make hdf_dump.exe    # release (objects .o,  -O3)
+#   make minimal         # size-optimized, stripped hdf_dump; prints size
 #   make clean
+#
+# To add an example: write foo.c, append "foo" to APPS. That is the whole edit.
 
-include ../rules.mk
+CC    = gcc
+vpath %.c ../lib
 
-production ?= 0
+COMMON         = -D_GNU_SOURCE -I../lib
+CFLAGS_DEBUG   = $(COMMON) -g -Wall -DMLS_DEBUG -fstack-protector-all -fsanitize=address
+CFLAGS_RELEASE = $(COMMON) -O3 -fdata-sections -ffunction-sections -Wl,--gc-sections
+LDLIBS         = -lm -lpthread
 
-ifeq ($(production),1)
-OBJ_EXT = o
-BIN_EXT = exe
-else
-OBJ_EXT = od
-BIN_EXT = exed
-endif
+# Examples link the whole core. Release drops unused code via --gc-sections;
+# the ASan build pays a little dead weight, which is fine for demos.
+LIBS = mls_base.c mls_ext.c m_tool.c m_var.c m_sql.c list.c table.c hdf_parse.c hdf_base.c
 
-PROGS = hdf_dump list_demo table_demo
+od = $(patsubst %.c,%.od,$(1))
+o  = $(patsubst %.c,%.o,$(1))
 
-# shared library sources (found in ../lib via rules.mk VPATH)
-MLS   = mls_base.$(OBJ_EXT) list.$(OBJ_EXT)
-HDF   = hdf_parse.$(OBJ_EXT) hdf_base.$(OBJ_EXT)
-TABLE = table.$(OBJ_EXT)
+%.od: %.c
+	$(CC) $(CFLAGS_DEBUG) -c -o $@ $<
+%.exed: %.od $(call od,$(LIBS))
+	$(CC) $(CFLAGS_DEBUG) -o $@ $^ $(LDLIBS)
 
-BINS = $(addsuffix .$(BIN_EXT), $(PROGS))
+%.o: %.c
+	$(CC) $(CFLAGS_RELEASE) -c -o $@ $<
+%.exe: %.o $(call o,$(LIBS))
+	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(LDLIBS)
 
-all: $(BINS)
+APPS = hdf_dump list_demo table_demo csv2insert sql_demo world
 
-hdf_dump.$(BIN_EXT): hdf_dump.$(OBJ_EXT) $(MLS) $(HDF)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+all: $(addsuffix .exe,$(APPS)) $(addsuffix .exed,$(APPS))
 
-list_demo.$(BIN_EXT): list_demo.$(OBJ_EXT) $(MLS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+# Render the world example's generic tree as a graph (opt-in, not in `all`).
+world.svg: world.exe
+	./world.exe dot | dot -Tsvg -o $@
 
-table_demo.$(BIN_EXT): table_demo.$(OBJ_EXT) $(MLS) $(TABLE)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-run: $(BINS)
-	./hdf_dump.$(BIN_EXT) sample.hdf
-	./list_demo.$(BIN_EXT)
-	./table_demo.$(BIN_EXT)
+world.png: world.exe
+	./world.exe dot | dot -Tpng -o $@
 
 # Smallest possible reader: -Os + per-function sections so the linker drops
-# every unused function, then strip symbols. One compile+link step.
-MIN_CFLAGS  = -Os -ffunction-sections -fdata-sections -D_GNU_SOURCE -I../lib
-MIN_LDFLAGS = -Wl,--gc-sections -s
-
+# unused code, then strip. One compile+link step.
 minimal: hdf_dump.min
 	@printf 'minimal reader size: ' && wc -c < hdf_dump.min
 
-hdf_dump.min: hdf_dump.c mls_base.c list.c hdf_parse.c hdf_base.c
-	$(CC) $(MIN_CFLAGS) $(MIN_LDFLAGS) -o $@ $^ -lm -lpthread
+hdf_dump.min: hdf_dump.c $(LIBS)
+	$(CC) -Os -ffunction-sections -fdata-sections $(COMMON) -Wl,--gc-sections -s -o $@ $^ -lm -lpthread
 
 clean:
-	-${RM} $(addsuffix .exe,$(PROGS)) $(addsuffix .exed,$(PROGS)) hdf_dump.min *.o *.od
+	-$(RM) *.exe *.exed *.o *.od hdf_dump.min world.svg world.png
+
+.SECONDARY:          # keep object files; don't delete them as intermediates
+.DEFAULT_GOAL := all
+.PHONY: all minimal clean

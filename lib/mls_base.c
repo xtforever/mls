@@ -687,7 +687,7 @@ int m_free (int m)
 {
 	int realh = REAL_HDL (m);
 	TRACE (1, "RH: %d, Hdl: %d", realh, m);
-	if (m == 0)
+	if (m <= 0) /* m_free is safe on invalid handles (0 and error -1) */
 		return 0;
 retry:
 	lst_t lp = lock_handle (m, 1);

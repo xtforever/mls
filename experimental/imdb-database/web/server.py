@@ -13,6 +13,9 @@ Argumentliste auf (kein Shell). Konfiguration per Umgebungsvariablen:
   MOVDB_MAINTENANCE    1/0, Wartungs-Tab     (Default 1)
   MOVDB_PLAYER_URL     URL des lokalen Play-Agenten
                        (Default http://127.0.0.1:8765)
+  MOVDB_SERVER_NAME    Name, mit dem Treffer-Pfade qualifiziert werden
+                       ('otto:/back2019a/x'), damit Clients den Ablage-Server
+                       kennen (Default: Host-Header der Anfrage)
   PORT         HTTP-Port                 (Default 8000)
   BIND         Bind-Adresse              (Default 0.0.0.0)
 
@@ -41,6 +44,9 @@ PORT = int(os.environ.get("PORT", "8000"))
 BIND = os.environ.get("BIND", "0.0.0.0")
 # Lokaler Play-Agent auf dem Desktop (siehe web/player_agent.py).
 PLAYER_URL = os.environ.get("MOVDB_PLAYER_URL", "http://127.0.0.1:8765")
+# Name, mit dem Treffer-Pfade qualifiziert werden ('host:/pfad'). Leer ->
+# Hostname aus dem Host-Header der jeweiligen Anfrage.
+SERVER_NAME = os.environ.get("MOVDB_SERVER_NAME", "").strip().rstrip(":")
 
 # Pfade im Datenverzeichnis (vom Container read-write gemountet).
 DOWNLOAD = os.path.join(DATA, "download.sh")
@@ -70,8 +76,21 @@ def _one(params, key, default=""):
     return v[0] if v else default
 
 
-def search(params):
-    """Baut die movdb-Argumentliste und liefert das Ergebnis als dict."""
+def _hostname(host):
+    """'otto:8000' -> 'otto'; '[::1]:8000' -> '::1'; '' -> ''."""
+    host = (host or "").strip()
+    if host.startswith("["):
+        return host[1:host.index("]")] if "]" in host else host
+    return host.split(":")[0]
+
+
+def search(params, host=""):
+    """Baut die movdb-Argumentliste und liefert das Ergebnis als dict.
+
+    Der Server selbst kennt seinen Namen nicht (Container); MOVDB_SERVER_NAME
+    oder der Host-Header der Anfrage liefert ihn. Ist er bekannt, wird jeder
+    Pfad als 'name:/pfad' qualifiziert, damit der Client weiss, von welchem
+    Server (NFS-Mount) die Datei kommt."""
     argv = [EXE, "query", "--meta", META]
     genres = [g.strip() for g in params.get("genre", []) if g.strip()]
     min_rating = _one(params, "min_rating").strip()
@@ -110,6 +129,11 @@ def search(params):
                            if tid.startswith("tt") and tid[2:].isdigit()
                            else "")
             rows.append(row)
+    name = SERVER_NAME or _hostname(host)
+    if name:
+        for row in rows:
+            if row["path"]:
+                row["path"] = name + ":" + row["path"]
     return {"count": len(rows), "rows": rows}
 
 
@@ -446,7 +470,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/api/search":
-            self._send(json.dumps(search(parse_qs(u.query)),
+            self._send(json.dumps(search(parse_qs(u.query),
+                                         self.headers.get("Host", "")),
                                   ensure_ascii=False).encode(),
                        "application/json; charset=utf-8")
         elif u.path == "/api/maintenance":

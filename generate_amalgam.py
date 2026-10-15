@@ -26,7 +26,7 @@ LIB = os.path.join(ROOT, "lib")
 
 # Public headers, concatenated in dependency order (base <- ext <- list <- table;
 # tool/extra sit on top of the string helpers).
-CORE_HEADERS = ["mls_base.h", "mls_ext.h", "list.h", "table.h", "m_tool.h", "m_extra.h"]
+CORE_HEADERS = ["mls_base.h", "mls_ext.h", "list.h", "table.h", "m_tool.h", "m_var.h", "m_sql.h", "m_extra.h"]
 FULL_HEADERS = CORE_HEADERS + ["m_http.h", "m_hdf.h", "m_http_server.h", "m_flask.h"]
 
 # Implementation is split around the MLS_DEBUG macro block so debug builds behave
@@ -35,7 +35,7 @@ FULL_HEADERS = CORE_HEADERS + ["m_http.h", "m_hdf.h", "m_http_server.h", "m_flas
 #           define m_alloc etc. and only include mls_base.h, not the debug macros.
 #   group B (everything else) must see the macros so its allocations are tracked.
 GROUP_A = ["mls_internal.h", "mls_base.c", "mls_ext.c", "list.c", "table.c"]
-CORE_GROUP_B = ["m_tool.c", "m_extra.c"]
+CORE_GROUP_B = ["m_tool.c", "m_var.c", "m_sql.c", "m_extra.c"]
 FULL_GROUP_B = CORE_GROUP_B + ["m_http.c", "m_hdf.c", "m_http_server.c", "m_flask.c"]
 
 DEBUG_MACRO_IF = "#if defined(MLS_DEBUG) && !defined(MLS_DEBUG_DISABLE)"

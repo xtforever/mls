@@ -49,6 +49,20 @@ assert "bad.mkv" in r["rows"][0]["path"], r  # ungueltiges UTF-8 -> kein Crash
 assert r["rows"][0]["imdb"] == "https://www.imdb.com/de/title/tt0058150/", r
 assert r["rows"][2]["imdb"] == "", r         # keine tt-ID -> kein Link
 
+# Pfade werden mit dem Server-Namen qualifiziert ('host:/pfad'), damit der
+# Client weiss, auf welchem Server (NFS-Mount) die Datei liegt.
+r = srv.search({"q": ["gold"]}, "otto:8000")
+assert r["rows"][0]["path"].startswith("otto:/p/"), r
+srv.SERVER_NAME = "nas"                       # MOVDB_SERVER_NAME hat Vorrang
+r = srv.search({"q": ["gold"]}, "otto:8000")
+assert r["rows"][0]["path"].startswith("nas:/p/"), r
+srv.SERVER_NAME = ""
+r = srv.search({"q": ["gold"]}, "")           # kein Name -> unveraendert
+assert r["rows"][0]["path"].startswith("/p/"), r
+assert srv._hostname("otto:8000") == "otto", srv._hostname("otto:8000")
+assert srv._hostname("[::1]:8000") == "::1", srv._hostname("[::1]:8000")
+assert srv._hostname("") == "", repr(srv._hostname(""))
+
 # leere Anfrage liefert Hinweis, kein Subprozess
 n = len(calls)
 r = srv.search({})

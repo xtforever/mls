@@ -6,8 +6,15 @@ tests/error-handler
 *.exed
 *.swp
 *.bak
+# Emacs autosave (e.g. #file.c#)
+\#*#
 *.hdf
 *.save
+# stale manual build of the example
+/examples/csv2insert
+# rendered world example (make world.svg / world.png)
+/examples/world.svg
+/examples/world.png
 nohup.out
 __pycache__/
 score/

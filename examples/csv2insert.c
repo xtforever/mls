@@ -1,73 +1,70 @@
 /* csv2insert — turn CSV on stdin into SQL INSERT statements.
  *
  *     printf '1, alice, 3, x, y\n' | ./csv2insert
- *     insert into datax ( id, name, cnt, ref, verify ) values ( '1', 'alice',
- * '3', 'x', 'y');
+ *     insert into datax ( id,name,cnt,ref,verify ) values
+ * ('1','alice','3','x','y' );
  *
- * The column list is wrapped into mls string handles with m_wrapstrhandles()
- * and imploded into the header with s_implode_q(); each CSV record is read with
- * s_read_fields() and its fields are quoted and imploded the same way. Records
- * whose field count does not match the column list are skipped silently (an
- * empty record yields one empty field, so blank lines are dropped too). At end
- * of input s_read_fields() yields an empty list (0 fields), ending the loop.
+ * The column list lives in a m_var variable system: vs_add() stores the names
+ * and vs_string_builder() expands them into the INSERT header ($col_names[*]).
+ * Each record is read straight into a variable with vs_read_fields(); the
+ * field count is checked via vs_klen() and the value list is produced by
+ * vs_sql_string_builder(), which quotes the $'fields[*]' list the SQL way
+ * (single quotes doubled: O'Brien -> 'O''Brien'), so no s_implode_q /
+ * s_read_fields are needed. An empty line yields one empty field and is
+ * skipped, and at EOF vs_read_fields() leaves 0 values, ending the loop.
  *
- * Temporaries are `tmls` handles (auto-freed at block end), so there are no
- * trailing m_free()s: the whole body lives in one inner block, closed before
- * m_destruct().
+ * Everything (variable system included) is a `tmls` handle, auto-freed at block
+ * end; vs_free() is just m_free() and frees the variables recursively.
  *
- * Single-header build (needs mls_core.h next to the project root; it is the
- * release/single-threaded preset with the config baked in):
- *     cc -std=c11 examples/csv2insert.c -o csv2insert -lpthread -lm -ldl
+ * Build via examples/makefile (`make csv2insert.exe`), or manually:
+ *     cc -std=c11 -Ilib examples/csv2insert.c lib/m_var.c lib/mls_base.c \
+ *        lib/mls_ext.c lib/m_tool.c lib/list.c lib/table.c \
+ *        -o csv2insert -lpthread -lm -ldl
  *
  * ponytail: naive split on ',' — no quoted-field / escaped-comma handling.
  */
-#define MLS_CORE_IMPLEMENTATION
-#include "../mls_core.h"
+#include "../lib/m_tool.h"
+#include "../lib/m_var.h"
+#include "../lib/mls.h"
+
+#include <stdio.h>
 
 /* Column list: single source of truth for the INSERT header and the check. */
 static const char *cols[] = {"id", "name", "cnt", "ref", "verify"};
 #define NCOLS ((int)ALEN (cols))
 
+void csv2insert (void)
+{
+	tmls vset = vs_add (0, "col_names", cols, NCOLS);
+
+	/* header: unquoted, comma separated list */
+	tmls buf = vs_string_builder (
+		0, vset, "insert into datax ( $col_names[*] ) values (");
+	int len = s_strlen (buf);
+
+	for (;;) {
+		int fields = vs_read_fields (vset, "fields", stdin, ",");
+		if (vs_klen (fields) == 0)
+			break; /* EOF */
+
+		/* empty record -> 1 field, so this also drops blanks */
+		if (vs_klen (fields) != NCOLS ||
+		    (NCOLS == 1 && *vs_kget (fields, 1) == 0))
+			continue; /* wrong format: skip silently */
+
+		/* SQL-quoted list via expansion ('' doubling), then back to
+		 * header-only. The append overwrote the header's NUL, so put
+		 * it back. */
+		vs_sql_string_builder (buf, vset, "$'fields[*]' );");
+		s_puts (buf);
+		m_setlen (buf, len);
+	}
+}
+
 int main (void)
 {
 	m_init ();
-
-	/* Inner block: tmls handles are freed when it ends, before
-	 * m_destruct(). */
-	{
-		/* cols[] -> list of handles -> "id, name, cnt, ref, verify" */
-		tmls sep = s_dup (", ");
-		tmls col_list = m_wrapstrhandles (cols, NCOLS);
-		tmls names = s_implode_q (0, col_list, sep, 0);
-		tmls head =
-			s_printf (0, -1, "insert into datax ( %s ) values (",
-				  m_str (names));
-
-		tmls fields = 0;
-		tmls sql = 0;
-		tmls values = 0;
-
-		for (;;) {
-			fields = s_read_fields (fields, stdin, ",", 1);
-			if (m_len (fields) == 0)
-				break; /* end of input */
-
-			/* empty record -> 1 field, so this also drops blanks */
-			if (m_len (fields) != NCOLS ||
-			    (NCOLS == 1 && CHAR (INT (fields, 0), 0) == 0))
-				continue; /* wrong format: skip silently */
-
-			/* quote and join the fields: 1,2,3 -> '1', '2', '3';
-			 * s_implode_q clears dest, so values is reused each
-			 * record */
-			values = s_implode_q (values, fields, sep, '\'');
-			m_clear (sql);
-			sql = s_printf (sql, -1, "%s %s);", m_str (head),
-					m_str (values));
-			s_puts (sql);
-		}
-	} /* sep, col_list, names, head, fields, sql, values auto-freed here */
-
+	csv2insert ();
 	m_destruct ();
 	return 0;
 }

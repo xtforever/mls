@@ -133,7 +133,13 @@ int m_lookup_obj (int m, void *obj, int size);
 int utf8_getchar (FILE *fp, utf8_char_t buf);
 int m_putc (int m, char c);
 int m_puti (int m, int c);
+/* Sorted string-set lookup (O(log n)): the list must be kept sorted by
+ * building it via these functions, or with m_qsort(list, cmp_mstr) first.
+ * An empty key returns -1 and is never inserted. */
 int m_lookup_str (int m, const char *key, int NOT_INSERT);
+/* Like m_lookup_str(), but the key is a string handle; callers that already
+ * hold one need no m_str() conversion. */
+int m_lookup_mstr (int m, int key, int NOT_INSERT);
 int utf8char (char **s);
 int m_utf8char (int buf, int *p);
 int cmp_int (const void *a0, const void *b0);

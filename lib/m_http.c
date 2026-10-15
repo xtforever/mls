@@ -3,6 +3,7 @@
 #include "m_tool.h"
 #include "table.h"
 #include <ctype.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -68,7 +69,9 @@ void http_parser_init_response (http_parser_t *p)
 	p->state = HTTP_STATE_RESPONSE_LINE;
 }
 
-void http_parser_free (http_parser_t *p)
+/* Free the per-message handles and zero them so a second call is a no-op
+ * (no stale/double free). */
+static void free_fields (http_parser_t *p)
 {
 	if (p->method > 0)
 		m_free (p->method);
@@ -80,6 +83,34 @@ void http_parser_free (http_parser_t *p)
 		tbl_free (p->headers);
 	if (p->body > 0)
 		m_free (p->body);
+	p->method = 0;
+	p->uri = 0;
+	p->version = 0;
+	p->headers = 0;
+	p->body = 0;
+}
+
+void http_parser_free (http_parser_t *p) { free_fields (p); }
+
+/* Reuse an initialized parser for the next message (keep-alive/pipelining):
+ * drop the previous message's handles and parse state while keeping the
+ * configured limits (max_*). For a fresh parser use http_parser_init(). */
+void http_parser_reset (http_parser_t *p)
+{
+	free_fields (p);
+	p->headers = tbl_create ();
+	p->body = m_alloc (0, 1, MFREE);
+	p->status_code = 0;
+	p->content_length = 0;
+	p->is_chunked = 0;
+	p->header_count = 0;
+	p->has_transfer_encoding = 0;
+	p->has_content_length = 0;
+	p->is_keepalive = 0;
+	p->pos = 0;
+	p->error = HTTP_ERROR_NONE;
+	p->state = (p->type == HTTP_TYPE_RESPONSE) ? HTTP_STATE_RESPONSE_LINE
+						   : HTTP_STATE_REQUEST_LINE;
 }
 
 int http_validate_uri (int uri_h)
@@ -119,6 +150,24 @@ int http_validate_header_value (int val_h)
 	return 1;
 }
 
+/* Reject path-traversal segments ("..", "../", "/..", trailing "..").
+ * plain byte scan: the parser does not percent-decode, so encoded dots stay
+ * literal and cannot escape. */
+int http_validate_uri_path (const char *uri)
+{
+	if (!uri)
+		return 0;
+	// ponytail: no symlink resolution; realpath()+prefix check if that
+	// matters
+	for (const char *p = uri; (p = strstr (p, "..")) != NULL; p += 2) {
+		int at_start = (p == uri) || (p[-1] == '/');
+		int at_end = (p[2] == '\0') || (p[2] == '/');
+		if (at_start && at_end)
+			return 0;
+	}
+	return 1;
+}
+
 static int find_crlf (int data_h, int start)
 {
 	int len = m_len (data_h);
@@ -141,33 +190,39 @@ static int hex_nibble (char c)
 	return -1;
 }
 
-static int parse_hex (int data_h, int start, int max_chars, int *out)
+/* Parse a chunk-size line's hexadecimal value. Returns the position of the
+ * terminating CR/LF on success (value written to *out), -1 if the line is
+ * not yet complete (need more data), or -2 on invalid hex or a value with
+ * more than max_chars digits (too large to represent). */
+static int parse_hex (int data_h, int start, int max_chars, uint64_t *out)
 {
-	int result = 0;
+	uint64_t result = 0;
 	int pos = start;
 	int len = m_len (data_h);
-	int has_digit = 0;
+	int digits = 0;
 
-	while (pos < len && pos < start + max_chars) {
+	while (pos < len) {
 		char c = CHAR (data_h, pos);
-		if (c == '\r' || c == '\n')
-			break;
+		if (c == '\r' || c == '\n') {
+			if (digits == 0)
+				return -2; /* empty chunk-size line */
+			*out = result;
+			return pos;
+		}
 		if (c == ';' || c == ' ') {
 			pos++;
 			continue;
 		}
 		int nibble = hex_nibble (c);
 		if (nibble < 0)
-			return -1;
-		result = result * 16 + nibble;
-		has_digit = 1;
+			return -2;
+		if (digits >= max_chars)
+			return -2; /* more digits than the type can hold */
+		result = result * 16 + (uint64_t)nibble;
+		digits++;
 		pos++;
 	}
-
-	if (!has_digit)
-		return -1;
-	*out = result;
-	return pos;
+	return -1; /* ran out of buffer before the CR/LF */
 }
 
 static int find_colon (int line_h)
@@ -250,11 +305,28 @@ static void parse_transfer_encoding (http_parser_t *p, int te)
 		p->is_chunked = 1;
 }
 
-static void parse_content_length (http_parser_t *p, int cl)
+/* Parse a Content-Length value. Returns 0 on success, -1 on malformed
+ * input, -2 if larger than max_body_size. */
+static int parse_content_length (http_parser_t *p, int cl)
 {
 	p->has_content_length = 1;
-	if (!p->is_chunked)
-		p->content_length = (size_t)s_to_long (cl);
+	if (p->is_chunked)
+		return 0;
+
+	const char *s = m_str (cl);
+	if (!s || !isdigit ((unsigned char)s[0]))
+		return -1;
+
+	errno = 0;
+	char *end = NULL;
+	unsigned long long v = strtoull (s, &end, 10);
+	if (errno == ERANGE || end == s || *end != '\0')
+		return -1;
+	if (v > (unsigned long long)p->max_body_size)
+		return -2;
+
+	p->content_length = (size_t)v;
+	return 0;
 }
 
 static void prepare_body_state (http_parser_t *p)
@@ -264,18 +336,23 @@ static void prepare_body_state (http_parser_t *p)
 
 	if (te)
 		parse_transfer_encoding (p, te);
-	if (cl)
-		parse_content_length (p, cl);
+	if (cl) {
+		int rc = parse_content_length (p, cl);
+		if (rc == -2) {
+			set_error (p, HTTP_ERROR_BODY_SIZE);
+			return;
+		}
+		if (rc == -1) {
+			set_error (p, HTTP_ERROR_PARSING);
+			return;
+		}
+	}
 	if (p->has_transfer_encoding && p->has_content_length) {
 		set_error (p, HTTP_ERROR_CL_TE_CONFLICT);
 		return;
 	}
 	if (p->is_chunked) {
 		p->state = HTTP_STATE_BODY;
-		return;
-	}
-	if (p->has_content_length && p->content_length > p->max_body_size) {
-		set_error (p, HTTP_ERROR_BODY_SIZE);
 		return;
 	}
 	if (p->has_content_length && p->content_length > 0)
@@ -288,11 +365,13 @@ static int parse_body_content (http_parser_t *p, int data_h, int pos,
 			       int data_len)
 {
 	size_t remaining = p->content_length - m_len (p->body);
-	size_t available = data_len - pos;
+	size_t available = (size_t)(data_len - pos);
 	size_t to_copy = (available < remaining) ? available : remaining;
 
-	m_write (p->body, m_len (p->body), m_buf (data_h) + pos, to_copy);
-	pos += to_copy;
+	if (to_copy > 0)
+		m_mcopy (p->body, (int)m_len (p->body), data_h, pos,
+			 (int)to_copy);
+	pos += (int)to_copy;
 
 	if (m_len (p->body) == p->content_length) {
 		p->state = HTTP_STATE_DONE;
@@ -304,42 +383,49 @@ static int parse_body_content (http_parser_t *p, int data_h, int pos,
 static int parse_body_chunked (http_parser_t *p, int data_h, int pos,
 			       int data_len)
 {
-	int chunk_size = 0;
+	uint64_t chunk_size = 0;
 	int hex_end = parse_hex (data_h, pos, 16, &chunk_size);
 	if (hex_end == -1)
-		return pos;
+		return pos; /* need more data */
+	if (hex_end == -2) {
+		set_error (p, HTTP_ERROR_PARSING);
+		return -1;
+	}
 
 	int crlf = find_crlf (data_h, hex_end);
 	if (crlf == -1)
-		return pos;
+		return pos; /* need more data */
 
-	pos = crlf + CRLF_LEN;
+	int data_start = crlf + CRLF_LEN;
 
 	if (chunk_size == 0) {
 		p->state = HTTP_STATE_TRAILER;
-		return pos;
+		return data_start;
 	}
 
-	if (m_len (p->body) + chunk_size > p->max_body_size) {
+	/* m_len(body) <= max_body_size is an invariant (checked before each
+	 * copy), so this subtraction cannot underflow. */
+	if (chunk_size > (uint64_t)(p->max_body_size - m_len (p->body))) {
 		set_error (p, HTTP_ERROR_BODY_SIZE);
 		return -1;
 	}
 
-	size_t available = data_len - pos;
-	size_t to_copy = (available < (size_t)chunk_size) ? available
-							  : (size_t)chunk_size;
+	/* Consume a chunk only once its data and trailing CRLF are fully
+	 * buffered. Otherwise leave pos at the size line; the next call
+	 * re-enters here with more data in data_h. */
+	if ((uint64_t)(data_len - data_start) < chunk_size + CRLF_LEN)
+		return pos;
 
-	m_write (p->body, m_len (p->body), m_buf (data_h) + pos, to_copy);
-	pos += to_copy;
-
-	if (to_copy == (size_t)chunk_size) {
-		int trail_crlf = find_crlf (data_h, pos);
-		if (trail_crlf != -1) {
-			pos = trail_crlf + CRLF_LEN;
-		}
+	int chunk_end = data_start + (int)chunk_size;
+	if (CHAR (data_h, chunk_end) != '\r' ||
+	    CHAR (data_h, chunk_end + 1) != '\n') {
+		set_error (p, HTTP_ERROR_PARSING);
+		return -1;
 	}
 
-	return pos;
+	m_mcopy (p->body, (int)m_len (p->body), data_h, data_start,
+		 (int)chunk_size);
+	return chunk_end + CRLF_LEN;
 }
 
 /* Each handler parses what it can at the current position and returns the new
@@ -466,19 +552,22 @@ static int http_step (http_parser_t *p, int data_h, int pos, int data_len)
 
 int http_parse (http_parser_t *p, int data_h)
 {
-	int pos = 0;
+	int pos = (int)p->pos;
 	int data_len = m_len (data_h);
 
 	while (pos < data_len && p->state != HTTP_STATE_DONE &&
 	       p->state != HTTP_STATE_ERROR) {
 		int next = http_step (p, data_h, pos, data_len);
-		if (next < 0)
+		if (next < 0) {
+			p->pos = (size_t)pos;
 			return -1;
+		}
 		if (next == pos)
 			break;
 		pos = next;
 	}
 
+	p->pos = (size_t)pos;
 	return (p->state == HTTP_STATE_ERROR) ? -1 : 0;
 }
 

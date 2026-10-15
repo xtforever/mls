@@ -71,6 +71,23 @@ Used by the mls_must() macro; never returns.
 
 ---
 
+### `lst`
+
+**Signature:**
+```c
+void * lst(lst_t l, size_t i)
+```
+
+Returns a pointer to the element at the specified index in a list structure.
+
+**Parameters:**
+- l The list structure.
+- i The index of the element.
+
+**Returns:** A pointer to the element data.
+
+---
+
 ### `lst_resize`
 
 **Signature:**
@@ -78,26 +95,12 @@ Used by the mls_must() macro; never returns.
 void lst_resize(lst_t lp, size_t new_size)
 ```
 
-Returns a pointer to the element at the specified index in a list structure.
-
-/
-void *lst (lst_t l, size_t i)
-{
-if (!l->data)
-ERR ("Not init.");
-return &l->data[l->w * i];
-}
-/**
 Resizes a list structure to a new maximum size.
 Dies on error; lst_resize_safe() reports the error instead.
 
 **Parameters:**
-- l The list structure.
-- i The index of the element.
 - lp Pointer to the list structure pointer.
 - new_size The new maximum number of elements.
-
-**Returns:** A pointer to the element data.
 
 ---
 
@@ -152,11 +155,11 @@ Appends an element to a list.
 
 ---
 
-### `lst_del_safe`
+### `lst_peek`
 
 **Signature:**
 ```c
-int lst_del_safe(lst_t l, size_t p)
+void * lst_peek(lst_t l, size_t i)
 ```
 
 Returns a pointer to the element at the specified index without using
@@ -165,15 +168,6 @@ array. normaly the length (l) value is compared to the index, you need to
 call m_setlen or use m_put which automatically increases the array length
 value. lst_peek gives you access to all allocated memory postion in this
 array
-
-/
-void *lst_peek (lst_t l, size_t i)
-{
-if (i >= l->max)
-ERR ("index out of bound max=%zu index=%zu", l->max, i);
-return lst (l, i);
-}
-/* Like lst_del but reports a bounds error instead of dying.
 
 **Parameters:**
 - l The list structure.
@@ -214,6 +208,24 @@ Removes n elements starting from the specified index from a list.
 
 ---
 
+### `lst_ins`
+
+**Signature:**
+```c
+void * lst_ins(lst_t lp, size_t p, size_t n)
+```
+
+Inserts n empty elements at the specified index in a list.
+
+**Parameters:**
+- lp Pointer to the list structure pointer.
+- p The insertion index.
+- n The number of elements to insert.
+
+**Returns:** A pointer to the first newly inserted element.
+
+---
+
 ### `lst_next`
 
 **Signature:**
@@ -221,23 +233,9 @@ Removes n elements starting from the specified index from a list.
 int lst_next(lst_t l, int *p, void *data)
 ```
 
-Inserts n empty elements at the specified index in a list.
-
-/
-void *lst_ins (lst_t lp, size_t p, size_t n)
-{
-void *r = lst_ins_safe (lp, p, n);
-if (!r)
-_mls_die (__LINE__, __FILE__, __FUNCTION__);
-return r;
-}
-/**
 Iterates to the next element in a list.
 
 **Parameters:**
-- lp Pointer to the list structure pointer.
-- p The insertion index.
-- n The number of elements to insert.
 - l The list structure.
 - p Pointer to the current index. Should be initialized to -1.
 - data Pointer to store the address of the next element.
@@ -393,6 +391,57 @@ Returns the number of elements in the list associated with a handle.
 
 ---
 
+### `m_buf`
+
+**Signature:**
+```c
+void * m_buf(int m)
+```
+
+Returns a pointer to the raw data buffer of the list associated with a
+handle.
+
+**Parameters:**
+- m The handle.
+
+**Returns:** A pointer to the data buffer, or NULL if handle is invalid.
+
+---
+
+### `mls`
+
+**Signature:**
+```c
+void * mls(int m, size_t i)
+```
+
+Returns a pointer to the element at the specified index with bounds checking.
+
+**Parameters:**
+- m The handle.
+- i The index.
+
+**Returns:** A pointer to the element.
+
+---
+
+### `mls_safe`
+
+**Signature:**
+```c
+void * mls_safe(int m, size_t i)
+```
+
+Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.
+
+**Parameters:**
+- m The handle.
+- i The index.
+
+**Returns:** A pointer to the element, or NULL on error.
+
+---
+
 ### `m_next`
 
 **Signature:**
@@ -400,58 +449,9 @@ Returns the number of elements in the list associated with a handle.
 int m_next(int m, int *p, void *d)
 ```
 
-Returns a pointer to the raw data buffer of the list associated with a
-handle.
-
-/
-void *m_buf (int m)
-{
-if (m <= 0)
-return NULL;
-return m_peek (m, 0);
-}
-/**
-Returns a pointer to the element at the specified index with bounds checking.
-
-/
-void *mls (int m, size_t i)
-{
-if (m <= 0)
-return NULL;
-void *ret = mls_safe (m, i);
-if (!ret)
-_mls_die (__LINE__, __FILE__, __FUNCTION__);
-return ret;
-}
-/**
-Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.
-
-/
-void *mls_safe (int m, size_t i)
-{
-if (m <= 0) {
-mls_errno = MLS_EINVAL;
-return NULL;
-}
-lst_t lp = lock_handle (m, 0);
-if (i >= lp->l) {
-mls_errno = MLS_EBOUNDS;
-unlock_handle (lp);
-return NULL;
-}
-void *ret = lst (lp, i);
-unlock_handle (lp);
-return ret;
-}
-/**
 Iterates through the elements of a handle's list.
 
 **Parameters:**
-- m The handle.
-- m The handle.
-- i The index.
-- m The handle.
-- i The index.
 - m The handle.
 - p Pointer to the current index.
 - d Pointer to store the address of the next element.
@@ -567,6 +567,24 @@ Non-aborting version of m_write(). Returns -1 on error and sets mls_errno.
 
 ---
 
+### `m_peek`
+
+**Signature:**
+```c
+void * m_peek(int m, size_t i)
+```
+
+Returns a pointer to the element at the specified index without bounds
+checking.
+
+**Parameters:**
+- m The handle.
+- i The index.
+
+**Returns:** A pointer to the element, or NULL if index is out of bounds.
+
+---
+
 ### `m_width`
 
 **Signature:**
@@ -574,25 +592,9 @@ Non-aborting version of m_write(). Returns -1 on error and sets mls_errno.
 size_t m_width(int m)
 ```
 
-Returns a pointer to the element at the specified index without bounds
-checking.
-
-/
-void *m_peek (int m, size_t i)
-{
-if (m <= 0)
-return NULL;
-lst_t lp = lock_handle (m, 0);
-void *ret = lst_peek (lp, i);
-unlock_handle (lp);
-return ret;
-}
-/**
 Returns the width of each element in a handle's list in bytes.
 
 **Parameters:**
-- m The handle.
-- i The index.
 - m The handle.
 
 **Returns:** The element width.
@@ -950,6 +952,22 @@ Reserves space for n new elements in a handle's list.
 
 ---
 
+### `m_add_safe`
+
+**Signature:**
+```c
+void * m_add_safe(int m)
+```
+
+Appends one new element to a handle's list and returns a pointer to it.
+
+**Parameters:**
+- m The handle.
+
+**Returns:** A pointer to the new element.
+
+---
+
 ### `m_bufsize`
 
 **Signature:**
@@ -957,35 +975,9 @@ Reserves space for n new elements in a handle's list.
 size_t m_bufsize(int m)
 ```
 
-Appends one new element to a handle's list and returns a pointer to it.
-
-/
-void *m_add_safe (int m)
-{
-if (m <= 0) {
-mls_errno = MLS_EINVAL;
-return NULL;
-}
-lst_t lp = lock_handle (m, 1);
-int p = lst_new_safe (lp, 1);
-void *ret = p < 0 ? NULL : lst (lp, p);
-unlock_handle (lp);
-return ret;
-}
-void *m_add (int m)
-{
-if (m <= 0)
-return NULL;
-void *ret = m_add_safe (m);
-if (!ret)
-_mls_die (__LINE__, __FILE__, __FUNCTION__);
-return ret;
-}
-/**
 Returns the currently allocated capacity (buffer size) of a handle's list.
 
 **Parameters:**
-- m The handle.
 - m The handle.
 
 **Returns:** The maximum number of elements before a realloc is needed.
@@ -1077,6 +1069,22 @@ Non-aborting version of m_del(). Returns -1 on error and sets mls_errno.
 
 ---
 
+### `m_pop`
+
+**Signature:**
+```c
+void * m_pop(int m)
+```
+
+Removes and returns a pointer to the last element of a handle's list.
+
+**Parameters:**
+- m The handle.
+
+**Returns:** A pointer to the element, or NULL if the list is empty.
+
+---
+
 ### `m_ins_safe`
 
 **Signature:**
@@ -1084,29 +1092,10 @@ Non-aborting version of m_del(). Returns -1 on error and sets mls_errno.
 int m_ins_safe(int m, size_t p, size_t n)
 ```
 
-Removes and returns a pointer to the last element of a handle's list.
-
-/
-void *m_pop (int m)
-{
-if (m <= 0)
-return NULL;
-lst_t lp = lock_handle (m, 1);
-if (lp->l == 0) {
-unlock_handle (lp);
-return NULL;
-}
-lp->l--;
-void *ret = lst (lp, lp->l);
-unlock_handle (lp);
-return ret;
-}
-/**
 Inserts n empty (zero-initialized) elements at a specific index in a handle's
 list.
 
 **Parameters:**
-- m The handle.
 - m The handle.
 - p The insertion index.
 - n The number of elements to insert.
@@ -1269,18 +1258,47 @@ If not found, the object is appended.
 int m_lookup_str(int m, const char *key, int NOT_INSERT)
 ```
 
-Looks up a string in a list of strings (char *).
-If not found and NOT_INSERT is 0, the string is duplicated and
-appended.
+Looks up a string in a sorted list of strings (char *).
+If not found and NOT_INSERT is 0, the string is duplicated and inserted in
+sorted position.
 
-set.
+The list must be kept sorted: build it via these functions, or call
+m_qsort(list, cmp_mstr) first. Lookups are then O(log n), not O(n).
+
+An empty (or NULL) key counts as "not found": it returns -1 and is never
+inserted. Empty strings are treated as invalid, so a bad key can never abort
+the program and needs no special handling by the caller.
 
 **Parameters:**
-- m The handle of the string list.
+- m The handle of the sorted string list.
 - key The string to look for.
 - NOT_INSERT If non-zero, do not insert the string if not found.
 
-**Returns:** The index of the string, or -1 if not found and NOT_INSERT is
+**Returns:** The index of the string, or -1 if not found (or key is empty).
+
+---
+
+### `m_lookup_mstr`
+
+**Signature:**
+```c
+int m_lookup_mstr(int m, int key, int NOT_INSERT)
+```
+
+Looks up a string handle in a sorted list of strings (char *). The key is an
+mls string handle, so a caller that already holds one need not convert it
+with m_str(). If not found and NOT_INSERT is 0, the key's text is duplicated
+and inserted in sorted position.
+
+Like m_lookup_str, the list must be kept sorted (O(log n) lookups). An empty
+key counts as "not found": it returns -1 and is never inserted.
+
+**Parameters:**
+- m The handle of the sorted string list.
+- key The string handle to look for.
+- NOT_INSERT If non-zero, do not insert the string if not found.
+
+**Returns:** The index of the string, or -1 if not found (or key is empty).
 
 ---
 
@@ -1485,6 +1503,26 @@ Performs a binary search on a sorted m-array.
 
 ---
 
+### `m_blookup_int_p`
+
+**Signature:**
+```c
+void * m_blookup_int_p(int buf, int key, void (*new) (void *, void *),
+		       void *ctx)
+```
+
+Similar to m_blookup_int, but returns a pointer to the element.
+
+**Parameters:**
+- buf The handle of the sorted list.
+- key The integer to look for.
+- new Optional callback function.
+- ctx Context pointer.
+
+**Returns:** A pointer to the element.
+
+---
+
 ### `m_binsert_int`
 
 **Signature:**
@@ -1492,22 +1530,9 @@ Performs a binary search on a sorted m-array.
 int m_binsert_int(int buf, int key)
 ```
 
-Similar to m_blookup_int, but returns a pointer to the element.
-
-/
-void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),
-void *ctx)
-{
-return mls (buf, m_blookup_int (buf, key, new, ctx));
-}
-/**
 Inserts an integer into a sorted list using binary search.
 
 **Parameters:**
-- buf The handle of the sorted list.
-- key The integer to look for.
-- new Optional callback function.
-- ctx Context pointer.
 - buf The handle of the sorted list.
 - key The integer to insert.
 
@@ -1665,26 +1690,15 @@ tracker.
 
 ---
 
-### `_m_put`
+### `_mls`
 
 **Signature:**
 ```c
-int _m_put(int ln, const char *fn, const char *fun, int h, const void *d)
+void * _mls(int ln, const char *fn, const char *fun, int h, size_t i)
 ```
 
 Internal debug version of mls.
 Records caller information and bounds checks the access.
-
-/
-void *_mls (int ln, const char *fn, const char *fun, int h, size_t i)
-{
-_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, (int)i, 0);
-return mls (h, i);
-}
-
-/**
-Internal debug version of m_put.
-Records caller information.
 
 **Parameters:**
 - ln Caller line number.
@@ -1692,6 +1706,22 @@ Records caller information.
 - fun Caller function name.
 - h The handle.
 - i The index.
+
+**Returns:** A pointer to the element.
+
+---
+
+### `_m_put`
+
+**Signature:**
+```c
+int _m_put(int ln, const char *fn, const char *fun, int h, const void *d)
+```
+
+Internal debug version of m_put.
+Records caller information.
+
+**Parameters:**
 - ln Caller line number.
 - fn Caller filename.
 - fun Caller function name.
@@ -1742,6 +1772,26 @@ Records caller information.
 
 ---
 
+### `_m_buf`
+
+**Signature:**
+```c
+void * _m_buf(int ln, const char *fn, const char *fun, int m)
+```
+
+Internal debug version of m_buf.
+Records caller information.
+
+**Parameters:**
+- ln Caller line number.
+- fn Caller filename.
+- fun Caller function name.
+- m The handle.
+
+**Returns:** A pointer to the data buffer.
+
+---
+
 ### `_m_create`
 
 **Signature:**
@@ -1749,27 +1799,10 @@ Records caller information.
 int _m_create(int ln, const char *fn, const char *fun, size_t n, size_t w)
 ```
 
-Internal debug version of m_buf.
-Records caller information.
-
-/
-void *_m_buf (int ln, const char *fn, const char *fun, int m)
-{
-if (!m)
-return 0;
-_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, m, 0, 0);
-return m_buf (m);
-}
-
-/**
 Internal debug version of m_create.
 Records caller information and allocation source.
 
 **Parameters:**
-- ln Caller line number.
-- fn Caller filename.
-- fun Caller function name.
-- m The handle.
 - ln Caller line number.
 - fn Caller filename.
 - fun Caller function name.
@@ -1816,6 +1849,19 @@ Sorts an m-array using qsort.
 **Parameters:**
 - list The handle of the m-array to sort.
 - compar Comparison function pointer.
+
+---
+
+### `cmp_mstr`
+
+**Signature:**
+```c
+int cmp_mstr(const void *a, const void *b)
+```
+
+qsort comparator for an m-array of char* strings (MFREE_STR).
+Use with m_qsort(list, cmp_mstr): compares the pointed-to strings, so the
+list ends up in strcmp order.
 
 ---
 
@@ -2845,394 +2891,6 @@ Registers the %M specifier for printf to handle m-array string handles.
 
 ---
 
-### `v_init`
-
-**Signature:**
-```c
-int v_init(void)
-```
-
-Initializes a variable system.
-
-**Returns:** The handle of the new variable system.
-
----
-
-### `v_free`
-
-**Signature:**
-```c
-void v_free(int vl)
-```
-
-Frees a variable system and all its variables.
-
-**Parameters:**
-- vl The handle of the variable system.
-
----
-
-### `v_find_key`
-
-**Signature:**
-```c
-int v_find_key(int vs, const char *name)
-```
-
-Finds the index of a variable key in a variable system.
-
-**Parameters:**
-- vs The variable system handle.
-- name The name of the variable.
-
-**Returns:** The index, or -1.
-
----
-
-### `v_lookup`
-
-**Signature:**
-```c
-int v_lookup(int vl, const char *name)
-```
-
-Looks up or creates a variable in a variable system.
-
-**Parameters:**
-- vl The variable system handle.
-- name The name of the variable.
-
-**Returns:** The handle of the variable.
-
----
-
-### `v_kset`
-
-**Signature:**
-```c
-void v_kset(int var, const char *v, int row)
-```
-
-Sets a value at a specific position in a variable.
-
-**Parameters:**
-- var The variable handle.
-- v The string value.
-- row The position (index).
-
----
-
-### `v_set`
-
-**Signature:**
-```c
-int v_set(int vs, const char *name, const char *value, int pos)
-```
-
-Sets a variable value in a variable system.
-
-**Parameters:**
-- vs The variable system handle.
-- name The variable name.
-- value The string value.
-- pos The position (VAR_APPEND for append).
-
-**Returns:** The handle of the variable.
-
----
-
-### `v_vaset`
-
-**Signature:**
-```c
-void v_vaset(int vs, ...)
-```
-
-Variadic set of multiple variable names and values.
-
-**Parameters:**
-- vs The variable system handle.
-- ... Pairs of (char* name, char* value), terminated by NULL.
-
----
-
-### `v_kclr`
-
-**Signature:**
-```c
-void v_kclr(int var)
-```
-
-Clears all values from a variable, keeping only the name.
-
-**Parameters:**
-- var The variable handle.
-
----
-
-### `v_clr`
-
-**Signature:**
-```c
-void v_clr(int vs, const char *name)
-```
-
-Clears a variable by name in a variable system.
-
-**Parameters:**
-- vs The variable system handle.
-- name The variable name.
-
----
-
-### `v_klen`
-
-**Signature:**
-```c
-int v_klen(int key)
-```
-
-Gets a value from a variable at a specific position.
-
-/
-char *v_kget (int var, int row)
-{
-if (var <= 0)
-return "";
-int len = m_len (var);
-if (row >= len)
-return "";
-char *s = STR (var, row);
-if (s == NULL)
-return "";
-return s;
-}
-
-/**
-Gets a variable value from a variable system.
-
-/
-char *v_get (int vs, const char *name, int pos)
-{
-return v_kget (v_lookup (vs, name), pos);
-}
-
-/**
-Returns the number of values in a variable (excluding the name).
-
-**Parameters:**
-- var The variable handle.
-- row The position.
-- vs The variable system handle.
-- name The variable name.
-- pos The position.
-- key The variable handle.
-
-**Returns:** The number of values.
-
----
-
-### `v_len`
-
-**Signature:**
-```c
-int v_len(int vs, const char *name)
-```
-
-Returns the number of values in a variable by name.
-
-**Parameters:**
-- vs The variable system handle.
-- name The variable name.
-
-**Returns:** The number of values.
-
----
-
-### `v_remove`
-
-**Signature:**
-```c
-void v_remove(int vs, const char *name)
-```
-
-Removes a variable from a variable system.
-
-**Parameters:**
-- vs The variable system handle.
-- name The variable name.
-
----
-
-### `se_init`
-
-**Signature:**
-```c
-void se_init(str_exp_t *se)
-```
-
-Initializes a string expansion structure.
-
-**Parameters:**
-- se Pointer to the string expansion structure.
-
----
-
-### `se_free`
-
-**Signature:**
-```c
-void se_free(str_exp_t *se)
-```
-
-Frees resources associated with a string expansion structure.
-
-**Parameters:**
-- se Pointer to the string expansion structure.
-
----
-
-### `se_realloc_buffers`
-
-**Signature:**
-```c
-void se_realloc_buffers(str_exp_t *se)
-```
-
-Reallocates or initializes buffers for string expansion.
-
-**Parameters:**
-- se Pointer to the string expansion structure.
-
----
-
-### `parse_index`
-
-**Signature:**
-```c
-static int parse_index(const char **s)
-```
-
-Internal helper to parse index in string expansion (e.g., [1], [*]).
-
----
-
-### `se_parse`
-
-**Signature:**
-```c
-void se_parse(str_exp_t *se, const char *frm)
-```
-
-Parses a format string for expansion.
-
-**Parameters:**
-- se Pointer to the string expansion structure.
-- frm The format string.
-
----
-
-### `repl_char`
-
-**Signature:**
-```c
-static void repl_char(int buf, char ch)
-```
-
-Internal helper to replace special characters with escaped sequences.
-
----
-
-### `escape_buf`
-
-**Signature:**
-```c
-void escape_buf(int buf, char *src)
-```
-
-Escapes a string into a buffer.
-
-**Parameters:**
-- buf Handle of the destination buffer.
-- src Source C-style string.
-
----
-
-### `escape_str`
-
-**Signature:**
-```c
-int escape_str(int buf, char *src)
-```
-
-Creates an escaped version of a string in a new or existing buffer.
-
-**Parameters:**
-- buf Destination handle (if 0, a new one is allocated).
-- src Source C-style string.
-
-**Returns:** The handle of the buffer containing the escaped string.
-
----
-
-### `field_escape`
-
-**Signature:**
-```c
-static int field_escape(int s2, char *s, int quotes)
-```
-
-Internal helper to escape a field, optionally adding quotes.
-
----
-
-### `get_variable_handle`
-
-**Signature:**
-```c
-static int get_variable_handle(int vl, const char *name)
-```
-
-Internal helper to get a variable handle from a variable system or table.
-
----
-
-### `if`
-
-**Signature:**
-```c
- if(vn < m_len (se->values) &&
-		    (val_ptr = (char **)mls (se->values, vn)) &&
-		    *val_ptr == s)
-```
-
-Expands a parsed format string using values from a variable system or table.
-
-/
-char *se_expand (str_exp_t *se, int vl, int row)
-{
-int var, index;
-int p, vn;
-char **d, *s, **val_ptr;
-int quotes = 0;
-m_clear (se->buf);
-int buf = se->buf;
-vn = 0;
-m_foreach (se->splitbuf, p, d)
-{
-s = *d;
-/* Check if this part in splitbuf matches the next expected
-variable in se->values
-
-**Parameters:**
-- se Pointer to the parsed string expansion structure.
-- vl Handle of the variable system or table.
-- row The row index to use for expansion.
-
-**Returns:** Pointer to the expanded string (stored in se->buf).
-
----
-
 ### `m_str_from_file`
 
 **Signature:**
@@ -3240,41 +2898,77 @@ variable in se->values
 int m_str_from_file(char *filename)
 ```
 
-Expands a format string in one step and returns the result.
-
-/
-char *se_string (int vl, const char *frm)
-{
-str_exp_t se;
-se_init (&se);
-se_parse (&se, frm);
-se_expand (&se, vl, 0);
-
-char *res;
-if (tbl_is_table (vl)) {
-tbl_set (vl, "se_string", mls (se.buf, 0));
-int h = tbl_get_handle (vl, "se_string");
-res = m_str (h);
-} else {
-int data = v_set (vl, "se_string", mls (se.buf, 0), 1);
-res = STR (data, 1);
-}
-
-se_free (&se);
-return res;
-}
-
-/* Other Utilities */
-
-/**
 Reads the entire content of a file into a new string buffer.
 
 **Parameters:**
-- vl Handle of the variable system or table.
-- frm The format string.
 - filename Path to the file.
 
 **Returns:** The handle of the new string buffer, or -1 on error.
+
+---
+
+### `m_strlist_save`
+
+**Signature:**
+```c
+int m_strlist_save(int list, const char *path)
+```
+
+Writes an m-array of char* strings (MFREE_STR, e.g. from s_split()) to a
+text file, one element per line. NULL elements are skipped. This is the
+inverse of m_strlist_load() for the common "one name per line" file.
+
+ponytail: a '\n' or '\r' inside an element cannot be represented (it would
+read back as extra lines); upgrade path is escaping or length-prefixing.
+The file is truncated in place, so a crash mid-write loses the old content;
+upgrade path is write-temp-then-rename.
+
+**Parameters:**
+- list Handle of the m-array of char* strings.
+- path Output file path.
+
+**Returns:** 0 on success, -1 if the file cannot be opened or closed.
+
+---
+
+### `m_strlist_load`
+
+**Signature:**
+```c
+int m_strlist_load(const char *path)
+```
+
+Reads a text file into a fresh m-array of char* strings (MFREE_STR), one
+element per line. A trailing carriage return is stripped, so CRLF files
+load cleanly. The round-trip with m_strlist_save() is symmetric for any
+element without a '\n' or '\r'. An empty file yields an empty (but valid)
+list.
+
+**Parameters:**
+- path Input file path.
+
+**Returns:** Handle of the new string list, or -1 if the file cannot be opened.
+
+---
+
+### `m_dir_list`
+
+**Signature:**
+```c
+int m_dir_list(const char *path)
+```
+
+Lists the entries of a directory into a fresh m-array of char* strings
+(MFREE_STR), like os.listdir(). "." and ".." are skipped; the order is the
+filesystem readdir() order. This is the directory counterpart of
+m_str_from_file().
+
+opened.
+
+**Parameters:**
+- path Directory path.
+
+**Returns:** Handle of the new string list, or -1 if the directory cannot be
 
 ---
 
@@ -3311,6 +3005,18 @@ Internal helper to cut a word from a string based on a delimiter.
 
 ---
 
+### `dup_word`
+
+**Signature:**
+```c
+static char * dup_word(char *a, char *b, int trimws)
+```
+
+Internal helper to duplicate a word between two pointers, optionally trimming
+whitespace.
+
+---
+
 ### `m_str_split`
 
 **Signature:**
@@ -3318,23 +3024,6 @@ Internal helper to cut a word from a string based on a delimiter.
 int m_str_split(int ms, char *s, char *delim, int trimws)
 ```
 
-Internal helper to duplicate a word between two pointers, optionally trimming
-whitespace.
-/
-static char *dup_word (char *a, char *b, int trimws)
-{
-if (a == b)
-return strdup ("");
-if (trimws) {
-while (a < b && isspace (*a))
-a++;
-while (b > a && isspace (b[-1]))
-b--;
-}
-return strndup (a, b - a);
-}
-
-/**
 Splits a string into an m-array of strings using a delimiter string.
 
 **Parameters:**
@@ -3473,18 +3162,6 @@ Reads a line from a file into an m-array string buffer.
 - fp File pointer.
 
 **Returns:** The length of the line read, or EOF.
-
----
-
-### `trim_space_c`
-
-**Signature:**
-```c
-static void trim_space_c(char *s)
-```
-
-Trims leading/trailing whitespace from a NUL-terminated string in place.
-The base pointer is preserved so the caller can still free() it.
 
 ---
 
@@ -3628,6 +3305,497 @@ but the handle remains. If zero, the handle itself is also freed.
 **Parameters:**
 - list The handle of the string list.
 - CLEAR_ONLY If non-zero, the strings are freed and the list is cleared,
+
+---
+
+## File: `m_var.c`
+
+### `vs_init`
+
+**Signature:**
+```c
+int vs_init(void)
+```
+
+Creates a new, empty variable system.
+
+**Returns:** The handle of the new variable system.
+
+---
+
+### `vs_free`
+
+**Signature:**
+```c
+void vs_free(int vs)
+```
+
+Frees a variable system and all its variables.
+
+Equivalent to m_free(vs): the MFREE_EACH / MFREE_STR handlers free the
+variables and their values recursively, so a `tmls` handle cleans up the
+whole system at block end.
+
+**Parameters:**
+- vs The variable system handle.
+
+---
+
+### `vs_find_key`
+
+**Signature:**
+```c
+int vs_find_key(int vs, const char *name)
+```
+
+Finds the index of a variable by name.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+
+**Returns:** The index of the variable, or -1 if absent.
+
+---
+
+### `vs_lookup`
+
+**Signature:**
+```c
+int vs_lookup(int vs, const char *name)
+```
+
+Looks up a variable by name, creating an empty one if needed.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name (must not be empty).
+
+**Returns:** The variable handle, or -1 on an empty name.
+
+---
+
+### `vs_kset`
+
+**Signature:**
+```c
+void vs_kset(int var, const char *value, int pos)
+```
+
+Sets a value at a position in a variable.
+
+Element 0 holds the name; values live at positions 1..n. A negative or
+out-of-range pos appends the value.
+
+**Parameters:**
+- var The variable handle.
+- value The new value (copied; NULL stores NULL).
+- pos The value position (use VS_APPEND to append).
+
+---
+
+### `vs_set`
+
+**Signature:**
+```c
+int vs_set(int vs, const char *name, const char *value, int pos)
+```
+
+Sets a value by variable name, creating the variable if needed.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+- value The new value.
+- pos The value position (use VS_APPEND to append).
+
+**Returns:** The handle of the variable.
+
+---
+
+### `vs_vaset`
+
+**Signature:**
+```c
+void vs_vaset(int vs, ...)
+```
+
+Sets multiple variables from (name, value) pairs, terminated by NULL.
+
+**Parameters:**
+- vs The variable system handle.
+- ... Alternating name/value pairs, ending with a NULL name.
+
+---
+
+### `vs_kclr`
+
+**Signature:**
+```c
+void vs_kclr(int var)
+```
+
+Drops all values of a variable, keeping its name.
+
+**Parameters:**
+- var The variable handle.
+
+---
+
+### `vs_clr`
+
+**Signature:**
+```c
+void vs_clr(int vs, const char *name)
+```
+
+Drops all values of a variable selected by name.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+
+---
+
+### `vs_kget`
+
+**Signature:**
+```c
+char * vs_kget(int var, int pos)
+```
+
+Gets a value from a variable at a position.
+
+**Parameters:**
+- var The variable handle.
+- pos The value position.
+
+**Returns:** The value, or "" if absent.
+
+---
+
+### `vs_get`
+
+**Signature:**
+```c
+char * vs_get(int vs, const char *name, int pos)
+```
+
+Gets a value by variable name.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+- pos The value position.
+
+**Returns:** The value, or "" if absent.
+
+---
+
+### `vs_klen`
+
+**Signature:**
+```c
+int vs_klen(int var)
+```
+
+Returns the number of values in a variable (excluding its name).
+
+**Parameters:**
+- var The variable handle.
+
+**Returns:** The number of values.
+
+---
+
+### `vs_len`
+
+**Signature:**
+```c
+int vs_len(int vs, const char *name)
+```
+
+Returns the number of values of a variable selected by name.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+
+**Returns:** The number of values.
+
+---
+
+### `vs_remove`
+
+**Signature:**
+```c
+void vs_remove(int vs, const char *name)
+```
+
+Removes a variable and frees its values.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+
+---
+
+### `vs_exp_init`
+
+**Signature:**
+```c
+void vs_exp_init(vs_exp_t *se)
+```
+
+Initializes an expansion context. Every vs_exp_t must start here.
+
+**Parameters:**
+- se The expansion context.
+
+---
+
+### `vs_exp_free`
+
+**Signature:**
+```c
+void vs_exp_free(vs_exp_t *se)
+```
+
+Frees the buffers of an expansion context.
+
+**Parameters:**
+- se The expansion context.
+
+---
+
+### `vs_exp_parse`
+
+**Signature:**
+```c
+void vs_exp_parse(vs_exp_t *se, const char *frm)
+```
+
+Parses a format string into literal and $-token parts.
+
+Supports $name, $name[N], $name[*], quoted $'name' and escaped \$:
+- $name        value of the current row (see vs_expand)
+- $name[N]     N-th value (0-based among the values)
+- $name[*]     every value joined with commas
+- $'name'      quoted; a bare quoted name joins every value quoted
+- \$           literal dollar sign
+
+**Parameters:**
+- se The expansion context.
+- frm The format string.
+
+---
+
+### `vs_expand`
+
+**Signature:**
+```c
+char * vs_expand(vs_exp_t *se, int vs, int row)
+```
+
+Expands a parsed format string using the values of a variable system.
+
+The result lives in se->buf and stays valid until the next expansion or
+vs_exp_free. Set se.sql = 1 before parsing/expanding for SQL quoting.
+
+**Parameters:**
+- se The parsed expansion context.
+- vs The variable system handle.
+- row Row used for a $-token without an explicit index.
+
+**Returns:** Pointer to the expanded string.
+
+---
+
+### `vs_string`
+
+**Signature:**
+```c
+char * vs_string(int vs, const char *frm)
+```
+
+Parses and expands a format string in one call.
+
+The result is stored in the variable system (under "vs_result") so the
+returned pointer outlives the internal buffer.
+
+**Parameters:**
+- vs The variable system handle.
+- frm The format string.
+
+**Returns:** The expanded string.
+
+---
+
+### `vs_sql_string`
+
+**Signature:**
+```c
+char * vs_sql_string(int vs, const char *frm)
+```
+
+Like vs_string(), but quoted fields use SQL quoting (single quotes doubled).
+
+**Parameters:**
+- vs The variable system handle.
+- frm The format string.
+
+**Returns:** The expanded string.
+
+---
+
+### `vs_add`
+
+**Signature:**
+```c
+int vs_add(int vs, const char *name, const char *const *list, int n)
+```
+
+Adds n C-strings as the values of a variable.
+
+Creates the variable system when vs <= 0; values are appended to any
+existing ones.
+
+**Parameters:**
+- vs The variable system handle, or 0.
+- name The variable name.
+- list The C-string array (may be NULL).
+- n Number of strings.
+
+**Returns:** The variable system handle.
+
+---
+
+### `vs_string_builder`
+
+**Signature:**
+```c
+int vs_string_builder(int strh, int vs, const char *frm)
+```
+
+Expands a format string and appends the result to a string handle.
+
+**Parameters:**
+- strh Destination string handle, or 0 to allocate a new one.
+- vs The variable system handle.
+- frm The format string.
+
+**Returns:** The destination string handle.
+
+---
+
+### `vs_sql_string_builder`
+
+**Signature:**
+```c
+int vs_sql_string_builder(int strh, int vs, const char *frm)
+```
+
+Like vs_string_builder(), but quoted fields use SQL quoting.
+
+**Parameters:**
+- strh Destination string handle, or 0 to allocate a new one.
+- vs The variable system handle.
+- frm The format string.
+
+**Returns:** The destination string handle.
+
+---
+
+### `vs_read_fields`
+
+**Signature:**
+```c
+int vs_read_fields(int vs, const char *name, FILE *fp, const char *sep)
+```
+
+Reads one line and stores its fields as the values of a variable.
+
+The line is split on the literal sep and each field is whitespace-trimmed.
+Previous values are dropped. An empty line yields one empty field; at EOF
+the variable ends up with 0 values (the loop-end signal, analogous to an
+empty s_read_fields). vs must already be initialized.
+
+**Parameters:**
+- vs The variable system handle.
+- name The variable name.
+- fp The input stream.
+- sep The literal separator (empty/NULL: whole line is one field).
+
+**Returns:** The variable handle.
+
+---
+
+## File: `m_sql.c`
+
+### `sql_cols`
+
+**Signature:**
+```c
+int sql_cols(const char *spec)
+```
+
+@brief Split a terse column spec into a string list.
+
+Separators are whitespace and commas; runs and leading/trailing separators
+are ignored, so "x y z", "x,y,z" and " x , y  z " all give [x, y, z].
+
+**Parameters:**
+- spec The column spec (may be NULL or empty -> empty list).
+
+**Returns:** An m-array of char* (MFREE_STR): free it with m_free().
+
+---
+
+### `sql_select`
+
+**Signature:**
+```c
+int sql_select(const char *table, const char *cols, const char *where)
+```
+
+@brief Build a SELECT statement from a table and a terse column spec.
+
+The column spec is expanded by sql_cols() and joined with ", "; the table
+name and the optional where clause are emitted verbatim.
+
+**Parameters:**
+- table The table name (used verbatim).
+- cols The terse column spec, e.g. "id name qty".
+- where Optional WHERE clause without the keyword; NULL or "" omits it.
+
+**Returns:** A string handle "SELECT ... FROM ..."; free it with m_free().
+
+---
+
+### `sql_insert`
+
+**Signature:**
+```c
+int sql_insert(int vs, const char *table, const char *cols)
+```
+
+@brief Build an INSERT statement, with values expanded from a variable
+system.
+
+The column list is built like sql_select(); the VALUES list is the
+expansion of "$'vals[*]'" against vs, so every value is SQL-quoted by
+vs_sql_string_builder() (single quotes doubled: O'Brien -> 'O''Brien').
+Populate the values with vs_add(vs, "vals", list, n) or
+vs_read_fields(vs, "vals", ...).
+
+m_free().
+
+**Parameters:**
+- vs The variable system holding the values under the variable "vals".
+- table The table name (used verbatim).
+- cols The terse column spec, matching the values in "vals".
+
+**Returns:** A string handle "INSERT INTO ... (...) VALUES (...)"; free it with
 
 ---
 

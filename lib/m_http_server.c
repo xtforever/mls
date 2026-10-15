@@ -140,11 +140,19 @@ static void handle_request (int client_fd, http_server_config_t *conf)
 	http_parser_t p;
 	http_parser_init_request (&p);
 
+	size_t limit = p.max_body_size +
+		       (size_t)(p.max_headers + 2) * p.max_header_line;
 	while (1) {
 		ssize_t bytes_read = read (client_fd, buffer, sizeof (buffer));
 		if (bytes_read <= 0)
 			break;
 		m_write (data_h, m_len (data_h), buffer, bytes_read);
+		if ((size_t)m_len (data_h) > limit) {
+			// guards streams that never reach a CRLF/DONE
+			send_response (client_fd, 413, "Payload Too Large",
+				       "text/plain", "Request too large", 17);
+			break;
+		}
 		if (http_parse (&p, data_h) == -1 || p.state == HTTP_STATE_DONE)
 			break;
 	}
@@ -176,10 +184,16 @@ static void handle_request (int client_fd, http_server_config_t *conf)
 				break;
 			}
 		} else if (conf->root_dir > 0) {
-			int full_path = m_alloc (0, 1, MFREE);
-			s_app (full_path, m_str (conf->root_dir), uri, NULL);
-			serve_file (client_fd, m_str (full_path));
-			m_free (full_path);
+			if (!http_validate_uri_path (uri)) {
+				send_response (client_fd, 403, "Forbidden",
+					       "text/plain", "Forbidden", 9);
+			} else {
+				int full_path = m_alloc (0, 1, MFREE);
+				s_app (full_path, m_str (conf->root_dir), uri,
+				       NULL);
+				serve_file (client_fd, m_str (full_path));
+				m_free (full_path);
+			}
 		} else {
 			send_response (client_fd, 404, "Not Found",
 				       "text/plain", "Not Found", 9);

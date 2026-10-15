@@ -54,6 +54,23 @@ void test_http_post_body ()
 	printf ("HTTP POST with body passed.\n");
 }
 
+void test_uri_path_validation ()
+{
+	printf ("Testing URI path traversal validation...\n");
+	assert (http_validate_uri_path ("/index.html") == 1);
+	assert (http_validate_uri_path ("/a/b/c") == 1);
+	assert (http_validate_uri_path ("/foo..bar") == 1);
+	assert (http_validate_uri_path ("/a/..b") == 1);
+	assert (http_validate_uri_path ("/a/../b") == 0);
+	assert (http_validate_uri_path ("/../etc/passwd") == 0);
+	assert (http_validate_uri_path ("/..") == 0);
+	assert (http_validate_uri_path ("../x") == 0);
+	assert (http_validate_uri_path ("..") == 0);
+	assert (http_validate_uri_path ("/a/b/../../c") == 0);
+	assert (http_validate_uri_path (NULL) == 0);
+	printf ("URI path traversal validation passed.\n");
+}
+
 int main ()
 {
 	trace_level = 1;
@@ -62,6 +79,7 @@ int main ()
 
 	test_http_basic ();
 	test_http_post_body ();
+	test_uri_path_validation ();
 
 	conststr_free ();
 	m_destruct ();

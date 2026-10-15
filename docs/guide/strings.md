@@ -76,12 +76,12 @@ if (s_is_numeric(s)) {
 
 ## 7. String Expansion
 
-For a truly modern experience, `mls` provides a powerful string interpolation system via `se_string`.
+For a truly modern experience, `mls` provides a powerful string interpolation system via `vs_string`.
 
 ```c
-int vs = v_init();
-v_set(vs, "name", "John", 1);
-char *res = se_string(vs, "Hello $name!"); // Result: "Hello John!"
+int vs = vs_init();
+vs_set(vs, "name", "John", 1);
+char *res = vs_string(vs, "Hello $name!"); // Result: "Hello John!"
 ```
 [Learn more about String Expansion](string-expansion.md)
 

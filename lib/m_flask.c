@@ -3,6 +3,7 @@
 #include "m_hdf.h"
 #include "m_http_server.h"
 #include "m_tool.h"
+#include "m_var.h"
 #include "table.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -68,7 +69,7 @@ void flask_register (const char *name, flask_handler_t handler)
 	FLASK_UNLOCK ();
 }
 
-static void parse_args (int args_table, const char *uri)
+static void parse_args (int args, const char *uri)
 {
 	char *q = strchr (uri, '?');
 	if (!q++)
@@ -81,9 +82,9 @@ static void parse_args (int args_table, const char *uri)
 		char *eq = strchr (*s, '=');
 		if (eq) {
 			*eq = 0;
-			tbl_set (args_table, *s, eq + 1);
+			vs_set (args, *s, eq + 1, 1);
 		} else
-			tbl_set (args_table, *s, "");
+			vs_set (args, *s, "", 1);
 	}
 	m_free (parts);
 }
@@ -154,7 +155,7 @@ void flask_process_client (int client_fd)
 			req->uri = parser.uri;
 			req->body = parser.body;
 			req->headers = parser.headers;
-			req->args = tbl_create ();
+			req->args = vs_init ();
 			parse_args (req->args, uri_full);
 			int res_h = m_alloc (sizeof (flask_res_t), 1, MFREE);
 			flask_res_t *res = m_buf (res_h);
@@ -163,7 +164,7 @@ void flask_process_client (int client_fd)
 			res->body = m_alloc (0, 1, MFREE);
 			(*(flask_handler_t *)m_buf (h_ptr)) (req_h, res_h);
 			send_full_response (client_fd, res);
-			tbl_free (req->args);
+			vs_free (req->args);
 			tbl_free (res->headers);
 			m_free (res->body);
 			m_free (req_h);
@@ -241,8 +242,10 @@ const char *flask_body (int req_h)
 }
 const char *flask_arg (int req_h, const char *key, const char *def)
 {
-	int v_h = tbl_get_handle (((flask_req_t *)m_buf (req_h))->args, key);
-	return v_h > 0 ? m_str (v_h) : def;
+	int vs = ((flask_req_t *)m_buf (req_h))->args;
+	if (vs_find_key (vs, key) < 0)
+		return def;
+	return vs_get (vs, key, 1);
 }
 const char *flask_header (int req_h, const char *key)
 {
@@ -264,8 +267,9 @@ void flask_render (int req_h, int res_h, const char *fmt)
 {
 	flask_req_t *req = m_buf (req_h);
 	flask_res_t *res = m_buf (res_h);
-	char *expanded = se_string (req->args, fmt);
-	s_app (res->body, expanded, NULL);
+	int expanded = vs_string_builder (0, req->args, fmt);
+	s_app (res->body, m_str (expanded), NULL);
+	m_free (expanded);
 }
 void flask_json_h (int res_h, int status, int json_h)
 {

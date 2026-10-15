@@ -9,6 +9,7 @@ Konzepte, Handlungsanweisungen und tiefere Erläuterungen.
 | [concepts.md](concepts.md) | Kernkonzepte: Handles, UAF-Schutz, Zero-Copy, Strings, Tabellen |
 | [howto.md](howto.md) | Anleitungen: typische Muster für Listen, Strings, Tabellen, Fehlerbehandlung |
 | [advantages.md](advantages.md) | Warum MLS? Vorteile gegenüber rohen Pointern *(englisch)* |
+| [handles-vs-pointers.md](handles-vs-pointers.md) | Traditionelles C vs. `mls` anhand `world.c`: malloc/free-Kanon, Dangling Pointer, Bounds, Leak-Messung über `m_count_allocated()` *(englisch)* |
 
 ## Deep Dives
 

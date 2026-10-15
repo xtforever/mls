@@ -1,4 +1,5 @@
 #include "../lib/list.h"
+#include "../lib/mls.h"
 
 #include <stdio.h>
 
@@ -25,7 +26,7 @@ static void print (int h, int depth)
 
 int main (void)
 {
-	m_base_init ();
+	m_init ();
 
 	int root = list_new ();
 
@@ -50,6 +51,6 @@ int main (void)
 	print (root, 0);
 
 	list_free (root);
-	m_base_destruct ();
+	m_destruct ();
 	return 0;
 }

@@ -82,11 +82,15 @@ python3 score.py --selftest   # eingebauter Selbsttest
 
 ### Wissensquellen — zuerst lesen, dann gezielt grep. Nicht blind in `lib/` suchen.
 
+0. `wiki.md` (Repo-Root) — kompakter Gesamtüberblick: Kern-API, Amalgam-System,
+   `tbl_*`-Tabellen, `list.h`, HDF (`m_hdf` + `hdf_base`), `m_subproc`, Build/Link.
+   **Immer zuerst lesen** — ersetzt das erneute Durchsuchen der Header.
 1. `docs/notes/QUICKREF.md` — API-Überblick, Pitfalls, Thread-Safety (für LLMs geschrieben).
    **Achtung:** die Table-Sektion dort (`mt_*`) ist veraltet, die API heißt jetzt
    `tbl_*` (siehe `lib/table.h`).
 2. `docs/api/API.md` — Referenz pro Funktion, auto-generiert.
 3. `docs/guide/` — Deep Dives (Strings, Tables, Thread-Safety, HTTP).
+   `docs/guide/lean-code.md` — wie Beispiele knapp bleiben (Python→C-Primitive).
 4. `docs/notes/` — WIKI.md, learn.md, Fehlerhistorie, Pläne.
 
 Nach API-Änderungen in `lib/*.c` regeneriert der Pre-Commit-Hook

@@ -88,6 +88,17 @@ m = load({"MOVDB_LOCAL_ROOT": "", "MOVDB_PATH_MAP": "/jensbk=/tmp/mnt"})
 assert m.resolve("/other/a.mkv") is None            # nicht gemappt -> abgelehnt
 assert m.resolve("/jensbk/a.mkv") == "/tmp/mnt/a.mkv"
 
+# Host-qualifizierte Pfade des Frontends: 'host:/pfad' -> Host wird entfernt,
+# danach greift das normale Mapping.
+m = load({"MOVDB_LOCAL_ROOT": "/tmp/mnt", "MOVDB_PATH_MAP": ""})
+assert m.resolve("otto:/jensbk/a.mkv") == "/tmp/mnt/jensbk/a.mkv", \
+    m.resolve("otto:/jensbk/a.mkv")
+assert m.resolve("My-Server.local:/a/b.mkv") == "/tmp/mnt/a/b.mkv", \
+    m.resolve("My-Server.local:/a/b.mkv")
+assert m.resolve("otto:rel/a.mkv") is None          # kein absoluter Pfad
+assert m.resolve("/foo:bar/baz.mkv") == "/tmp/mnt/foo:bar/baz.mkv", \
+    m.resolve("/foo:bar/baz.mkv")                   # ':' im Pfad, kein Host
+
 # ------------------------------------------------------------- Allowlist
 n0 = len(calls)
 with tempfile.TemporaryDirectory() as d:

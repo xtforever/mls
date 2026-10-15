@@ -21,6 +21,8 @@ int m_binsert (int buf, const void *data,
 int m_binsert2 (int buf, const void *data,
 		int (*cmpf) (const void *data, const void *buf_elem),
 		int with_duplicates, int with_copy);
+int m_bsearch (const void *key, int list,
+	       int (*compar) (const void *, const void *));
 #ifdef MLS_DEBUG
 static void _debug_create_list (int m_uaf, const char *dfunc, int ln,
 				const char *fn, const char *fun);
@@ -254,6 +256,12 @@ static int mscmpc (const void *a, const void *b)
 	const int *d = b;
 	const char *s1 = m_str (*d);
 	return strncmp (s0, s1, m_len (*d));
+}
+/* Compare a C-string key (a) against a char* list element (b). Used by
+ * m_bsearch/m_binsert2 over a sorted string list. */
+static int cmp_str_elem (const void *a, const void *b)
+{
+	return strcmp ((const char *)a, *(char *const *)b);
 }
 int m_binsert2 (int buf, const void *data,
 		int (*cmpf) (const void *data, const void *buf_elem),
@@ -927,33 +935,75 @@ int m_lookup_obj (int m, void *obj, int size)
 	return p;
 }
 /**
- * Looks up a string in a list of strings (char *).
- * If not found and NOT_INSERT is 0, the string is duplicated and
- * appended.
+ * Looks up a string in a sorted list of strings (char *).
+ * If not found and NOT_INSERT is 0, the string is duplicated and inserted in
+ * sorted position.
  *
- * @param m The handle of the string list.
+ * The list must be kept sorted: build it via these functions, or call
+ * m_qsort(list, cmp_mstr) first. Lookups are then O(log n), not O(n).
+ *
+ * An empty (or NULL) key counts as "not found": it returns -1 and is never
+ * inserted. Empty strings are treated as invalid, so a bad key can never abort
+ * the program and needs no special handling by the caller.
+ *
+ * @param m The handle of the sorted string list.
  * @param key The string to look for.
  * @param NOT_INSERT If non-zero, do not insert the string if not found.
- * @return The index of the string, or -1 if not found and NOT_INSERT is
- * set.
+ * @return The index of the string, or -1 if not found (or key is empty).
  */
 int m_lookup_str (int m, const char *key, int NOT_INSERT)
 {
 	int p;
-	char **d;
-	if (!key || strlen (key) == 0)
-		ERR ("Key of zero size");
-	m_foreach (m, p, d)
-	{
-		if (*d == NULL)
-			continue;
-		if (strcmp (*d, key) == 0)
-			return p;
-	}
-	if (NOT_INSERT)
+	char *copy;
+	if (!key || !*key)
 		return -1;
-	p = m_new (m, 1);
-	*(char **)mls (m, p) = strdup (key);
+	if (NOT_INSERT)
+		return m_bsearch (key, m, cmp_str_elem);
+	/* allocate before inserting: no half-filled slot on OOM */
+	copy = strdup (key);
+	if (!copy)
+		return -1;
+	p = m_binsert2 (m, key, cmp_str_elem, 0, 0);
+	if (p < 0) { /* already present (race): its index */
+		free (copy);
+		return (-p) - 1;
+	}
+	*(char **)mls (m, p) = copy;
+	return p;
+}
+/**
+ * Looks up a string handle in a sorted list of strings (char *). The key is an
+ * mls string handle, so a caller that already holds one need not convert it
+ * with m_str(). If not found and NOT_INSERT is 0, the key's text is duplicated
+ * and inserted in sorted position.
+ *
+ * Like m_lookup_str, the list must be kept sorted (O(log n) lookups). An empty
+ * key counts as "not found": it returns -1 and is never inserted.
+ *
+ * @param m The handle of the sorted string list.
+ * @param key The string handle to look for.
+ * @param NOT_INSERT If non-zero, do not insert the string if not found.
+ * @return The index of the string, or -1 if not found (or key is empty).
+ */
+int m_lookup_mstr (int m, int key, int NOT_INSERT)
+{
+	const char *s = m_str (key);
+	int p;
+	char *copy;
+	if (!s || !*s)
+		return -1;
+	if (NOT_INSERT)
+		return m_bsearch (s, m, cmp_str_elem);
+	/* allocate before inserting: no half-filled slot on OOM */
+	copy = strdup (s);
+	if (!copy)
+		return -1;
+	p = m_binsert2 (m, s, cmp_str_elem, 0, 0);
+	if (p < 0) { /* already present (race): its index */
+		free (copy);
+		return (-p) - 1;
+	}
+	*(char **)mls (m, p) = copy;
 	return p;
 }
 /**

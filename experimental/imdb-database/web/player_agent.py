@@ -11,8 +11,7 @@ Konfiguration per Umgebungsvariablen:
 
   MOVDB_PLAYER      Player-Programm              (Default mpv)
   MOVDB_LOCAL_ROOT  Mount der Server-Wurzel      (Default ~/mnt/server)
-  MOVDB_PATH_MAP    Praefix-Map REMOTE=LOCAL;... (Default leer)
-  MOVDB_PLAY_ROOTS  erlaubte lokale Wurzeln      (Default LOCAL_ROOT,
+  MOVDB_PATH_MAP    Praefix-Map REMOTE=LOCAL;... (Default leer)  MOVDB_PLAY_ROOTS  erlaubte lokale Wurzeln      (Default LOCAL_ROOT,
                     os.pathsep-getrennt)
   MOVDB_PLAY_EXT    erlaubte Endungen            (Default s. DEFAULT_EXT)
   MOVDB_PLAY_ORIGIN erlaubte UI-Origins          (Default
@@ -82,13 +81,27 @@ def _roots():
 ROOTS = _roots()
 
 
+def _strip_host(dbpath):
+    """Optionales 'server:'-Praefix des Frontends entfernen (z. B.
+    'otto:/back2019a/x' -> '/back2019a/x'). Nur wenn vor dem ':' kein '/'
+    steht, also tatsaechlich ein Hostname gemeint ist."""
+    i = dbpath.find(":")
+    if 0 < i and dbpath.find("/") == i + 1:
+        return dbpath[i + 1:]
+    return dbpath
+
+
 def resolve(dbpath):
     """Server-Pfad -> lokaler Pfad. None, wenn nicht mappbar.
 
-    PATH_MAP hat Vorrang (erstes passendes Praefix gewinnt); sonst wird
-    verbatim LOCAL_ROOT vorangestellt. Relative/leere Pfade sind ungueltig.
+    Ein optionales 'host:'-Praefix wird zuerst entfernt. Danach hat PATH_MAP
+    Vorrang (erstes passendes Praefix gewinnt); sonst wird verbatim LOCAL_ROOT
+    vorangestellt. Relative/leere Pfade sind ungueltig.
     """
-    if not isinstance(dbpath, str) or not dbpath.startswith("/"):
+    if not isinstance(dbpath, str) or not dbpath:
+        return None
+    dbpath = _strip_host(dbpath)
+    if not dbpath.startswith("/"):
         return None
     for remote, local in PATH_MAP:
         if dbpath == remote:

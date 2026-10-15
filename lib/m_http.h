@@ -45,6 +45,7 @@ typedef struct {
 	int has_transfer_encoding;
 	int has_content_length;
 	int is_keepalive;
+	size_t pos; /* consumed offset; resume point for incremental parsing */
 	size_t max_header_line;
 	size_t max_body_size;
 	size_t max_uri_length;
@@ -55,6 +56,10 @@ void http_parser_init (http_parser_t *p);
 void http_parser_init_request (http_parser_t *p);
 void http_parser_init_response (http_parser_t *p);
 void http_parser_free (http_parser_t *p);
+/* Free the per-message handles and clear parse state so a parser can be
+ * reused for the next message on a keep-alive connection. Configured limits
+ * (max_*) are preserved. Call on an initialized parser only. */
+void http_parser_reset (http_parser_t *p);
 
 int http_parse (http_parser_t *p, int data_h);
 int http_parse_bytes (http_parser_t *p, int data_h);
@@ -64,5 +69,6 @@ const char *http_state_string (http_state_t state);
 
 int http_validate_uri (int uri_h);
 int http_validate_header_value (int val_h);
+int http_validate_uri_path (const char *uri);
 
 #endif

@@ -38,8 +38,8 @@ MLS strings are also handles (width 1).
 - `int s_app(int h, ...)`: Append multiple C-strings. Terminate with `NULL`.
 - `int s_strlen(int h)`: Returns the string length **excluding** the trailing null terminator. Essential for protocol implementations (e.g., HTTP socket writes).
 - `int s_slice(int h, int a, int b)`: Returns a new handle with the sliced string. Unlike `m_slice`, this **does** null-terminate.
-- `char* v_get(int vl, const char *name, int pos)`: Get value from variable list.
-- `char* se_string(int vl, const char *frm)`: String expansion/interpolation.
+- `char* vs_get(int vs, const char *name, int pos)`: Get value from a variable system (`m_var.h`).
+- `char* vs_string(int vs, const char *frm)`: String expansion/interpolation.
 
 **Important:** Strings created by `s_cstr`, `s_strdup_c`, or `s_printf` often include a null terminator in their length. For example, `s_cstr("Hello World")` has a length of 12. When slicing with `s_slice`, remember that the last index (length - 1) is the null terminator.
 

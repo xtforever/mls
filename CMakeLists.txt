@@ -22,6 +22,8 @@ set(MLS_BASE_SOURCES
 set(MLS_EXT_SOURCES
     lib/mls_ext.c
     lib/m_tool.c
+    lib/m_var.c
+    lib/m_sql.c
     lib/list.c
     lib/table.c
     lib/m_extra.c
@@ -36,6 +38,8 @@ set(MLS_PUBLIC_HEADERS
     lib/mls_base.h
     lib/mls_ext.h
     lib/m_tool.h
+    lib/m_var.h
+    lib/m_sql.h
     lib/list.h
     lib/table.h
     lib/m_extra.h

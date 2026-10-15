@@ -1,12 +1,12 @@
 include ../rules.mk
 
-TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_se_string memcached_server test_string_robustness test_splice test_m_subproc test_read_fields test_implode
+TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved test_http_hostile http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_m_var test_sql memcached_server test_string_robustness test_splice test_m_subproc test_read_fields test_implode
 ifeq ($(thread_safe),1)
 TARGETS+=test_thread_safe_fuzzy
 TARGETS+=test_thread_safety
 TARGETS+=test_tsan_races
 endif
-DEPS=../lib/mls_base.o${OBJ} ../lib/mls_ext.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/list.o${OBJ} ../lib/table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
+DEPS=../lib/mls_base.o${OBJ} ../lib/mls_ext.o${OBJ} ../lib/m_tool.o${OBJ} ../lib/m_var.o${OBJ} ../lib/m_sql.o${OBJ} ../lib/list.o${OBJ} ../lib/table.o${OBJ} ../lib/m_http.o${OBJ} ../lib/m_hdf.o${OBJ} ../lib/m_http_server.o${OBJ} ../lib/m_flask.o${OBJ} ../lib/m_extra.o${OBJ}
 
 EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 
@@ -25,7 +25,10 @@ test_m_string.exe${OBJ}: test_m_string.o${OBJ} $(DEPS)
 test_extra.exe${OBJ}: test_extra.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-test_se_string.exe${OBJ}: test_se_string.o${OBJ} $(DEPS)
+test_m_var.exe${OBJ}: test_m_var.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_sql.exe${OBJ}: test_sql.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_mls_core.exe${OBJ}: test_mls_core.o${OBJ} $(DEPS)
@@ -83,6 +86,9 @@ test_http.exe${OBJ}: test_http.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_http_improved.exe${OBJ}: test_http_improved.o${OBJ} $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_http_hostile.exe${OBJ}: test_http_hostile.o${OBJ} $(DEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 http_server.exe${OBJ}: http_server.o${OBJ} $(DEPS)

@@ -105,8 +105,8 @@ Fixed functions:
 - `s_copy`: Refactored to use `s_slice` for consistency and to leverage `m_slice` indexing (e.g., `-1` for end).
 - `s_replace`: Added explicit safeguard to ensure result is null-terminated even if `src` is a non-terminated slice.
 - `s_msplit`: Updated to use `MFREE_EACH` for the resulting list so that parts are automatically freed. Also switched to `s_slice` to ensure every part is null-terminated.
-- `v_find_key`, `http_server_config_load`: Added NULL pointer guards before `strcmp` calls where arguments originate from parameters or external data.
-- `v_init`: Updated to use `MFREE_EACH` to leverage automatic recursive cleanup of variable handles.
+- `vs_find_key`, `http_server_config_load`: Added NULL pointer guards before `strcmp` calls where arguments originate from parameters or external data. (Renamed from `v_find_key` when the variable system moved to `m_var`.)
+- `vs_init`: Updated to use `MFREE_EACH` to leverage automatic recursive cleanup of variable handles. (Renamed from `v_init`.)
 
 ---
 

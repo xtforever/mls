@@ -196,7 +196,9 @@ int tbl_del (int t, const char *key)
 	int *base = m_buf (ch);
 	int n = (int)m_len (ch);
 	int e = base[i];
-	memmove (base + i, base + i + 1, (size_t)(n - i - 1) * sizeof (int));
+	if (i + 1 < n) /* range guard (gcc) + skip a size-0 memmove */
+		memmove (base + i, base + i + 1,
+			 (size_t)(n - i - 1) * sizeof (int));
 	m_setlen (ch, (size_t)(n - 1));
 	list_free (e);
 	return 0;

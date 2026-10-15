@@ -22,7 +22,7 @@
 </head>
 <body>
     <h1>Project API Documentation</h1>
-<nav><strong>Contents</strong><ul><li><a href="#mls_base.c">mls_base.c</a></li><li><a href="#mls_ext.c">mls_ext.c</a></li><li><a href="#m_tool.c">m_tool.c</a></li><li><a href="#m_extra.c">m_extra.c</a></li></ul></nav><h2 id="mls_base.c">File: <code>mls_base.c</code></h2>
+<nav><strong>Contents</strong><ul><li><a href="#mls_base.c">mls_base.c</a></li><li><a href="#mls_ext.c">mls_ext.c</a></li><li><a href="#m_tool.c">m_tool.c</a></li><li><a href="#m_var.c">m_var.c</a></li><li><a href="#m_sql.c">m_sql.c</a></li><li><a href="#m_extra.c">m_extra.c</a></li></ul></nav><h2 id="mls_base.c">File: <code>mls_base.c</code></h2>
 <section id="deb_err">
 <h3>deb_err</h3>
 <pre><code>void deb_err(int line, const char *file, const char *function,
@@ -49,12 +49,18 @@
 <pre><code>void _mls_die(int line, const char *file, const char *function)</code></pre>
 <p>Report the pending mls_errno error with caller location and exit(1).<br>Used by the mls_must() macro; never returns.</p>
 </section><hr>
+<section id="lst">
+<h3>lst</h3>
+<pre><code>void * lst(lst_t l, size_t i)</code></pre>
+<p>Returns a pointer to the element at the specified index in a list structure.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>i The index of the element.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element data.</code></p>
+</section><hr>
 <section id="lst_resize">
 <h3>lst_resize</h3>
 <pre><code>void lst_resize(lst_t lp, size_t new_size)</code></pre>
-<p>Returns a pointer to the element at the specified index in a list structure.<br><br>/<br>void *lst (lst_t l, size_t i)<br>{<br>if (!l->data)<br>ERR ("Not init.");<br>return &l->data[l->w * i];<br>}<br>/**<br>Resizes a list structure to a new maximum size.<br>Dies on error; lst_resize_safe() reports the error instead.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>i The index of the element.</code></li><li><code>lp Pointer to the list structure pointer.</code></li><li><code>new_size The new maximum number of elements.</code></li></ul></div>
-<p class="returns">Returns: <code>A pointer to the element data.</code></p>
+<p>Resizes a list structure to a new maximum size.<br>Dies on error; lst_resize_safe() reports the error instead.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>new_size The new maximum number of elements.</code></li></ul></div>
 </section><hr>
 <section id="lst_create">
 <h3>lst_create</h3>
@@ -76,10 +82,10 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>d Pointer to the element data to append.</code></li></ul></div>
 <p class="returns">Returns: <code>The index of the appended element.</code></p>
 </section><hr>
-<section id="lst_del_safe">
-<h3>lst_del_safe</h3>
-<pre><code>int lst_del_safe(lst_t l, size_t p)</code></pre>
-<p>Returns a pointer to the element at the specified index without using<br>allocated bounds checking this function allows to access all elementes in the<br>array. normaly the length (l) value is compared to the index, you need to<br>call m_setlen or use m_put which automatically increases the array length<br>value. lst_peek gives you access to all allocated memory postion in this<br>array<br><br>/<br>void *lst_peek (lst_t l, size_t i)<br>{<br>if (i >= l->max)<br>ERR ("index out of bound max=%zu index=%zu", l->max, i);<br>return lst (l, i);<br>}<br>/* Like lst_del but reports a bounds error instead of dying.</p>
+<section id="lst_peek">
+<h3>lst_peek</h3>
+<pre><code>void * lst_peek(lst_t l, size_t i)</code></pre>
+<p>Returns a pointer to the element at the specified index without using<br>allocated bounds checking this function allows to access all elementes in the<br>array. normaly the length (l) value is compared to the index, you need to<br>call m_setlen or use m_put which automatically increases the array length<br>value. lst_peek gives you access to all allocated memory postion in this<br>array</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>i The index of the element.</code></li></ul></div>
 <p class="returns">Returns: <code>A pointer to the element data</code></p>
 </section><hr>
@@ -95,11 +101,18 @@
 <p>Removes n elements starting from the specified index from a list.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>p The starting index.</code></li><li><code>n The number of elements to remove.</code></li></ul></div>
 </section><hr>
+<section id="lst_ins">
+<h3>lst_ins</h3>
+<pre><code>void * lst_ins(lst_t lp, size_t p, size_t n)</code></pre>
+<p>Inserts n empty elements at the specified index in a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>p The insertion index.</code></li><li><code>n The number of elements to insert.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the first newly inserted element.</code></p>
+</section><hr>
 <section id="lst_next">
 <h3>lst_next</h3>
 <pre><code>int lst_next(lst_t l, int *p, void *data)</code></pre>
-<p>Inserts n empty elements at the specified index in a list.<br><br>/<br>void *lst_ins (lst_t lp, size_t p, size_t n)<br>{<br>void *r = lst_ins_safe (lp, p, n);<br>if (!r)<br>_mls_die (__LINE__, __FILE__, __FUNCTION__);<br>return r;<br>}<br>/**<br>Iterates to the next element in a list.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>lp Pointer to the list structure pointer.</code></li><li><code>p The insertion index.</code></li><li><code>n The number of elements to insert.</code></li><li><code>l The list structure.</code></li><li><code>p Pointer to the current index. Should be initialized to -1.</code></li><li><code>data Pointer to store the address of the next element.</code></li></ul></div>
+<p>Iterates to the next element in a list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>l The list structure.</code></li><li><code>p Pointer to the current index. Should be initialized to -1.</code></li><li><code>data Pointer to store the address of the next element.</code></li></ul></div>
 <p class="returns">Returns: <code>1 if an element was found, 0 otherwise.</code></p>
 </section><hr>
 <section id="lst_read">
@@ -158,11 +171,32 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
 <p class="returns">Returns: <code>The number of elements.</code></p>
 </section><hr>
+<section id="m_buf">
+<h3>m_buf</h3>
+<pre><code>void * m_buf(int m)</code></pre>
+<p>Returns a pointer to the raw data buffer of the list associated with a<br>handle.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the data buffer, or NULL if handle is invalid.</code></p>
+</section><hr>
+<section id="mls">
+<h3>mls</h3>
+<pre><code>void * mls(int m, size_t i)</code></pre>
+<p>Returns a pointer to the element at the specified index with bounds checking.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>i The index.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element.</code></p>
+</section><hr>
+<section id="mls_safe">
+<h3>mls_safe</h3>
+<pre><code>void * mls_safe(int m, size_t i)</code></pre>
+<p>Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>i The index.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element, or NULL on error.</code></p>
+</section><hr>
 <section id="m_next">
 <h3>m_next</h3>
 <pre><code>int m_next(int m, int *p, void *d)</code></pre>
-<p>Returns a pointer to the raw data buffer of the list associated with a<br>handle.<br><br>/<br>void *m_buf (int m)<br>{<br>if (m <= 0)<br>return NULL;<br>return m_peek (m, 0);<br>}<br>/**<br>Returns a pointer to the element at the specified index with bounds checking.<br><br>/<br>void *mls (int m, size_t i)<br>{<br>if (m <= 0)<br>return NULL;<br>void *ret = mls_safe (m, i);<br>if (!ret)<br>_mls_die (__LINE__, __FILE__, __FUNCTION__);<br>return ret;<br>}<br>/**<br>Non-aborting version of mls(). Returns NULL on any error and sets mls_errno.<br><br>/<br>void *mls_safe (int m, size_t i)<br>{<br>if (m <= 0) {<br>mls_errno = MLS_EINVAL;<br>return NULL;<br>}<br>lst_t lp = lock_handle (m, 0);<br>if (i >= lp->l) {<br>mls_errno = MLS_EBOUNDS;<br>unlock_handle (lp);<br>return NULL;<br>}<br>void *ret = lst (lp, i);<br>unlock_handle (lp);<br>return ret;<br>}<br>/**<br>Iterates through the elements of a handle's list.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>m The handle.</code></li><li><code>i The index.</code></li><li><code>m The handle.</code></li><li><code>i The index.</code></li><li><code>m The handle.</code></li><li><code>p Pointer to the current index.</code></li><li><code>d Pointer to store the address of the next element.</code></li></ul></div>
+<p>Iterates through the elements of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>p Pointer to the current index.</code></li><li><code>d Pointer to store the address of the next element.</code></li></ul></div>
 <p class="returns">Returns: <code>1 if an element was found, 0 otherwise.</code></p>
 </section><hr>
 <section id="m_put">
@@ -207,11 +241,18 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>p The starting index.</code></li><li><code>data Pointer to the source data.</code></li><li><code>n The number of elements to write.</code></li></ul></div>
 <p class="returns">Returns: <code>0 on success, -1 on error.</code></p>
 </section><hr>
+<section id="m_peek">
+<h3>m_peek</h3>
+<pre><code>void * m_peek(int m, size_t i)</code></pre>
+<p>Returns a pointer to the element at the specified index without bounds<br>checking.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>i The index.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element, or NULL if index is out of bounds.</code></p>
+</section><hr>
 <section id="m_width">
 <h3>m_width</h3>
 <pre><code>size_t m_width(int m)</code></pre>
-<p>Returns a pointer to the element at the specified index without bounds<br>checking.<br><br>/<br>void *m_peek (int m, size_t i)<br>{<br>if (m <= 0)<br>return NULL;<br>lst_t lp = lock_handle (m, 0);<br>void *ret = lst_peek (lp, i);<br>unlock_handle (lp);<br>return ret;<br>}<br>/**<br>Returns the width of each element in a handle's list in bytes.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>i The index.</code></li><li><code>m The handle.</code></li></ul></div>
+<p>Returns the width of each element in a handle's list in bytes.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
 <p class="returns">Returns: <code>The element width.</code></p>
 </section><hr>
 <section id="m_resize_safe">
@@ -354,11 +395,18 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>n The number of elements to reserve.</code></li></ul></div>
 <p class="returns">Returns: <code>The index of the first newly reserved element.</code></p>
 </section><hr>
+<section id="m_add_safe">
+<h3>m_add_safe</h3>
+<pre><code>void * m_add_safe(int m)</code></pre>
+<p>Appends one new element to a handle's list and returns a pointer to it.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the new element.</code></p>
+</section><hr>
 <section id="m_bufsize">
 <h3>m_bufsize</h3>
 <pre><code>size_t m_bufsize(int m)</code></pre>
-<p>Appends one new element to a handle's list and returns a pointer to it.<br><br>/<br>void *m_add_safe (int m)<br>{<br>if (m <= 0) {<br>mls_errno = MLS_EINVAL;<br>return NULL;<br>}<br>lst_t lp = lock_handle (m, 1);<br>int p = lst_new_safe (lp, 1);<br>void *ret = p < 0 ? NULL : lst (lp, p);<br>unlock_handle (lp);<br>return ret;<br>}<br>void *m_add (int m)<br>{<br>if (m <= 0)<br>return NULL;<br>void *ret = m_add_safe (m);<br>if (!ret)<br>_mls_die (__LINE__, __FILE__, __FUNCTION__);<br>return ret;<br>}<br>/**<br>Returns the currently allocated capacity (buffer size) of a handle's list.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>m The handle.</code></li></ul></div>
+<p>Returns the currently allocated capacity (buffer size) of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
 <p class="returns">Returns: <code>The maximum number of elements before a realloc is needed.</code></p>
 </section><hr>
 <section id="m_read">
@@ -394,11 +442,18 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>p The index of the element to delete.</code></li></ul></div>
 <p class="returns">Returns: <code>0 on success, -1 on error.</code></p>
 </section><hr>
+<section id="m_pop">
+<h3>m_pop</h3>
+<pre><code>void * m_pop(int m)</code></pre>
+<p>Removes and returns a pointer to the last element of a handle's list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element, or NULL if the list is empty.</code></p>
+</section><hr>
 <section id="m_ins_safe">
 <h3>m_ins_safe</h3>
 <pre><code>int m_ins_safe(int m, size_t p, size_t n)</code></pre>
-<p>Removes and returns a pointer to the last element of a handle's list.<br><br>/<br>void *m_pop (int m)<br>{<br>if (m <= 0)<br>return NULL;<br>lst_t lp = lock_handle (m, 1);<br>if (lp->l == 0) {<br>unlock_handle (lp);<br>return NULL;<br>}<br>lp->l--;<br>void *ret = lst (lp, lp->l);<br>unlock_handle (lp);<br>return ret;<br>}<br>/**<br>Inserts n empty (zero-initialized) elements at a specific index in a handle's<br>list.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>m The handle.</code></li><li><code>p The insertion index.</code></li><li><code>n The number of elements to insert.</code></li></ul></div>
+<p>Inserts n empty (zero-initialized) elements at a specific index in a handle's<br>list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle.</code></li><li><code>p The insertion index.</code></li><li><code>n The number of elements to insert.</code></li></ul></div>
 <p class="returns">Returns: <code>1 on success, 0 on failure.</code></p>
 </section><hr>
 <section id="m_slice">
@@ -458,9 +513,16 @@
 <section id="m_lookup_str">
 <h3>m_lookup_str</h3>
 <pre><code>int m_lookup_str(int m, const char *key, int NOT_INSERT)</code></pre>
-<p>Looks up a string in a list of strings (char *).<br>If not found and NOT_INSERT is 0, the string is duplicated and<br>appended.<br><br>set.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the string list.</code></li><li><code>key The string to look for.</code></li><li><code>NOT_INSERT If non-zero, do not insert the string if not found.</code></li></ul></div>
-<p class="returns">Returns: <code>The index of the string, or -1 if not found and NOT_INSERT is</code></p>
+<p>Looks up a string in a sorted list of strings (char *).<br>If not found and NOT_INSERT is 0, the string is duplicated and inserted in<br>sorted position.<br><br>The list must be kept sorted: build it via these functions, or call<br>m_qsort(list, cmp_mstr) first. Lookups are then O(log n), not O(n).<br><br>An empty (or NULL) key counts as "not found": it returns -1 and is never<br>inserted. Empty strings are treated as invalid, so a bad key can never abort<br>the program and needs no special handling by the caller.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the sorted string list.</code></li><li><code>key The string to look for.</code></li><li><code>NOT_INSERT If non-zero, do not insert the string if not found.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the string, or -1 if not found (or key is empty).</code></p>
+</section><hr>
+<section id="m_lookup_mstr">
+<h3>m_lookup_mstr</h3>
+<pre><code>int m_lookup_mstr(int m, int key, int NOT_INSERT)</code></pre>
+<p>Looks up a string handle in a sorted list of strings (char *). The key is an<br>mls string handle, so a caller that already holds one need not convert it<br>with m_str(). If not found and NOT_INSERT is 0, the key's text is duplicated<br>and inserted in sorted position.<br><br>Like m_lookup_str, the list must be kept sorted (O(log n) lookups). An empty<br>key counts as "not found": it returns -1 and is never inserted.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>m The handle of the sorted string list.</code></li><li><code>key The string handle to look for.</code></li><li><code>NOT_INSERT If non-zero, do not insert the string if not found.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the string, or -1 if not found (or key is empty).</code></p>
 </section><hr>
 <section id="m_putc">
 <h3>m_putc</h3>
@@ -537,11 +599,19 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>key Pointer to the element to search for.</code></li><li><code>list The handle of the sorted m-array.</code></li><li><code>compar Comparison function pointer.</code></li></ul></div>
 <p class="returns">Returns: <code>The index of the element if found, or -1.</code></p>
 </section><hr>
+<section id="m_blookup_int_p">
+<h3>m_blookup_int_p</h3>
+<pre><code>void * m_blookup_int_p(int buf, int key, void (*new) (void *, void *),
+		       void *ctx)</code></pre>
+<p>Similar to m_blookup_int, but returns a pointer to the element.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to look for.</code></li><li><code>new Optional callback function.</code></li><li><code>ctx Context pointer.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element.</code></p>
+</section><hr>
 <section id="m_binsert_int">
 <h3>m_binsert_int</h3>
 <pre><code>int m_binsert_int(int buf, int key)</code></pre>
-<p>Similar to m_blookup_int, but returns a pointer to the element.<br><br>/<br>void *m_blookup_int_p (int buf, int key, void (*new) (void *, void *),<br>void *ctx)<br>{<br>return mls (buf, m_blookup_int (buf, key, new, ctx));<br>}<br>/**<br>Inserts an integer into a sorted list using binary search.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to look for.</code></li><li><code>new Optional callback function.</code></li><li><code>ctx Context pointer.</code></li><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to insert.</code></li></ul></div>
+<p>Inserts an integer into a sorted list using binary search.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>buf The handle of the sorted list.</code></li><li><code>key The integer to insert.</code></li></ul></div>
 <p class="returns">Returns: <code>The index where the integer was inserted or found.</code></p>
 </section><hr>
 <section id="m_bsearch_int">
@@ -601,11 +671,18 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>m The handle to free.</code></li></ul></div>
 <p class="returns">Returns: <code>0.</code></p>
 </section><hr>
+<section id="_mls">
+<h3>_mls</h3>
+<pre><code>void * _mls(int ln, const char *fn, const char *fun, int h, size_t i)</code></pre>
+<p>Internal debug version of mls.<br>Records caller information and bounds checks the access.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>i The index.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the element.</code></p>
+</section><hr>
 <section id="_m_put">
 <h3>_m_put</h3>
 <pre><code>int _m_put(int ln, const char *fn, const char *fun, int h, const void *d)</code></pre>
-<p>Internal debug version of mls.<br>Records caller information and bounds checks the access.<br><br>/<br>void *_mls (int ln, const char *fn, const char *fun, int h, size_t i)<br>{<br>_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, h, (int)i, 0);<br>return mls (h, i);<br>}<br><br>/**<br>Internal debug version of m_put.<br>Records caller information.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>i The index.</code></li><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>d Pointer to the element data.</code></li></ul></div>
+<p>Internal debug version of m_put.<br>Records caller information.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li><li><code>d Pointer to the element data.</code></li></ul></div>
 <p class="returns">Returns: <code>The index of the appended element.</code></p>
 </section><hr>
 <section id="_m_next">
@@ -621,11 +698,18 @@
 <p>Internal debug version of m_clear.<br>Records caller information.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>h The handle.</code></li></ul></div>
 </section><hr>
+<section id="_m_buf">
+<h3>_m_buf</h3>
+<pre><code>void * _m_buf(int ln, const char *fn, const char *fun, int m)</code></pre>
+<p>Internal debug version of m_buf.<br>Records caller information.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>m The handle.</code></li></ul></div>
+<p class="returns">Returns: <code>A pointer to the data buffer.</code></p>
+</section><hr>
 <section id="_m_create">
 <h3>_m_create</h3>
 <pre><code>int _m_create(int ln, const char *fn, const char *fun, size_t n, size_t w)</code></pre>
-<p>Internal debug version of m_buf.<br>Records caller information.<br><br>/<br>void *_m_buf (int ln, const char *fn, const char *fun, int m)<br>{<br>if (!m)<br>return 0;<br>_mlsdb_caller (__FUNCTION__, ln, fn, fun, 3, m, 0, 0);<br>return m_buf (m);<br>}<br><br>/**<br>Internal debug version of m_create.<br>Records caller information and allocation source.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>m The handle.</code></li><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>n Initial maximum elements.</code></li><li><code>w Element width.</code></li><li><code>hfree The free handler ID.</code></li></ul></div>
+<p>Internal debug version of m_create.<br>Records caller information and allocation source.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>ln Caller line number.</code></li><li><code>fn Caller filename.</code></li><li><code>fun Caller function name.</code></li><li><code>n Initial maximum elements.</code></li><li><code>w Element width.</code></li><li><code>hfree The free handler ID.</code></li></ul></div>
 <p class="returns">Returns: <code>The new handle.</code></p>
 </section><hr>
 <h2 id="m_tool.c">File: <code>m_tool.c</code></h2>
@@ -641,6 +725,11 @@
 <pre><code>void m_qsort(int list, int (*compar) (const void *, const void *))</code></pre>
 <p>Sorts an m-array using qsort.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>list The handle of the m-array to sort.</code></li><li><code>compar Comparison function pointer.</code></li></ul></div>
+</section><hr>
+<section id="cmp_mstr">
+<h3>cmp_mstr</h3>
+<pre><code>int cmp_mstr(const void *a, const void *b)</code></pre>
+<p>qsort comparator for an m-array of char* strings (MFREE_STR).<br>Use with m_qsort(list, cmp_mstr): compares the pointed-to strings, so the<br>list ends up in strcmp order.</p>
 </section><hr>
 <section id="m_lfind">
 <h3>m_lfind</h3>
@@ -1052,155 +1141,33 @@
 <pre><code>void m_register_printf()</code></pre>
 <p>Registers the %M specifier for printf to handle m-array string handles.</p>
 </section><hr>
-<section id="v_init">
-<h3>v_init</h3>
-<pre><code>int v_init(void)</code></pre>
-<p>Initializes a variable system.</p>
-<p class="returns">Returns: <code>The handle of the new variable system.</code></p>
-</section><hr>
-<section id="v_free">
-<h3>v_free</h3>
-<pre><code>void v_free(int vl)</code></pre>
-<p>Frees a variable system and all its variables.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vl The handle of the variable system.</code></li></ul></div>
-</section><hr>
-<section id="v_find_key">
-<h3>v_find_key</h3>
-<pre><code>int v_find_key(int vs, const char *name)</code></pre>
-<p>Finds the index of a variable key in a variable system.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The name of the variable.</code></li></ul></div>
-<p class="returns">Returns: <code>The index, or -1.</code></p>
-</section><hr>
-<section id="v_lookup">
-<h3>v_lookup</h3>
-<pre><code>int v_lookup(int vl, const char *name)</code></pre>
-<p>Looks up or creates a variable in a variable system.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vl The variable system handle.</code></li><li><code>name The name of the variable.</code></li></ul></div>
-<p class="returns">Returns: <code>The handle of the variable.</code></p>
-</section><hr>
-<section id="v_kset">
-<h3>v_kset</h3>
-<pre><code>void v_kset(int var, const char *v, int row)</code></pre>
-<p>Sets a value at a specific position in a variable.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li><li><code>v The string value.</code></li><li><code>row The position (index).</code></li></ul></div>
-</section><hr>
-<section id="v_set">
-<h3>v_set</h3>
-<pre><code>int v_set(int vs, const char *name, const char *value, int pos)</code></pre>
-<p>Sets a variable value in a variable system.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>value The string value.</code></li><li><code>pos The position (VAR_APPEND for append).</code></li></ul></div>
-<p class="returns">Returns: <code>The handle of the variable.</code></p>
-</section><hr>
-<section id="v_vaset">
-<h3>v_vaset</h3>
-<pre><code>void v_vaset(int vs, ...)</code></pre>
-<p>Variadic set of multiple variable names and values.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>... Pairs of (char* name, char* value), terminated by NULL.</code></li></ul></div>
-</section><hr>
-<section id="v_kclr">
-<h3>v_kclr</h3>
-<pre><code>void v_kclr(int var)</code></pre>
-<p>Clears all values from a variable, keeping only the name.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li></ul></div>
-</section><hr>
-<section id="v_clr">
-<h3>v_clr</h3>
-<pre><code>void v_clr(int vs, const char *name)</code></pre>
-<p>Clears a variable by name in a variable system.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
-</section><hr>
-<section id="v_klen">
-<h3>v_klen</h3>
-<pre><code>int v_klen(int key)</code></pre>
-<p>Gets a value from a variable at a specific position.<br><br>/<br>char *v_kget (int var, int row)<br>{<br>if (var <= 0)<br>return "";<br>int len = m_len (var);<br>if (row >= len)<br>return "";<br>char *s = STR (var, row);<br>if (s == NULL)<br>return "";<br>return s;<br>}<br><br>/**<br>Gets a variable value from a variable system.<br><br>/<br>char *v_get (int vs, const char *name, int pos)<br>{<br>return v_kget (v_lookup (vs, name), pos);<br>}<br><br>/**<br>Returns the number of values in a variable (excluding the name).</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li><li><code>row The position.</code></li><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>pos The position.</code></li><li><code>key The variable handle.</code></li></ul></div>
-<p class="returns">Returns: <code>The number of values.</code></p>
-</section><hr>
-<section id="v_len">
-<h3>v_len</h3>
-<pre><code>int v_len(int vs, const char *name)</code></pre>
-<p>Returns the number of values in a variable by name.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
-<p class="returns">Returns: <code>The number of values.</code></p>
-</section><hr>
-<section id="v_remove">
-<h3>v_remove</h3>
-<pre><code>void v_remove(int vs, const char *name)</code></pre>
-<p>Removes a variable from a variable system.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
-</section><hr>
-<section id="se_init">
-<h3>se_init</h3>
-<pre><code>void se_init(str_exp_t *se)</code></pre>
-<p>Initializes a string expansion structure.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li></ul></div>
-</section><hr>
-<section id="se_free">
-<h3>se_free</h3>
-<pre><code>void se_free(str_exp_t *se)</code></pre>
-<p>Frees resources associated with a string expansion structure.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li></ul></div>
-</section><hr>
-<section id="se_realloc_buffers">
-<h3>se_realloc_buffers</h3>
-<pre><code>void se_realloc_buffers(str_exp_t *se)</code></pre>
-<p>Reallocates or initializes buffers for string expansion.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li></ul></div>
-</section><hr>
-<section id="parse_index">
-<h3>parse_index</h3>
-<pre><code>static int parse_index(const char **s)</code></pre>
-<p>Internal helper to parse index in string expansion (e.g., [1], [*]).</p>
-</section><hr>
-<section id="se_parse">
-<h3>se_parse</h3>
-<pre><code>void se_parse(str_exp_t *se, const char *frm)</code></pre>
-<p>Parses a format string for expansion.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the string expansion structure.</code></li><li><code>frm The format string.</code></li></ul></div>
-</section><hr>
-<section id="repl_char">
-<h3>repl_char</h3>
-<pre><code>static void repl_char(int buf, char ch)</code></pre>
-<p>Internal helper to replace special characters with escaped sequences.</p>
-</section><hr>
-<section id="escape_buf">
-<h3>escape_buf</h3>
-<pre><code>void escape_buf(int buf, char *src)</code></pre>
-<p>Escapes a string into a buffer.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>buf Handle of the destination buffer.</code></li><li><code>src Source C-style string.</code></li></ul></div>
-</section><hr>
-<section id="escape_str">
-<h3>escape_str</h3>
-<pre><code>int escape_str(int buf, char *src)</code></pre>
-<p>Creates an escaped version of a string in a new or existing buffer.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>buf Destination handle (if 0, a new one is allocated).</code></li><li><code>src Source C-style string.</code></li></ul></div>
-<p class="returns">Returns: <code>The handle of the buffer containing the escaped string.</code></p>
-</section><hr>
-<section id="field_escape">
-<h3>field_escape</h3>
-<pre><code>static int field_escape(int s2, char *s, int quotes)</code></pre>
-<p>Internal helper to escape a field, optionally adding quotes.</p>
-</section><hr>
-<section id="get_variable_handle">
-<h3>get_variable_handle</h3>
-<pre><code>static int get_variable_handle(int vl, const char *name)</code></pre>
-<p>Internal helper to get a variable handle from a variable system or table.</p>
-</section><hr>
-<section id="if">
-<h3>if</h3>
-<pre><code> if(vn < m_len (se->values) &&
-		    (val_ptr = (char **)mls (se->values, vn)) &&
-		    *val_ptr == s)</code></pre>
-<p>Expands a parsed format string using values from a variable system or table.<br><br>/<br>char *se_expand (str_exp_t *se, int vl, int row)<br>{<br>int var, index;<br>int p, vn;<br>char **d, *s, **val_ptr;<br>int quotes = 0;<br>m_clear (se->buf);<br>int buf = se->buf;<br>vn = 0;<br>m_foreach (se->splitbuf, p, d)<br>{<br>s = *d;<br>/* Check if this part in splitbuf matches the next expected<br>variable in se->values</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>se Pointer to the parsed string expansion structure.</code></li><li><code>vl Handle of the variable system or table.</code></li><li><code>row The row index to use for expansion.</code></li></ul></div>
-<p class="returns">Returns: <code>Pointer to the expanded string (stored in se->buf).</code></p>
-</section><hr>
 <section id="m_str_from_file">
 <h3>m_str_from_file</h3>
 <pre><code>int m_str_from_file(char *filename)</code></pre>
-<p>Expands a format string in one step and returns the result.<br><br>/<br>char *se_string (int vl, const char *frm)<br>{<br>str_exp_t se;<br>se_init (&se);<br>se_parse (&se, frm);<br>se_expand (&se, vl, 0);<br><br>char *res;<br>if (tbl_is_table (vl)) {<br>tbl_set (vl, "se_string", mls (se.buf, 0));<br>int h = tbl_get_handle (vl, "se_string");<br>res = m_str (h);<br>} else {<br>int data = v_set (vl, "se_string", mls (se.buf, 0), 1);<br>res = STR (data, 1);<br>}<br><br>se_free (&se);<br>return res;<br>}<br><br>/* Other Utilities */<br><br>/**<br>Reads the entire content of a file into a new string buffer.</p>
-<div class="params"><strong>Parameters:</strong><ul><li><code>vl Handle of the variable system or table.</code></li><li><code>frm The format string.</code></li><li><code>filename Path to the file.</code></li></ul></div>
+<p>Reads the entire content of a file into a new string buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>filename Path to the file.</code></li></ul></div>
 <p class="returns">Returns: <code>The handle of the new string buffer, or -1 on error.</code></p>
+</section><hr>
+<section id="m_strlist_save">
+<h3>m_strlist_save</h3>
+<pre><code>int m_strlist_save(int list, const char *path)</code></pre>
+<p>Writes an m-array of char* strings (MFREE_STR, e.g. from s_split()) to a<br>text file, one element per line. NULL elements are skipped. This is the<br>inverse of m_strlist_load() for the common "one name per line" file.<br><br>ponytail: a '\n' or '\r' inside an element cannot be represented (it would<br>read back as extra lines); upgrade path is escaping or length-prefixing.<br>The file is truncated in place, so a crash mid-write loses the old content;<br>upgrade path is write-temp-then-rename.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>list Handle of the m-array of char* strings.</code></li><li><code>path Output file path.</code></li></ul></div>
+<p class="returns">Returns: <code>0 on success, -1 if the file cannot be opened or closed.</code></p>
+</section><hr>
+<section id="m_strlist_load">
+<h3>m_strlist_load</h3>
+<pre><code>int m_strlist_load(const char *path)</code></pre>
+<p>Reads a text file into a fresh m-array of char* strings (MFREE_STR), one<br>element per line. A trailing carriage return is stripped, so CRLF files<br>load cleanly. The round-trip with m_strlist_save() is symmetric for any<br>element without a '\n' or '\r'. An empty file yields an empty (but valid)<br>list.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>path Input file path.</code></li></ul></div>
+<p class="returns">Returns: <code>Handle of the new string list, or -1 if the file cannot be opened.</code></p>
+</section><hr>
+<section id="m_dir_list">
+<h3>m_dir_list</h3>
+<pre><code>int m_dir_list(const char *path)</code></pre>
+<p>Lists the entries of a directory into a fresh m-array of char* strings<br>(MFREE_STR), like os.listdir(). "." and ".." are skipped; the order is the<br>filesystem readdir() order. This is the directory counterpart of<br>m_str_from_file().<br><br>opened.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>path Directory path.</code></li></ul></div>
+<p class="returns">Returns: <code>Handle of the new string list, or -1 if the directory cannot be</code></p>
 </section><hr>
 <section id="skip_delim">
 <h3>skip_delim</h3>
@@ -1217,10 +1184,15 @@
 <pre><code>static int cut_word(char **s, char *delim, int trimws, char **a, char **b)</code></pre>
 <p>Internal helper to cut a word from a string based on a delimiter.</p>
 </section><hr>
+<section id="dup_word">
+<h3>dup_word</h3>
+<pre><code>static char * dup_word(char *a, char *b, int trimws)</code></pre>
+<p>Internal helper to duplicate a word between two pointers, optionally trimming<br>whitespace.</p>
+</section><hr>
 <section id="m_str_split">
 <h3>m_str_split</h3>
 <pre><code>int m_str_split(int ms, char *s, char *delim, int trimws)</code></pre>
-<p>Internal helper to duplicate a word between two pointers, optionally trimming<br>whitespace.<br>/<br>static char *dup_word (char *a, char *b, int trimws)<br>{<br>if (a == b)<br>return strdup ("");<br>if (trimws) {<br>while (a < b && isspace (*a))<br>a++;<br>while (b > a && isspace (b[-1]))<br>b--;<br>}<br>return strndup (a, b - a);<br>}<br><br>/**<br>Splits a string into an m-array of strings using a delimiter string.</p>
+<p>Splits a string into an m-array of strings using a delimiter string.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>ms Handle of the m-array to store strings.</code></li><li><code>s Source C-style string.</code></li><li><code>delim Delimiter string.</code></li><li><code>trimws If non-zero, trims whitespace from results.</code></li></ul></div>
 <p class="returns">Returns: <code>The m-array handle.</code></p>
 </section><hr>
@@ -1276,11 +1248,6 @@
 <div class="params"><strong>Parameters:</strong><ul><li><code>buf Handle of the string buffer.</code></li><li><code>fp File pointer.</code></li></ul></div>
 <p class="returns">Returns: <code>The length of the line read, or EOF.</code></p>
 </section><hr>
-<section id="trim_space_c">
-<h3>trim_space_c</h3>
-<pre><code>static void trim_space_c(char *s)</code></pre>
-<p>Trims leading/trailing whitespace from a NUL-terminated string in place.<br>The base pointer is preserved so the caller can still free() it.</p>
-</section><hr>
 <section id="s_read_fields">
 <h3>s_read_fields</h3>
 <pre><code>int s_read_fields(int dest, FILE *fp, const char *sep, int strip)</code></pre>
@@ -1334,6 +1301,187 @@
 <pre><code>void m_free_strings(int list, int CLEAR_ONLY)</code></pre>
 <p>Specialized free function for lists containing dynamically allocated strings<br>(char *). Frees each string in the list and optionally the list handle<br>itself.<br><br>but the handle remains. If zero, the handle itself is also freed.</p>
 <div class="params"><strong>Parameters:</strong><ul><li><code>list The handle of the string list.</code></li><li><code>CLEAR_ONLY If non-zero, the strings are freed and the list is cleared,</code></li></ul></div>
+</section><hr>
+<h2 id="m_var.c">File: <code>m_var.c</code></h2>
+<section id="vs_init">
+<h3>vs_init</h3>
+<pre><code>int vs_init(void)</code></pre>
+<p>Creates a new, empty variable system.</p>
+<p class="returns">Returns: <code>The handle of the new variable system.</code></p>
+</section><hr>
+<section id="vs_free">
+<h3>vs_free</h3>
+<pre><code>void vs_free(int vs)</code></pre>
+<p>Frees a variable system and all its variables.<br><br>Equivalent to m_free(vs): the MFREE_EACH / MFREE_STR handlers free the<br>variables and their values recursively, so a `tmls` handle cleans up the<br>whole system at block end.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li></ul></div>
+</section><hr>
+<section id="vs_find_key">
+<h3>vs_find_key</h3>
+<pre><code>int vs_find_key(int vs, const char *name)</code></pre>
+<p>Finds the index of a variable by name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+<p class="returns">Returns: <code>The index of the variable, or -1 if absent.</code></p>
+</section><hr>
+<section id="vs_lookup">
+<h3>vs_lookup</h3>
+<pre><code>int vs_lookup(int vs, const char *name)</code></pre>
+<p>Looks up a variable by name, creating an empty one if needed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name (must not be empty).</code></li></ul></div>
+<p class="returns">Returns: <code>The variable handle, or -1 on an empty name.</code></p>
+</section><hr>
+<section id="vs_kset">
+<h3>vs_kset</h3>
+<pre><code>void vs_kset(int var, const char *value, int pos)</code></pre>
+<p>Sets a value at a position in a variable.<br><br>Element 0 holds the name; values live at positions 1..n. A negative or<br>out-of-range pos appends the value.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li><li><code>value The new value (copied; NULL stores NULL).</code></li><li><code>pos The value position (use VS_APPEND to append).</code></li></ul></div>
+</section><hr>
+<section id="vs_set">
+<h3>vs_set</h3>
+<pre><code>int vs_set(int vs, const char *name, const char *value, int pos)</code></pre>
+<p>Sets a value by variable name, creating the variable if needed.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>value The new value.</code></li><li><code>pos The value position (use VS_APPEND to append).</code></li></ul></div>
+<p class="returns">Returns: <code>The handle of the variable.</code></p>
+</section><hr>
+<section id="vs_vaset">
+<h3>vs_vaset</h3>
+<pre><code>void vs_vaset(int vs, ...)</code></pre>
+<p>Sets multiple variables from (name, value) pairs, terminated by NULL.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>... Alternating name/value pairs, ending with a NULL name.</code></li></ul></div>
+</section><hr>
+<section id="vs_kclr">
+<h3>vs_kclr</h3>
+<pre><code>void vs_kclr(int var)</code></pre>
+<p>Drops all values of a variable, keeping its name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li></ul></div>
+</section><hr>
+<section id="vs_clr">
+<h3>vs_clr</h3>
+<pre><code>void vs_clr(int vs, const char *name)</code></pre>
+<p>Drops all values of a variable selected by name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+</section><hr>
+<section id="vs_kget">
+<h3>vs_kget</h3>
+<pre><code>char * vs_kget(int var, int pos)</code></pre>
+<p>Gets a value from a variable at a position.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li><li><code>pos The value position.</code></li></ul></div>
+<p class="returns">Returns: <code>The value, or "" if absent.</code></p>
+</section><hr>
+<section id="vs_get">
+<h3>vs_get</h3>
+<pre><code>char * vs_get(int vs, const char *name, int pos)</code></pre>
+<p>Gets a value by variable name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>pos The value position.</code></li></ul></div>
+<p class="returns">Returns: <code>The value, or "" if absent.</code></p>
+</section><hr>
+<section id="vs_klen">
+<h3>vs_klen</h3>
+<pre><code>int vs_klen(int var)</code></pre>
+<p>Returns the number of values in a variable (excluding its name).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>var The variable handle.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of values.</code></p>
+</section><hr>
+<section id="vs_len">
+<h3>vs_len</h3>
+<pre><code>int vs_len(int vs, const char *name)</code></pre>
+<p>Returns the number of values of a variable selected by name.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+<p class="returns">Returns: <code>The number of values.</code></p>
+</section><hr>
+<section id="vs_remove">
+<h3>vs_remove</h3>
+<pre><code>void vs_remove(int vs, const char *name)</code></pre>
+<p>Removes a variable and frees its values.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li></ul></div>
+</section><hr>
+<section id="vs_exp_init">
+<h3>vs_exp_init</h3>
+<pre><code>void vs_exp_init(vs_exp_t *se)</code></pre>
+<p>Initializes an expansion context. Every vs_exp_t must start here.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se The expansion context.</code></li></ul></div>
+</section><hr>
+<section id="vs_exp_free">
+<h3>vs_exp_free</h3>
+<pre><code>void vs_exp_free(vs_exp_t *se)</code></pre>
+<p>Frees the buffers of an expansion context.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se The expansion context.</code></li></ul></div>
+</section><hr>
+<section id="vs_exp_parse">
+<h3>vs_exp_parse</h3>
+<pre><code>void vs_exp_parse(vs_exp_t *se, const char *frm)</code></pre>
+<p>Parses a format string into literal and $-token parts.<br><br>Supports $name, $name[N], $name[*], quoted $'name' and escaped \$:<br>- $name        value of the current row (see vs_expand)<br>- $name[N]     N-th value (0-based among the values)<br>- $name[*]     every value joined with commas<br>- $'name'      quoted; a bare quoted name joins every value quoted<br>- \$           literal dollar sign</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se The expansion context.</code></li><li><code>frm The format string.</code></li></ul></div>
+</section><hr>
+<section id="vs_expand">
+<h3>vs_expand</h3>
+<pre><code>char * vs_expand(vs_exp_t *se, int vs, int row)</code></pre>
+<p>Expands a parsed format string using the values of a variable system.<br><br>The result lives in se->buf and stays valid until the next expansion or<br>vs_exp_free. Set se.sql = 1 before parsing/expanding for SQL quoting.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>se The parsed expansion context.</code></li><li><code>vs The variable system handle.</code></li><li><code>row Row used for a $-token without an explicit index.</code></li></ul></div>
+<p class="returns">Returns: <code>Pointer to the expanded string.</code></p>
+</section><hr>
+<section id="vs_string">
+<h3>vs_string</h3>
+<pre><code>char * vs_string(int vs, const char *frm)</code></pre>
+<p>Parses and expands a format string in one call.<br><br>The result is stored in the variable system (under "vs_result") so the<br>returned pointer outlives the internal buffer.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>frm The format string.</code></li></ul></div>
+<p class="returns">Returns: <code>The expanded string.</code></p>
+</section><hr>
+<section id="vs_sql_string">
+<h3>vs_sql_string</h3>
+<pre><code>char * vs_sql_string(int vs, const char *frm)</code></pre>
+<p>Like vs_string(), but quoted fields use SQL quoting (single quotes doubled).</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>frm The format string.</code></li></ul></div>
+<p class="returns">Returns: <code>The expanded string.</code></p>
+</section><hr>
+<section id="vs_add">
+<h3>vs_add</h3>
+<pre><code>int vs_add(int vs, const char *name, const char *const *list, int n)</code></pre>
+<p>Adds n C-strings as the values of a variable.<br><br>Creates the variable system when vs <= 0; values are appended to any<br>existing ones.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle, or 0.</code></li><li><code>name The variable name.</code></li><li><code>list The C-string array (may be NULL).</code></li><li><code>n Number of strings.</code></li></ul></div>
+<p class="returns">Returns: <code>The variable system handle.</code></p>
+</section><hr>
+<section id="vs_string_builder">
+<h3>vs_string_builder</h3>
+<pre><code>int vs_string_builder(int strh, int vs, const char *frm)</code></pre>
+<p>Expands a format string and appends the result to a string handle.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>strh Destination string handle, or 0 to allocate a new one.</code></li><li><code>vs The variable system handle.</code></li><li><code>frm The format string.</code></li></ul></div>
+<p class="returns">Returns: <code>The destination string handle.</code></p>
+</section><hr>
+<section id="vs_sql_string_builder">
+<h3>vs_sql_string_builder</h3>
+<pre><code>int vs_sql_string_builder(int strh, int vs, const char *frm)</code></pre>
+<p>Like vs_string_builder(), but quoted fields use SQL quoting.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>strh Destination string handle, or 0 to allocate a new one.</code></li><li><code>vs The variable system handle.</code></li><li><code>frm The format string.</code></li></ul></div>
+<p class="returns">Returns: <code>The destination string handle.</code></p>
+</section><hr>
+<section id="vs_read_fields">
+<h3>vs_read_fields</h3>
+<pre><code>int vs_read_fields(int vs, const char *name, FILE *fp, const char *sep)</code></pre>
+<p>Reads one line and stores its fields as the values of a variable.<br><br>The line is split on the literal sep and each field is whitespace-trimmed.<br>Previous values are dropped. An empty line yields one empty field; at EOF<br>the variable ends up with 0 values (the loop-end signal, analogous to an<br>empty s_read_fields). vs must already be initialized.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system handle.</code></li><li><code>name The variable name.</code></li><li><code>fp The input stream.</code></li><li><code>sep The literal separator (empty/NULL: whole line is one field).</code></li></ul></div>
+<p class="returns">Returns: <code>The variable handle.</code></p>
+</section><hr>
+<h2 id="m_sql.c">File: <code>m_sql.c</code></h2>
+<section id="sql_cols">
+<h3>sql_cols</h3>
+<pre><code>int sql_cols(const char *spec)</code></pre>
+<p>@brief Split a terse column spec into a string list.<br><br>Separators are whitespace and commas; runs and leading/trailing separators<br>are ignored, so "x y z", "x,y,z" and " x , y  z " all give [x, y, z].</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>spec The column spec (may be NULL or empty -> empty list).</code></li></ul></div>
+<p class="returns">Returns: <code>An m-array of char* (MFREE_STR): free it with m_free().</code></p>
+</section><hr>
+<section id="sql_select">
+<h3>sql_select</h3>
+<pre><code>int sql_select(const char *table, const char *cols, const char *where)</code></pre>
+<p>@brief Build a SELECT statement from a table and a terse column spec.<br><br>The column spec is expanded by sql_cols() and joined with ", "; the table<br>name and the optional where clause are emitted verbatim.</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>table The table name (used verbatim).</code></li><li><code>cols The terse column spec, e.g. "id name qty".</code></li><li><code>where Optional WHERE clause without the keyword; NULL or "" omits it.</code></li></ul></div>
+<p class="returns">Returns: <code>A string handle "SELECT ... FROM ..."; free it with m_free().</code></p>
+</section><hr>
+<section id="sql_insert">
+<h3>sql_insert</h3>
+<pre><code>int sql_insert(int vs, const char *table, const char *cols)</code></pre>
+<p>@brief Build an INSERT statement, with values expanded from a variable<br>system.<br><br>The column list is built like sql_select(); the VALUES list is the<br>expansion of "$'vals[*]'" against vs, so every value is SQL-quoted by<br>vs_sql_string_builder() (single quotes doubled: O'Brien -> 'O''Brien').<br>Populate the values with vs_add(vs, "vals", list, n) or<br>vs_read_fields(vs, "vals", ...).<br><br>m_free().</p>
+<div class="params"><strong>Parameters:</strong><ul><li><code>vs The variable system holding the values under the variable "vals".</code></li><li><code>table The table name (used verbatim).</code></li><li><code>cols The terse column spec, matching the values in "vals".</code></li></ul></div>
+<p class="returns">Returns: <code>A string handle "INSERT INTO ... (...) VALUES (...)"; free it with</code></p>
 </section><hr>
 <h2 id="m_extra.c">File: <code>m_extra.c</code></h2>
 <section id="s_casecmp">

@@ -9,7 +9,7 @@ def parse_file(file_path):
 
     # Regex to find Doxygen-style comments and the following function signature
     # Refined to capture multiline signatures up to the opening brace or semicolon
-    pattern = re.compile(r'/\*\*\s*(.*?)\s*\*/\s*\n([\w\s\*]+?)\s+(\w+)\s*\((.*?)\)\s*(?:\{|;)', re.DOTALL)
+    pattern = re.compile(r'/\*\*\s*(.*?)\s*\*/\s*\n([\w\s\*]+?)\s*(\w+)\s*\((.*?)\)\s*(?:\{|;)', re.DOTALL)
     
     matches = pattern.finditer(content)
     docs = []
@@ -132,6 +132,8 @@ def main():
         'lib/mls_base.c',
         'lib/mls_ext.c',
         'lib/m_tool.c',
+        'lib/m_var.c',
+        'lib/m_sql.c',
         'lib/m_extra.c'
     ]
     os.makedirs('docs/api', exist_ok=True)

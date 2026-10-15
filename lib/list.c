@@ -1,14 +1,27 @@
 #include "list.h"
-
+#include "m_tool.h"
 #include <string.h>
 
+/** copy string s to new buffer
+    if s is NULL or p is zero create an empty string
+    if len < 0 copy the full string s
+    if len > 0 copy len bytes from s to new buffer
+    this function always returns a buffer with a valid
+    null-terminated string
+*/
 int list_str (const char *s, int len)
 {
+	if (len == 0 || s == NULL) {
+		int h = s_new ();
+		m_putc (h, 0);
+		return h;
+	}
+	if (len < 0) {
+		len = (int)strlen (s);
+	}
 	int h = m_create ((size_t)len + 1, 1);
-	if (len > 0)
-		memcpy (m_buf (h), s, (size_t)len);
-	((char *)m_buf (h))[len] = 0;
-	m_setlen (h, (size_t)len + 1);
+	m_write (h, 0, s, len);
+	m_putc (h, 0);
 	return h;
 }
 

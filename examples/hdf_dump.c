@@ -1,9 +1,8 @@
 /*
  * hdf_dump — read an HDF file and print it back as an s-expression.
  *
- * This example uses only mls_base (the smallest part of the MLS library) plus
- * the tiny hdf_base parser built on top of it. It is written for someone who
- * has never used MLS before.
+ * This example uses the HDF reader built on top of the MLS library. It is
+ * written for someone who has never used MLS before.
  *
  * The one idea you need up front: in MLS you never hold a pointer to an
  * array. A dynamic array is just an `int` handle, handed to you by a create
@@ -13,6 +12,7 @@
  */
 
 #include "../lib/hdf_base.h"
+#include "../lib/mls.h"
 
 #include <stdio.h>
 
@@ -63,9 +63,9 @@ int main (int argc, char **argv)
 		return 2;
 	}
 
-	/* mls_base must be initialised once before any handle is created.
+	/* The library must be initialised once before any handle is created.
 	 * (There is a matching teardown at the bottom of main.) */
-	m_base_init ();
+	m_init ();
 
 	/* Parse the file. Returns the root node as an int handle,
 	 * or 0 if the file could not be read or parsed. */
@@ -90,6 +90,6 @@ int main (int argc, char **argv)
 	/* Free the whole tree (recursively) and shut the library down.
 	 * Handles are cheap: one free call per node, no pointer chasing. */
 	hdf_base_free (root);
-	m_base_destruct ();
+	m_destruct ();
 	return 0;
 }

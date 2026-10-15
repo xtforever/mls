@@ -1,4 +1,5 @@
 #include "m_tool.h"
+#include "m_var.h"
 #include "mls.h"
 /* Conflict resolution: mls.h defines ASSERT, so does greatest.h.
    We undefine the one from mls.h before including greatest.h */
@@ -273,15 +274,15 @@ SUITE (mls_variable_suite);
 
 TEST test_variables (void)
 {
-	int vl = v_init ();
-	v_set (vl, "key1", "val1", 1);
-	v_set (vl, "key2", "val2", 1);
+	int vl = vs_init ();
+	vs_set (vl, "key1", "val1", 1);
+	vs_set (vl, "key2", "val2", 1);
 
-	ASSERT_EQ (1, v_len (vl, "key1"));
-	char *s = v_get (vl, "key2", 1);
+	ASSERT_EQ (1, vs_len (vl, "key1"));
+	char *s = vs_get (vl, "key2", 1);
 	ASSERT_STR_EQ ("val2", s);
 
-	v_free (vl);
+	vs_free (vl);
 	PASS ();
 }
 

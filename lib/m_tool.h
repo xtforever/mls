@@ -59,6 +59,26 @@ int cmp_mstr_fast (const void *a, const void *b);
 int cmp_mstr_cstr_fast (const void *a, const void *b);
 int m_str_from_file (char *filename);
 
+/* Write an m-array of char* strings (MFREE_STR, e.g. from s_split) to a text
+ * file, one element per line. NULL elements are skipped. Returns 0 on success,
+ * -1 if the file cannot be opened or closed.
+ *
+ * ponytail: newline/CR inside an element cannot be represented (they would be
+ * read back as separate lines); upgrade path is escaping or length-prefix. */
+int m_strlist_save (int list, const char *path);
+
+/* Read a text file into a fresh m-array of char* strings (MFREE_STR), one
+ * element per line. A trailing CR is stripped (CRLF files). An empty file
+ * yields an empty list; returns -1 if the file cannot be opened. Free the
+ * result with m_free() / m_free_strings(). */
+int m_strlist_load (const char *path);
+
+/* List a directory's entries into a fresh m-array of char* strings
+ * (MFREE_STR), like os.listdir(). "." and ".." are skipped; the order is
+ * readdir() order. Returns -1 if the directory cannot be opened. Free the
+ * result with m_free() / m_free_strings(). */
+int m_dir_list (const char *path);
+
 void m_free_ptr (void *d);
 void m_free_user (int m, void (*free_h) (void *), int only_clear);
 void m_clear_user (int m, void (*free_h) (void *));
@@ -138,43 +158,7 @@ int s_copy (int m, int first_char, int last_char);
 int s_index (int buf, int p, int ch);
 int s_split (int m, const char *s, int c, int remove_wspace);
 
-/* Variable System Moved from mls.h */
-#define VAR_NAME(x) STR (x, 0)
-int v_init (void);
-void v_free (int vs);
-int v_set (int vs, const char *name, const char *value, int pos);
-void v_vaset (int vs, ...);
-void v_clr (int vs, const char *name);
-char *v_get (int vs, const char *name, int pos);
-int v_len (int vs, const char *name);
-void v_remove (int vs, const char *name);
-int v_lookup (int vs, const char *name);
-int v_find_key (int vs, const char *name);
-void v_kset (int key, const char *value, int pos);
-void v_kclr (int key);
-char *v_kget (int key, int pos);
-int v_klen (int key);
-
-/* String Expansion System Moved from mls.h */
-typedef struct str_exp_st {
-	int splitbuf;
-	int max_row;
-	int values;
-	int indices;
-	int buf;
-} str_exp_t;
-
-void se_init (str_exp_t *se);
-void se_free (str_exp_t *se);
-void se_realloc_buffers (str_exp_t *se);
-void se_parse (str_exp_t *se, const char *frm);
-char *se_expand (str_exp_t *se, int vl, int row);
-char *se_string (int vl, const char *frm);
-
-int escape_str (int buf, char *src);
-void escape_buf (int buf, char *src);
-
-enum { VAR_APPEND = -1, VAR_RENAME = 0, VAR_SET = 1 };
+/* Variable system + string expansion now live in m_var.[ch] (vs_*). */
 
 void ring_free (int r);
 int ring_get (int r);

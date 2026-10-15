@@ -1,6 +1,6 @@
 # MLS Showroom: Potential Refactoring Projects
 
-This document lists candidate projects on GitHub that would benefit significantly from being refactored using the `mls` library. These projects are selected to demonstrate the power of handle-based memory management, the `m_table` API, and the new `se_string` expansion system.
+This document lists candidate projects on GitHub that would benefit significantly from being refactored using the `mls` library. These projects are selected to demonstrate the power of handle-based memory management, the `m_table` API, and the new `vs_string` expansion system.
 
 ---
 
@@ -11,7 +11,7 @@ Minimal shells are heavy on string parsing, environment variable management, and
 The standard tutorial for writing a shell in C. Heavily forked and studied.
 
 ### Why `mls`?
-*   **Variable Expansion:** Use `se_string` to implement complex shell variable interpolation (e.g., `$HOME`, `$PATH`) in one line.
+*   **Variable Expansion:** Use `vs_string` to implement complex shell variable interpolation (e.g., `$HOME`, `$PATH`) in one line.
 *   **Robust Tokenization:** `s_split` and `s_trim` replace fragile `strtok` loops with safe, bounds-checked operations.
 *   **Memory Safety:** Eliminates the "pointer soup" typically found in command parsing.
 
@@ -47,7 +47,7 @@ Tools that collect system data, parse multiple files, and format complex termina
 A trending, feature-rich system information tool written in C for speed.
 
 ### Why `mls`?
-*   **Output Formatting:** `se_string` and `s_printf` make generating the complex "logo + data" terminal output much cleaner.
+*   **Output Formatting:** `vs_string` and `s_printf` make generating the complex "logo + data" terminal output much cleaner.
 *   **Utility Functions:** `m_extra` functions like `s_pad_left` and `s_trim` are used constantly in terminal UI layout.
 *   **Safe File Reading:** Using `m_str_from_file` to safely ingest `/proc` or `/sys` data without manual buffer management.
 
@@ -125,5 +125,5 @@ Forking **`brenns10/lsh`** and renaming it to **`mls-sh`** is the most effective
 **Key Demo Steps:**
 1.  Replace `lsh_split_line` (manual `malloc`/`strtok`) with a single `m_str_split` call.
 2.  Implement a variable environment using `m_table`.
-3.  Inject `se_string` into the command execution loop to support variables like `$PATH` or custom shell variables.
+3.  Inject `vs_string` into the command execution loop to support variables like `$PATH` or custom shell variables.
 4.  Remove all manual `free()` loops and replace them with a single `m_free()` at the end of the loop.

@@ -164,8 +164,8 @@ printf("%s\n", m_str(s));        // "hallo welt"
 m_free(s);
 ```
 
-`m_tool.h`/`m_extra.h` liefern `s_printf`, `s_app`, `s_split`, `s_join`,
-`se_string` (Interpolation) und mehr — siehe
+`m_tool.h`/`m_extra.h` liefern `s_printf`, `s_app`, `s_split`, `s_join` und
+mehr; `m_var.h` liefert `vs_string` (Interpolation) — siehe
 [docs/guide/string-functions.md](guide/string-functions.md).
 
 ## Fehlerbehandlung in einem Satz

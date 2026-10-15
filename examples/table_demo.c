@@ -1,3 +1,4 @@
+#include "../lib/mls.h"
 #include "../lib/table.h"
 
 #include <stdio.h>
@@ -7,7 +8,7 @@
 
 int main (void)
 {
-	m_base_init ();
+	m_init ();
 	int t = tbl_create ();
 
 	tbl_set (t, "zeta", "26");
@@ -25,6 +26,6 @@ int main (void)
 		tbl_get (t, "beta") ? tbl_get (t, "beta") : "(absent)");
 
 	tbl_free (t);
-	m_base_destruct ();
+	m_destruct ();
 	return 0;
 }

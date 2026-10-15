@@ -2,7 +2,7 @@
 #include "m_tool.h"
 #include "mls.h"
 #include "mls_internal.h"
-#include "table.h"
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #ifdef __GLIBC__
@@ -15,8 +15,6 @@
 
 /* Internal prototypes */
 static int vas_app (int m, va_list ap);
-static int field_escape (int s2, char *s, int quotes);
-static void repl_char (int buf, char ch);
 
 /* Relocated Core Utilities */
 
@@ -75,6 +73,16 @@ int m_regex (int m, const char *regex, const char *s)
 void m_qsort (int list, int (*compar) (const void *, const void *))
 {
 	qsort (m_buf (list), m_len (list), m_width (list), compar);
+}
+
+/**
+ * qsort comparator for an m-array of char* strings (MFREE_STR).
+ * Use with m_qsort(list, cmp_mstr): compares the pointed-to strings, so the
+ * list ends up in strcmp order.
+ */
+int cmp_mstr (const void *a, const void *b)
+{
+	return strcmp (*(char *const *)a, *(char *const *)b);
 }
 
 /**
@@ -221,18 +229,18 @@ int vas_printf (int m, int p, const char *format, va_list ap)
 	va_end (copy1);
 	len++;
 
-	// create a buffer 	
+	// create a buffer
 	if (m <= 0) {
-		m = m_alloc( len, 1, MFREE );
+		m = m_alloc (len, 1, MFREE);
 		p = 0;
-	} else { // re-use buffer and resize 
-		if (p < 0 || p > m_len (m) ) {
+	} else { // re-use buffer and resize
+		if (p < 0 || p > m_len (m)) {
 			p = s_strlen (m);
 		}
 	}
 	m_setlen (m, (size_t)len + p);
 	// buffer has correct size, now put our string at offset p
-	vsnprintf ( mls(m,p), (size_t)len, format, ap);	
+	vsnprintf (mls (m, p), (size_t)len, format, ap);
 	return m;
 }
 
@@ -1212,540 +1220,6 @@ void m_register_printf ()
 
 #endif /* __GLIBC__ */
 
-/* Variable System */
-
-/**
- * Initializes a variable system.
- *
- * @return The handle of the new variable system.
- */
-int v_init (void) { return m_alloc (100, sizeof (int), MFREE_EACH); }
-
-/**
- * Frees a variable system and all its variables.
- *
- * @param vl The handle of the variable system.
- */
-void v_free (int vl)
-{
-	int p, *d;
-	m_foreach (vl, p, d) m_free_strings (*d, 0);
-	m_free (vl);
-}
-
-/**
- * Finds the index of a variable key in a variable system.
- *
- * @param vs The variable system handle.
- * @param name The name of the variable.
- * @return The index, or -1.
- */
-int v_find_key (int vs, const char *name)
-{
-	char *s;
-	int p, *d;
-	if (vs <= 0 || !name)
-		return -1;
-	m_foreach (vs, p, d)
-	{
-		s = STR (*d, 0);
-		if (s && strcmp (s, name) == 0)
-			return p;
-	}
-	return -1;
-}
-
-/**
- * Looks up or creates a variable in a variable system.
- *
- * @param vl The variable system handle.
- * @param name The name of the variable.
- * @return The handle of the variable.
- */
-int v_lookup (int vl, const char *name)
-{
-	if (is_empty (name))
-		return -1;
-	int p = v_find_key (vl, name);
-	if (p >= 0) {
-		return INT (vl, p);
-	}
-	TRACE (1, "Create on Stack (%d) Var: %s", vl, name);
-	int var = m_create (2, sizeof (char *));
-	char *s = strdup (name);
-	m_put (var, &s);
-	m_put (vl, &var);
-	return var;
-}
-
-/**
- * Sets a value at a specific position in a variable.
- *
- * @param var The variable handle.
- * @param v The string value.
- * @param row The position (index).
- */
-void v_kset (int var, const char *v, int row)
-{
-	char *val = NULL;
-	if (v)
-		val = strdup (v);
-	if (row < 0 || row >= m_len (var)) {
-		m_put (var, &val);
-	} else {
-		char **d = (char **)mls (var, row);
-		if (*d)
-			free (*d);
-		*d = val;
-	}
-}
-
-/**
- * Sets a variable value in a variable system.
- *
- * @param vs The variable system handle.
- * @param name The variable name.
- * @param value The string value.
- * @param pos The position (VAR_APPEND for append).
- * @return The handle of the variable.
- */
-int v_set (int vs, const char *name, const char *value, int pos)
-{
-	int key = v_lookup (vs, name);
-	v_kset (key, value, pos);
-	return key;
-}
-
-/**
- * Variadic set of multiple variable names and values.
- *
- * @param vs The variable system handle.
- * @param ... Pairs of (char* name, char* value), terminated by NULL.
- */
-void v_vaset (int vs, ...)
-{
-	va_list argptr;
-	char *name, *value;
-	va_start (argptr, vs);
-	while ((name = va_arg (argptr, char *)) != NULL) {
-		value = va_arg (argptr, char *);
-		v_set (vs, name, value, VAR_APPEND);
-	}
-	va_end (argptr);
-}
-
-/**
- * Clears all values from a variable, keeping only the name.
- *
- * @param var The variable handle.
- */
-void v_kclr (int var)
-{
-	int i = 0;
-	char **d;
-	while (m_next (var, &i, &d))
-		if (*d) {
-			free (*d);
-			*d = NULL;
-		}
-	m_setlen (var, 1);
-}
-
-/**
- * Clears a variable by name in a variable system.
- *
- * @param vs The variable system handle.
- * @param name The variable name.
- */
-void v_clr (int vs, const char *name) { v_kclr (v_lookup (vs, name)); }
-
-/**
- * Gets a value from a variable at a specific position.
- *
- * @param var The variable handle.
- * @param row The position.
- * @return The string value, or an empty string if not found.
- */
-char *v_kget (int var, int row)
-{
-	if (var <= 0)
-		return "";
-	int len = m_len (var);
-	if (row >= len)
-		return "";
-	char *s = STR (var, row);
-	if (s == NULL)
-		return "";
-	return s;
-}
-
-/**
- * Gets a variable value from a variable system.
- *
- * @param vs The variable system handle.
- * @param name The variable name.
- * @param pos The position.
- * @return The string value.
- */
-char *v_get (int vs, const char *name, int pos)
-{
-	return v_kget (v_lookup (vs, name), pos);
-}
-
-/**
- * Returns the number of values in a variable (excluding the name).
- *
- * @param key The variable handle.
- * @return The number of values.
- */
-int v_klen (int key) { return m_len (key) - 1; }
-
-/**
- * Returns the number of values in a variable by name.
- *
- * @param vs The variable system handle.
- * @param name The variable name.
- * @return The number of values.
- */
-int v_len (int vs, const char *name) { return v_klen (v_lookup (vs, name)); }
-
-/**
- * Removes a variable from a variable system.
- *
- * @param vs The variable system handle.
- * @param name The variable name.
- */
-void v_remove (int vs, const char *name)
-{
-	int pos = v_find_key (vs, name);
-	if (pos >= 0) {
-		m_free_strings (INT (vs, pos), 0);
-		m_del (vs, pos);
-	}
-}
-
-/* String Expansion System */
-
-/**
- * Initializes a string expansion structure.
- *
- * @param se Pointer to the string expansion structure.
- */
-void se_init (str_exp_t *se) { memset (se, 0, sizeof *se); }
-
-/**
- * Frees resources associated with a string expansion structure.
- *
- * @param se Pointer to the string expansion structure.
- */
-void se_free (str_exp_t *se)
-{
-	m_free_strings (se->splitbuf, 0);
-	m_free (se->values);
-	m_free (se->indices);
-	m_free (se->buf);
-	memset (se, 0, sizeof *se);
-}
-
-/**
- * Reallocates or initializes buffers for string expansion.
- *
- * @param se Pointer to the string expansion structure.
- */
-void se_realloc_buffers (str_exp_t *se)
-{
-	if (!se->buf) {
-		se->splitbuf = m_create (10, sizeof (char *));
-		se->values = m_create (10, sizeof (char *));
-		se->indices = m_create (10, sizeof (int));
-		se->buf = m_create (100, 1);
-		return;
-	}
-	m_free_strings (se->splitbuf, 1);
-	m_clear (se->values);
-	m_clear (se->indices);
-	m_clear (se->buf);
-	se->max_row = 0;
-}
-
-/**
- * Internal helper to parse index in string expansion (e.g., [1], [*]).
- */
-static int parse_index (const char **s)
-{
-	int val;
-	const char *p = *s;
-	if (*p != '[')
-		return 0;
-	p++;
-	if (*p == '*' && p[1] == ']') {
-		*s = p + 2;
-		return 1;
-	}
-	val = 0;
-	while (isdigit (*p)) {
-		val *= 10;
-		val += *p - '0';
-		p++;
-	}
-	if (*p == ']') {
-		*s = p + 1;
-		return val + 2;
-	}
-	return 0;
-}
-
-/**
- * Parses a format string for expansion.
- *
- * @param se Pointer to the string expansion structure.
- * @param frm The format string.
- */
-void se_parse (str_exp_t *se, const char *frm)
-{
-	ASSERT (frm && se);
-	se_realloc_buffers (se);
-	int b = se->splitbuf;
-	int v = se->values;
-	int idx = se->indices;
-	char *cp;
-	const char *s, *s0;
-	s = frm;
-	s0 = s;
-	while (*s) {
-		if (*s == '\\' && s[1] == '$') {
-			/* Found escaped dollar. We need to collect what we have
-			 * and then add the $ */
-			if (s > s0) {
-				cp = strndup (s0, s - s0);
-				m_put (b, &cp);
-			}
-			cp = strdup ("$");
-			m_put (b, &cp);
-			s += 2;
-			s0 = s;
-			continue;
-		}
-		if (*s == '$') {
-			if (s > s0) {
-				cp = strndup (s0, s - s0);
-				m_put (b, &cp);
-			}
-			s0 = s; /* Point to $ */
-			s++;
-			int quoted = 0;
-			if (*s == '\'') {
-				quoted = 1;
-				s++;
-			}
-			while (isalnum (*s) || *s == '_')
-				s++;
-
-			cp = strndup (s0, s - s0);
-			m_put (b, &cp);
-			m_put (v, &cp);
-
-			int index = parse_index (&s);
-			m_put (idx, &index);
-
-			if (quoted && *s == '\'') {
-				s++;
-			}
-			s0 = s;
-			continue;
-		}
-		s++;
-	}
-	if (s > s0) {
-		cp = strndup (s0, s - s0);
-		m_put (b, &cp);
-	}
-}
-
-/**
- * Internal helper to replace special characters with escaped sequences.
- */
-static void repl_char (int buf, char ch)
-{
-	char tab[] = {'\\', '\0', '\n', '\r', '\'', '"', '\x1a'};
-	char rep[] = {'\\', '0', 'n', 'r', '\'', '"', 'Z'};
-	int i;
-	for (i = 0; (size_t)i < sizeof tab; i++)
-		if (tab[i] == ch) {
-			m_putc (buf, '\\');
-			m_putc (buf, rep[i]);
-			return;
-		}
-	m_putc (buf, ch);
-}
-
-/**
- * Escapes a string into a buffer.
- *
- * @param buf Handle of the destination buffer.
- * @param src Source C-style string.
- */
-void escape_buf (int buf, char *src)
-{
-	while (*src)
-		repl_char (buf, *src++);
-}
-
-/**
- * Creates an escaped version of a string in a new or existing buffer.
- *
- * @param buf Destination handle (if 0, a new one is allocated).
- * @param src Source C-style string.
- * @return The handle of the buffer containing the escaped string.
- */
-int escape_str (int buf, char *src)
-{
-	if (!buf)
-		buf = m_create (100, 1);
-	else
-		m_clear (buf);
-	escape_buf (buf, src);
-	m_putc (buf, 0);
-	return buf;
-}
-
-/**
- * Internal helper to escape a field, optionally adding quotes.
- */
-static int field_escape (int s2, char *s, int quotes)
-{
-	if (quotes)
-		m_putc (s2, '\'');
-	escape_buf (s2, s);
-	if (quotes)
-		m_putc (s2, '\'');
-	return s2;
-}
-
-/**
- * Internal helper to get a variable handle from a variable system or table.
- */
-static int get_variable_handle (int vl, const char *name)
-{
-	if (tbl_is_table (vl)) {
-		return tbl_get_handle (vl, name);
-	}
-	return v_lookup (vl, name);
-}
-
-/**
- * Expands a parsed format string using values from a variable system or table.
- *
- * @param se Pointer to the parsed string expansion structure.
- * @param vl Handle of the variable system or table.
- * @param row The row index to use for expansion.
- * @return Pointer to the expanded string (stored in se->buf).
- */
-char *se_expand (str_exp_t *se, int vl, int row)
-{
-	int var, index;
-	int p, vn;
-	char **d, *s, **val_ptr;
-	int quotes = 0;
-	m_clear (se->buf);
-	int buf = se->buf;
-	vn = 0;
-	m_foreach (se->splitbuf, p, d)
-	{
-		s = *d;
-		/* Check if this part in splitbuf matches the next expected
-		 * variable in se->values */
-		if (vn < m_len (se->values) &&
-		    (val_ptr = (char **)mls (se->values, vn)) &&
-		    *val_ptr == s) {
-			int name_offset = 1;
-			if (s[1] == '\'') {
-				quotes = 1;
-				name_offset = 2;
-			} else {
-				quotes = 0;
-			}
-			var = get_variable_handle (vl, s + name_offset);
-			index = INT (se->indices, vn);
-			vn++;
-			if (index == 1) {
-				/* [*] expansion - join all if it's a list */
-				if (var > 0 &&
-				    m_width (var) == sizeof (char *)) {
-					field_escape (buf, STR (var, 1),
-						      quotes);
-					for (index = 2; index < m_len (var);
-					     index++) {
-						m_putc (buf, ',');
-						field_escape (buf,
-							      STR (var, index),
-							      quotes);
-					}
-				} else if (var > 0) {
-					/* Just a single string handle? */
-					field_escape (buf, m_str (var), quotes);
-				}
-			} else {
-				if (index == 0)
-					index = row;
-				else
-					index -= 2;
-
-				if (var > 0) {
-					if (m_width (var) == sizeof (char *)) {
-						/* Variable System style: list
-						 * of char* */
-						if (index < v_klen (var))
-							field_escape (
-								buf,
-								STR (var,
-								     index + 1),
-								quotes);
-					} else {
-						/* Single string handle (table
-						 * style) */
-						field_escape (buf, m_str (var),
-							      quotes);
-					}
-				}
-			}
-		} else {
-			/* Constant part */
-			m_write (buf, m_len (buf), s, strlen (s));
-		}
-	}
-	m_putc (buf, 0);
-	return mls (buf, 0);
-}
-
-/**
- * Expands a format string in one step and returns the result.
- *
- * @param vl Handle of the variable system or table.
- * @param frm The format string.
- * @return Pointer to the expanded string.
- */
-char *se_string (int vl, const char *frm)
-{
-	str_exp_t se;
-	se_init (&se);
-	se_parse (&se, frm);
-	se_expand (&se, vl, 0);
-
-	char *res;
-	if (tbl_is_table (vl)) {
-		tbl_set (vl, "se_string", mls (se.buf, 0));
-		int h = tbl_get_handle (vl, "se_string");
-		res = m_str (h);
-	} else {
-		int data = v_set (vl, "se_string", mls (se.buf, 0), 1);
-		res = STR (data, 1);
-	}
-
-	se_free (&se);
-	return res;
-}
-
 /* Other Utilities */
 
 /**
@@ -1765,6 +1239,99 @@ int m_str_from_file (char *filename)
 	ioread_all (fd, m);
 	close (fd);
 	return m;
+}
+
+/**
+ * Writes an m-array of char* strings (MFREE_STR, e.g. from s_split()) to a
+ * text file, one element per line. NULL elements are skipped. This is the
+ * inverse of m_strlist_load() for the common "one name per line" file.
+ *
+ * ponytail: a '\n' or '\r' inside an element cannot be represented (it would
+ * read back as extra lines); upgrade path is escaping or length-prefixing.
+ * The file is truncated in place, so a crash mid-write loses the old content;
+ * upgrade path is write-temp-then-rename.
+ *
+ * @param list Handle of the m-array of char* strings.
+ * @param path Output file path.
+ * @return 0 on success, -1 if the file cannot be opened or closed.
+ */
+int m_strlist_save (int list, const char *path)
+{
+	if (list <= 0 || !path)
+		return -1;
+	FILE *fp = fopen (path, "w");
+	if (!fp)
+		return -1;
+	int i;
+	char **sp;
+	m_foreach (list, i, sp)
+	{
+		if (*sp)
+			fprintf (fp, "%s\n", *sp);
+	}
+	return fclose (fp) == 0 ? 0 : -1;
+}
+
+/**
+ * Reads a text file into a fresh m-array of char* strings (MFREE_STR), one
+ * element per line. A trailing carriage return is stripped, so CRLF files
+ * load cleanly. The round-trip with m_strlist_save() is symmetric for any
+ * element without a '\n' or '\r'. An empty file yields an empty (but valid)
+ * list.
+ *
+ * @param path Input file path.
+ * @return Handle of the new string list, or -1 if the file cannot be opened.
+ */
+int m_strlist_load (const char *path)
+{
+	if (!path)
+		return -1;
+	FILE *fp = fopen (path, "r");
+	if (!fp)
+		return -1;
+
+	int list = m_alloc (16, sizeof (char *), MFREE_STR);
+	int line = s_new ();
+	while (s_readln (line, fp) != EOF) {
+		char *p = m_str (line);
+		p[strcspn (p, "\r\n")] = 0;
+		char *s = strdup (p); /* NULL only on OOM; save skips it */
+		m_put (list, &s);
+	}
+	s_free (line);
+	fclose (fp);
+	return list;
+}
+
+/**
+ * Lists the entries of a directory into a fresh m-array of char* strings
+ * (MFREE_STR), like os.listdir(). "." and ".." are skipped; the order is the
+ * filesystem readdir() order. This is the directory counterpart of
+ * m_str_from_file().
+ *
+ * @param path Directory path.
+ * @return Handle of the new string list, or -1 if the directory cannot be
+ * opened.
+ */
+int m_dir_list (const char *path)
+{
+	if (!path)
+		return -1;
+	DIR *d = opendir (path);
+	if (!d)
+		return -1;
+
+	int list = m_alloc (16, sizeof (char *), MFREE_STR);
+	struct dirent *e;
+	while ((e = readdir (d)) != NULL) {
+		if (strcmp (e->d_name, ".") == 0 ||
+		    strcmp (e->d_name, "..") == 0)
+			continue;
+		char *s = strdup (e->d_name); /* NULL only on OOM */
+		m_put (list, &s);
+	}
+	closedir (d);
+	return list;
 }
 
 /**
@@ -1981,22 +1548,6 @@ int s_readln (int buf, FILE *fp)
 	if (m_len (buf) == 0 || CHAR (buf, m_len (buf) - 1) != 0)
 		m_putc (buf, 0);
 	return m_len (buf) - 1;
-}
-
-/**
- * Trims leading/trailing whitespace from a NUL-terminated string in place.
- * The base pointer is preserved so the caller can still free() it.
- */
-static void trim_space_c (char *s)
-{
-	char *a = s;
-	char *b;
-	while (*a && isspace ((unsigned char)*a))
-		a++;
-	b = a + strlen (a);
-	while (b > a && isspace ((unsigned char)b[-1]))
-		*--b = 0;
-	memmove (s, a, (size_t)(b - a) + 1);
 }
 
 /**
