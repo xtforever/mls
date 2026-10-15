@@ -33,7 +33,7 @@ o  = $(patsubst %.c,%.o,$(1))
 %.exe: %.o $(call o,$(LIBS))
 	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(LDLIBS)
 
-APPS = hdf_dump list_demo table_demo csv2insert sql_demo world
+APPS = hdf_dump list_demo table_demo csv2insert sql_demo world 
 
 all: $(addsuffix .exe,$(APPS)) $(addsuffix .exed,$(APPS))
 
