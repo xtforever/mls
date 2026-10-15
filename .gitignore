@@ -20,3 +20,18 @@ __pycache__/
 score/
 movies-db
 
+.opencode/
+.venv/
+dependency-graph-core.svg
+dependency-graph-exp.svg
+dependency-graph-layered.svg
+experimental/pcap-stream/
+experimental/restructure/hdf-verify/
+impro.txt
+mls_core.h
+mls_cored.h
+mls_coredmt.h
+mls_coremt.h
+mls_full.h
+dependency-graph.svg
+you-do-not-know-c.pdf
