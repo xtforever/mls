@@ -56,6 +56,9 @@ int imdb_search (const struct imdb_db *db, const char *query, int year_hint,
 /* 1, wenn Token stoppend ist (df > N/20) oder unbekannt. */
 int imdb_is_stop (const struct imdb_db *db, const char *tok);
 
+/* 1, wenn tok im Token-Dictionary steht. */
+int imdb_has_token (const struct imdb_db *db, const char *tok);
+
 /* Read-only Zugriffe. Bei rec ausserhalb [0,N): "" / 0 / "tt0000000" / OTHER.
  */
 const char *imdb_title (const struct imdb_db *db, uint32_t rec);

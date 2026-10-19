@@ -28,10 +28,21 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	grep -q 'Life on Mars' /tmp/imdb-guess.out
 	# "1883" ist ein 1800er-Jahr: raus aus den Query-Tokens, Titel-Treffer.
 	grep -q '^1.00  1883' /tmp/imdb-guess.out
-	grep -q 'Das 10te' /tmp/imdb-guess.out
+	# Umlautfrei an der ID festgemacht, damit der Treffer nicht bloss
+	# ueber den Pfad ("Das 10te ...") durchrutscht.
+	grep -q '10te.*tt9000009' /tmp/imdb-guess.out
 	grep -q 'Call the Midwife' /tmp/imdb-guess.out
 	grep -q 'Mord im Mittsommer' /tmp/imdb-guess.out
 	grep -q 'SOKO Leipzig' /tmp/imdb-guess.out
+	# Ordnungszahl "6th" bleibt erhalten (nicht zu "th" zerlegt); der
+	# Film (Typ 1, 2000) schlaegt die gleichnamigen Kurzfilme (Typ 7).
+	grep -q 'The 6th Day (2000) tt9000020' /tmp/imdb-guess.out
+	# Serienname im Dateinamen "<Name>.<SxxExx>": Serientitel gewinnt
+	# gegen gleichnamigen Kurztitel, Abkuerzungsordner wird ignoriert.
+	grep -q 'Buffy the Vampire Slayer (1997)' /tmp/imdb-guess.out
+	# Schreibfehler im letzten Namensteil ("World" vs "Worlds") in den
+	# Verzeichnissen: Einfuegung findet den Serientitel.
+	grep -q 'Star Trek: Strange New Worlds (2022)' /tmp/imdb-guess.out
 	# Ein Sammlungsordner ("...Collection...") darf nicht als Titel
 	# durchschlagen; der Dateiname (Cartouche) ist massgeblich.
 	! grep -q 'Belmondo (2003)' /tmp/imdb-guess.out

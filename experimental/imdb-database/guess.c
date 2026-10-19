@@ -12,6 +12,7 @@
  *
  * Aufruf: guess [imdb_index.bin] [movies-db] [topk] [--algo NAME] [--tsv]
  */
+#include "imdb_bin.h"
 #include "imdb_db.h"
 
 #include <ctype.h>
@@ -19,6 +20,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Serienname aus einem Dateinamen "<Name>.<SxxExx>..." (siehe
+ * cand_current) fuer den aktuellen Suchlauf. ponytail: globaler Scratch,
+ * der CLI-Lauf ist single-threaded. */
+static char g_series_name[512];
+/* 1, wenn g_series_name aus dem Dateinamen stammt (nicht aus den
+ * Verzeichnissen). Tiefere Suche nur dann noetig. */
+static int g_name_from_file;
+
+/* Serientitel mit vielen Titelwoertern erreichen bei kurzer Query die
+ * normale IMDB_SCORE_MIN nicht ("buffy" vs "Buffy the Vampire Slayer"). */
+#define GUESS_SERIES_MIN 0.25f
 
 /* Rauschen, das in Filmtiteln praktisch nie vorkommt */
 static const char *NOISE[] = {
@@ -103,6 +116,23 @@ static int is_noise (const char *t)
 			return 1;
 	return 0;
 }
+
+/* Ordnungszahl: Ziffern + englisches Suffix "st"/"nd"/"rd"/"th"
+ * ("6th", "23rd"). Tokens sind nach imdb_norm bereits kleingeschrieben.
+ * Solche Tokens duerfen NICHT an der Ziffer/Buchstaben-Grenze zerlegt
+ * werden: "6th" wuerde sonst zu "6"+"th", und "6" (1 Zeichen) fiele weg,
+ * sodass nur "th" bliebe. */
+static int is_ordinal (const char *t)
+{
+	const char *p = t;
+	while (isdigit ((unsigned char)*p))
+		p++;
+	if (p == t) /* keine fuehrenden Ziffern -> keine Ordnungszahl */
+		return 0;
+	return !strcmp (p, "st") || !strcmp (p, "nd") || !strcmp (p, "rd") ||
+	       !strcmp (p, "th");
+}
+
 /* ---- Englische Zahlwoerter (0-999): "13" <-> "thirteen" ---- */
 static const char *const NUM_WORDS[] = {
 	"zero",	    "one",	"two",	    "three",   "four",	  "five",
@@ -303,19 +333,27 @@ static int denoise (char **tok, int ntok, int *year, char *out, size_t cap)
 		if (strlen (t) == 2 && t[0] == '0' &&
 		    isdigit ((unsigned char)t[1]))
 			continue;
-		if (is_se (t) || is_season_or_episode (t) || is_noise (t))
+		/* Serien-Marker (SxxExx/Sxx/Exx): der Name DAVOR ist der
+		 * Serientitel ("Buffy.S04E11..."), alles danach ist
+		 * Episoden-/Release-Info -> abschneiden. */
+		if (is_se (t) || is_season_or_episode (t))
+			break;
+		if (is_noise (t))
 			continue;
 		/* An Buchstaben/Ziffern-Grenzen zerlegen ("sg1" -> "sg",
 		 * "1"), damit z. B. "Stargate SG1" den DB-Titel
-		 * "Stargate SG-1" trifft. */
+		 * "Stargate SG-1" trifft. Ordnungszahlen ("6th") bleiben
+		 * unzerlegt (siehe is_ordinal). */
 		char parts[8][64];
 		int np = 0;
 		size_t pl = 0;
+		int ord = is_ordinal (t);
 		for (const char *p = t;; p++) {
-			if (p > t && ((isdigit ((unsigned char)p[-1]) &&
-				       isalpha ((unsigned char)*p)) ||
-				      (isalpha ((unsigned char)p[-1]) &&
-				       isdigit ((unsigned char)*p)))) {
+			if (!ord && p > t &&
+			    ((isdigit ((unsigned char)p[-1]) &&
+			      isalpha ((unsigned char)*p)) ||
+			     (isalpha ((unsigned char)p[-1]) &&
+			      isdigit ((unsigned char)*p)))) {
 				if (pl) {
 					parts[np][pl] = 0;
 					np++;
@@ -444,6 +482,53 @@ static int drop_tail (const char *cand, int drop, char *out, size_t cap)
 	return 1;
 }
 
+/* 1, wenn der normalisierte DB-Titel mit dem Kandidaten als Wort-Prefix
+ * beginnt ("buffy" -> "Buffy the Vampire Slayer"). */
+static int title_prefix (struct imdb_db *db, uint32_t rec, const char *cand)
+{
+	char norm[512];
+	imdb_norm (imdb_title (db, rec), norm, sizeof norm);
+	size_t n = strlen (cand);
+	if (!n || strncmp (norm, cand, n) != 0)
+		return 0;
+	return norm[n] == 0 || norm[n] == ' ';
+}
+
+/* 1, wenn der normalisierte DB-Titel ein Kuerzel des Seriennamens ist
+ * (Zeichen-Prefix, kuerzer): "Buff" ist Kuerzel von "buffy" (Ordner
+ * "buff4"). Nur dann gilt der Einzel-Token-Treffer als Abkuerzung und der
+ * echte Serientitel wird vorgezogen. */
+static int name_abbrev (struct imdb_db *db, uint32_t rec, const char *name)
+{
+	char norm[512];
+	imdb_norm (imdb_title (db, rec), norm, sizeof norm);
+	size_t n = strlen (norm);
+	return n >= 2 && n < strlen (name) && strncmp (name, norm, n) == 0;
+}
+
+/* Editierdistanz-1-Variante von s (len Zeichen): mode 0 = ersetzen,
+ * 1 = loeschen, 2 = einfuegen an pos mit Zeichen c. */
+static void make_variant (const char *s, size_t len, int mode, size_t pos,
+			  char c, char *out, size_t cap)
+{
+	size_t o = 0;
+	for (size_t j = 0; j <= len; j++) {
+		if (mode == 2 && j == pos && o + 1 < cap)
+			out[o++] = c;
+		if (j == len)
+			break;
+		if (mode == 0 && j == pos) {
+			if (o + 1 < cap)
+				out[o++] = c;
+		} else if (mode == 1 && j == pos) {
+			/* Zeichen loeschen */
+		} else if (o + 1 < cap) {
+			out[o++] = s[j];
+		}
+	}
+	out[o] = 0;
+}
+
 /* Anzahl Tokens im DB-Titel; laengere Titel gewinnen bei Gleichstand. */
 static int title_ntok (struct imdb_db *db, int rec)
 {
@@ -461,9 +546,26 @@ static int title_ntok (struct imdb_db *db, int rec)
 	return n;
 }
 
+/* Zwei-Stufen-Rang des Titeltyps: Hauptproduktionen (Film/Serie/...) vor
+ * Nebenproduktionen (Short/Video/Special/...). Nur als Tiebreak bei
+ * identischem Titel; bewusst keine Totalordnung, damit Film-vs-Serie
+ * weiterhin ueber das Jahr entschieden wird. */
+static int type_tier (uint8_t t)
+{
+	switch (t) {
+	case IMDB_T_MOVIE:
+	case IMDB_T_TVMOVIE:
+	case IMDB_T_TVSERIES:
+	case IMDB_T_MINISERIES:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 /* Ist h (Key hk) besser als b (Key bk)? Prioritaet: Key, laengerer Titel,
- * Typ, Anzahl gematchter Tokens, IDF-Gewicht, dann bei Namenszwilling das
- * zum year_hint naechste (sonst neuere) Jahr. */
+ * Typ (Serie), Anzahl gematchter Tokens, IDF-Gewicht, dann bei
+ * Namenszwilling das zum year_hint naechste (sonst neuere) Jahr. */
 static int hit_better (struct imdb_db *db, int year_hint,
 		       const struct imdb_hit *h, float hk,
 		       const struct imdb_hit *b, float bk)
@@ -476,9 +578,7 @@ static int hit_better (struct imdb_db *db, int year_hint,
 		return 1;
 	if (d < -2e-2f)
 		return 0;
-	/* Serien-Marker im Pfad: Serien-Typ vor Titel-Laenge, damit z. B.
-	 * "Mord im Mittsommer" (Serie) nicht einer gleichnamigen
-	 * Episode-/Filmproduktion mit laengerem Titel unterliegt. */
+	/* Serien-Marker im Pfad: Serien-Typ vor Titel-Laenge. */
 	if (h->thit != b->thit)
 		return h->thit > b->thit;
 	if (bk >= 0.0f) {
@@ -499,6 +599,14 @@ static int hit_better (struct imdb_db *db, int year_hint,
 			if (dh != db2)
 				return dh < db2;
 		}
+		/* Gleicher Titel: Haupttyp (Film/Serie) vor Nebenproduktion
+		 * (Short/Video/Special), damit z. B. "The 6th Day" (2000,
+		 * Film) nicht gegen gleichnamige Kurzfilme (2019/2025)
+		 * verliert. Bei gleichem Rang bleibt es beim Jahr. */
+		int ht2 = type_tier (imdb_type (db, h->rec));
+		int bt2 = type_tier (imdb_type (db, b->rec));
+		if (ht2 != bt2)
+			return ht2 > bt2;
 		return hy > by;
 	}
 	return 0;
@@ -524,6 +632,23 @@ static int cand_current (const char *path, char cands[][1024], int max,
 	*want_series = looks_series (path);
 	*file_year = 0;
 	int ncan = 0;
+	/* Dateiname selbst "<Name>.<SxxExx>...": der Name davor ist der
+	 * gesuchte Serientitel. */
+	int base_series = looks_series (comp[0]);
+	g_series_name[0] = 0;
+	g_name_from_file = 0;
+	/* Dateiname beginnt direkt mit dem Serien-Marker ("S03E09 ..."),
+	 * der Name steht also in den Elternverzeichnissen
+	 * ("star.trek/Discovery/S03E09" -> "star trek discovery"). */
+	int base_marker_first = 0;
+	{
+		char bn[1024];
+		char *bt[256];
+		imdb_norm (comp[0], bn, sizeof bn);
+		int bnt = imdb_split (bn, bt, 256);
+		base_marker_first = bnt > 0 && (is_se (bt[0]) ||
+						is_season_or_episode (bt[0]));
+	}
 	for (int i = 0; i < ncomp && ncan < max; i++) {
 		char norm[1024];
 		char *tok[256];
@@ -536,8 +661,21 @@ static int cand_current (const char *path, char cands[][1024], int max,
 		imdb_norm (comp[i], norm, sizeof norm);
 		int nt = imdb_split (norm, tok, 256);
 		int nc = denoise (tok, nt, &year, cands[ncan], sizeof cands[0]);
-		if (nc <= 0)
+		/* Fuehrendes Jahr kann der Titel selbst sein
+		 * ("1923.YELLOSTONE", "2012.German...", "1883.S01E01"):
+		 * denoise verwirft es sonst als Jahr. */
+		int lead_year = (i >= 1 && nt > 0 && is_year (tok[0]));
+		if (nc <= 0) {
+			/* Nach dem Serien-Marker bleibt nichts uebrig, das
+			 * fuehrende Jahr ist aber der Serientitel ("1883"). */
+			if (lead_year && ncan < max) {
+				strncpy (cands[ncan], tok[0],
+					 sizeof cands[0] - 1);
+				cands[ncan][sizeof cands[0] - 1] = 0;
+				ncan++;
+			}
 			continue;
+		}
 		int ntok2 = 1;
 		for (const char *p = cands[ncan]; *p; p++)
 			if (*p == ' ')
@@ -548,15 +686,59 @@ static int cand_current (const char *path, char cands[][1024], int max,
 			continue;
 		if (!*file_year && year > 0)
 			*file_year = year;
+		if (i == 0 && base_series) {
+			snprintf (g_series_name, sizeof g_series_name, "%s",
+				  cands[ncan]);
+			g_name_from_file = 1;
+		}
 		ncan++;
 		add_num_variant (cands, &ncan, max);
-		/* Fuehrendes Jahr kann der Titel selbst sein
-		 * ("1923.YELLOSTONE", "2012.German..."), obwohl es sonst als
-		 * Jahr gilt. */
-		if (i >= 1 && nt > 0 && is_year (tok[0]) && ncan < max) {
+		if (lead_year && ncan < max) {
 			strncpy (cands[ncan], tok[0], sizeof cands[0] - 1);
 			cands[ncan][sizeof cands[0] - 1] = 0;
 			ncan++;
+		}
+	}
+	/* Dateiname ohne eigenen Namen ("S03E09 ..."): Serienname aus den
+	 * Elternverzeichnissen zusammensetzen, in Pfad-Reihenfolge
+	 * ("star.trek" + "Discovery" -> "star trek discovery"). */
+	if (base_marker_first && ncan < max) {
+		char joined[2048];
+		size_t o = 0;
+		int top = ncomp - 1 < 3 ? ncomp - 1 : 3;
+		for (int j = top; j >= 1; j--) {
+			if (is_date_dir (comp[j]) ||
+			    is_collection_dir (comp[j]))
+				continue;
+			size_t l = strlen (comp[j]);
+			if (o + l + 2 >= sizeof joined)
+				break;
+			if (o)
+				joined[o++] = ' ';
+			memcpy (joined + o, comp[j], l);
+			o += l;
+		}
+		joined[o] = 0;
+		if (o) {
+			char norm[2048];
+			char *tok[512];
+			int year = 0;
+			imdb_norm (joined, norm, sizeof norm);
+			int nt = imdb_split (norm, tok, 512);
+			int nc = denoise (tok, nt, &year, cands[ncan],
+					  sizeof cands[0]);
+			if (nc > 0) {
+				/* Serienname aus Verzeichnissen: auch fuer die
+				 * Schreibvarianten-Pruefung in run_algo nutzen.
+				 */
+				if (!g_series_name[0]) {
+					snprintf (g_series_name,
+						  sizeof g_series_name, "%s",
+						  cands[ncan]);
+					g_name_from_file = 0;
+				}
+				ncan++;
+			}
 		}
 	}
 	return ncan;
@@ -717,9 +899,16 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 {
 	char cands[8][1024];
 	int file_year = 0, want_series = 0;
+	g_series_name[0] = 0;
+	g_name_from_file = 0;
 	int ncan = algo->cand (path, cands, 8, &file_year, &want_series);
+	/* Tiefer suchen, damit ein schwaecher bewerteter Serientitel
+	 * ueberhaupt unter den Treffern landet (Buffy vs "Buffy the
+	 * Vampire Slayer"). */
+	int depth = (want_series && g_name_from_file && topk < 64) ? 64 : topk;
 	struct imdb_hit best = {0, -1, 0, 0, 0, 0};
-	float best_key = -1;
+	struct imdb_hit best_pfx = {0, -1, 0, 0, 0, 0};
+	float best_key = -1, pfx_key = -1;
 	char *seen[64] = {0};
 	int nseen = 0;
 	int dbg = getenv ("GUESS_DEBUG") != NULL;
@@ -770,8 +959,25 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 					free (c);
 			}
 			int cnt = imdb_search (db, cc, file_year, want_series,
-					       topk, hits, topk);
+					       depth, hits, depth);
 			for (int k = 0; k < cnt; k++) {
+				/* Serientitel, dessen normalisierter Titel
+				 * mit dem Dateinamen-Seriennamen beginnt. */
+				if (want_series && g_series_name[0] &&
+				    hits[k].thit &&
+				    hits[k].score >= GUESS_SERIES_MIN &&
+				    title_prefix (db, hits[k].rec,
+						  g_series_name)) {
+					float pk = hits[k].score +
+						   IMDB_YEAR_BONUS *
+							   (float)hits[k].yhit;
+					if (hit_better (db, file_year, &hits[k],
+							pk, &best_pfx,
+							pfx_key)) {
+						pfx_key = pk;
+						best_pfx = hits[k];
+					}
+				}
 				if (hits[k].score < IMDB_SCORE_MIN)
 					continue;
 				/* Mehrtoken-Kandidat: ein einzelnes Treffer-
@@ -809,14 +1015,114 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 	for (int j = 0; j < nseen; j++)
 		free (seen[j]);
 
+	/* Schreibfehler im LETZTEN Namensteil ("stark" vs "starck"): nur
+	 * wenn kein exakter Serien-Prefix existiert, das erste Token >= 4
+	 * Zeichen hat und der Treffer sehr stark ist (>= 0.7). */
+	int pfx_short = 0;
+	if (want_series && g_series_name[0] &&
+	    best_pfx.score < GUESS_SERIES_MIN) {
+		char name[512];
+		snprintf (name, sizeof name, "%s", g_series_name);
+		char first[64];
+		size_t fi = strcspn (name, " ");
+		if (fi >= sizeof first)
+			fi = sizeof first - 1;
+		memcpy (first, name, fi);
+		first[fi] = 0;
+		char *sp = strrchr (name, ' ');
+		if (sp && fi >= 4) {
+			*sp = 0;
+			const char *last = sp + 1;
+			size_t ll = strlen (last);
+			if (ll >= 2 && ll < 32) {
+				char var[64], q[640];
+				/* Nur Einfuegungen pruefen ("world"->"worlds",
+				 * "stark"->"starck"); Ersetzen/Loeschen hat
+				 * "nine"->"mine" erzeugt. */
+				for (int mode = 2; mode < 3 && !pfx_short;
+				     mode++) {
+					int lim = mode == 1 ? (int)ll
+							    : (int)ll + 1;
+					for (int i = 0; i < lim && !pfx_short;
+					     i++) {
+						for (int c = 'a';
+						     c <= 'z' && !pfx_short;
+						     c++) {
+							make_variant (
+								last, ll, mode,
+								(size_t)i,
+								(char)c, var,
+								sizeof var);
+							if (!var[0] ||
+							    !imdb_has_token (
+								    db, var))
+								continue;
+							snprintf (q, sizeof q,
+								  "%s %s", name,
+								  var);
+							int cnt = imdb_search (
+								db, q,
+								file_year,
+								want_series,
+								depth, hits,
+								depth);
+							for (int k = 0; k < cnt;
+							     k++) {
+								if (!hits[k].thit ||
+								    hits[k].score <
+									    0.7f)
+									continue;
+								if (!title_prefix (
+									    db,
+									    hits[k].rec,
+									    first))
+									continue;
+								float pk =
+									hits[k].score +
+									IMDB_YEAR_BONUS *
+										(float)hits[k]
+											.yhit;
+								if (hit_better (
+									    db,
+									    file_year,
+									    &hits[k],
+									    pk,
+									    &best_pfx,
+									    pfx_key)) {
+									pfx_key =
+										pk;
+									best_pfx = hits
+										[k];
+									pfx_short =
+										1;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	memset (res, 0, sizeof *res);
-	res->hit = best.score >= IMDB_SCORE_MIN;
+	/* Der Prefix-Serientreffer ("Buffy the Vampire Slayer") schlaegt den
+	 * Nicht-Serien-Treffer NUR, wenn dieser ein Ein-Token-Kuerzel des
+	 * Seriennamens ist ("Buff" aus Ordner "buff4" fuer "buffy") - oder
+	 * wenn eine Schreibvarianten-Korrektur den Serientitel fand. */
+	struct imdb_hit chosen = best;
+	if (best_pfx.score >= GUESS_SERIES_MIN &&
+	    (pfx_short || (best.score >= IMDB_SCORE_MIN && !best.thit &&
+			   title_ntok (db, best.rec) == 1 &&
+			   name_abbrev (db, best.rec, g_series_name))))
+		chosen = best_pfx;
+	res->hit = chosen.score >= IMDB_SCORE_MIN ||
+		   (chosen.thit && chosen.score >= GUESS_SERIES_MIN);
 	if (res->hit) {
-		res->score = best.score;
-		res->year = imdb_year (db, best.rec);
+		res->score = chosen.score;
+		res->year = imdb_year (db, chosen.rec);
 		snprintf (res->title, sizeof res->title, "%s",
-			  imdb_title (db, best.rec));
-		imdb_id (db, best.rec, res->id, sizeof res->id);
+			  imdb_title (db, chosen.rec));
+		imdb_id (db, chosen.rec, res->id, sizeof res->id);
 	}
 	return res->hit;
 }
@@ -926,10 +1232,23 @@ static void compute_prefix_cuts (char **paths, int n, int mincnt, int *cut)
 	}
 	for (int i = 0; i < n; i++) {
 		const char *p = paths[i];
+		/* Nur so weit kuerzen, dass die letzten drei Pfadteile
+		 * (zwei Verzeichnisse + Dateiname) erhalten bleiben - sonst
+		 * verschwindet der Serienname ("star.trek/Discovery/S03E09"
+		 * wuerde zu "Discovery/S03E09"). */
+		const char *sl[128];
+		int ns = 0;
+		for (const char *s = strchr (p, '/'); s;
+		     s = strchr (s + 1, '/'))
+			if (ns < 128)
+				sl[ns++] = s;
+		int limit = ns >= 3 ? (int)(sl[ns - 3] - p) : 0;
 		int best = 0;
 		for (const char *s = strchr (p, '/'); s;
 		     s = strchr (s + 1, '/')) {
 			int len = (int)(s - p);
+			if (len > limit)
+				break;
 			int idx = uniq_find (uniq, nu, p, len);
 			if (idx >= 0 && cnt[idx] >= mincnt && len > best)
 				best = len;
@@ -1013,7 +1332,8 @@ int main (int argc, char **argv)
 		imdb_close (db);
 		return 1;
 	}
-	struct imdb_hit *hits = malloc ((size_t)topk * sizeof *hits);
+	int hcap = topk < 64 ? 64 : topk;
+	struct imdb_hit *hits = malloc ((size_t)hcap * sizeof *hits);
 	if (!hits) {
 		fclose (mv);
 		imdb_close (db);

@@ -439,6 +439,11 @@ int imdb_is_stop (const struct imdb_db *db, const char *tok)
 	return df > cutoff;
 }
 
+int imdb_has_token (const struct imdb_db *db, const char *tok)
+{
+	return dict_find (db, tok) >= 0;
+}
+
 int imdb_search (const struct imdb_db *cdb, const char *query, int year_hint,
 		 int want_series, int topk, struct imdb_hit *out, int outcap)
 {
