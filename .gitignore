@@ -20,7 +20,6 @@ __pycache__/
 score/
 movies-db
 
-.opencode/
 .venv/
 dependency-graph-core.svg
 dependency-graph-exp.svg
