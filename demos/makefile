@@ -37,7 +37,8 @@ APPS = hdf_dump list_demo table_demo csv2insert sql_demo world forth_db_demo for
 
 # The Forth-ISAM monolith needs its own module chain (plus the mls core for m_init).
 FORTH_SRCS = ../lib/m_fapi.c ../lib/m_engine.c ../lib/m_dbwords.c \
-             ../lib/m_forth.c ../lib/m_isam.c ../lib/m_fproto.c \
+             ../lib/m_forth.c ../lib/m_isam.c ../lib/m_strpool.c \
+             ../lib/m_fproto.c \
              ../lib/bptree.c ../lib/arena.c ../lib/carray.c \
              ../lib/darray.c ../lib/strbuf.c ../lib/htable.c \
              ../lib/hashmap.c ../lib/token.c

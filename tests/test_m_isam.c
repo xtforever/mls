@@ -186,6 +186,8 @@ int main (void)
 		unlink (stale);
 		snprintf (stale, sizeof stale, "%s/users.dat", dir);
 		unlink (stale);
+		snprintf (stale, sizeof stale, "%s/strings.str", dir);
+		unlink (stale);
 		rmdir (dir);
 
 		assert (m_isam_db_open (dir) == NULL); /* missing directory */
@@ -204,6 +206,11 @@ int main (void)
 		assert (m_isam_create_table (p, "", pc, 3, ppk, 2) == NULL);
 		assert (m_isam_create_table (p, "..", pc, 3, ppk, 2) == NULL);
 		assert (m_isam_create_table (p, "a/b", pc, 3, ppk, 2) == NULL);
+		m_isam_table_t *pu = m_isam_table (p, "users");
+		assert (pu);
+		uint32_t alice_id = m_isam_intern (pu, "alice");
+		uint32_t empty_id = m_isam_intern (pu, "");
+		assert (alice_id > 0 && empty_id > 0 && alice_id != empty_id);
 		assert (m_isam_db_close (p) == 0);
 
 		char path[600];
@@ -225,6 +232,12 @@ int main (void)
 		m_isam_table_t *qu = m_isam_table (q, "users");
 		assert (qu && m_isam_coltype (qu, 0) == 's' &&
 			m_isam_npk (qu) == 1);
+		/* string pool survives close/open with stable IDs */
+		assert (m_isam_intern (qu, "alice") == alice_id);
+		assert (m_isam_intern (qu, "") == empty_id);
+		assert (strcmp (m_isam_resolve (qu, alice_id), "alice") == 0);
+		assert (strcmp (m_isam_resolve (qu, 0), "") == 0);
+		assert (strcmp (m_isam_resolve (qu, 999999), "") == 0);
 		assert (m_isam_db_close (q) == 0);
 		/* open must not mutate the registry */
 		assert (stat (path, &st) == 0 && st.st_size == meta_size);
@@ -251,6 +264,44 @@ int main (void)
 		snprintf (path, sizeof path, "%s/pos.dat", dir);
 		unlink (path);
 		snprintf (path, sizeof path, "%s/users.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/strings.str", dir);
+		unlink (path);
+		rmdir (dir);
+	}
+
+	/* corrupted string pool -> open fails cleanly (M1.1 Schritt 2) */
+	{
+		char dir[512];
+		char path[600];
+		snprintf (dir, sizeof dir, "/tmp/mlsisam_pool_%ld",
+			  (long)getpid ());
+		snprintf (path, sizeof path, "%s/meta", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/t.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/strings.str", dir);
+		unlink (path);
+		rmdir (dir);
+
+		m_isam_db_t *r = m_isam_db_create (dir);
+		assert (r);
+		m_isam_col_t rc[] = {{"x", 'i'}};
+		assert (m_isam_create_table (r, "t", rc, 1, NULL, 0));
+		assert (m_isam_db_close (r) == 0);
+
+		snprintf (path, sizeof path, "%s/strings.str", dir);
+		FILE *fp = fopen (path, "wb");
+		assert (fp);
+		assert (fwrite ("XXXXXXXX", 1, 8, fp) == 8);
+		fclose (fp);
+		assert (m_isam_db_open (dir) == NULL);
+
+		snprintf (path, sizeof path, "%s/meta", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/t.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/strings.str", dir);
 		unlink (path);
 		rmdir (dir);
 	}

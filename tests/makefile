@@ -51,12 +51,12 @@ test_m_forth.exe${OBJ}: test_m_forth.o${OBJ} ../lib/m_forth.o${OBJ} \
 	../lib/token.o${OBJ}
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-test_m_isam.exe${OBJ}: test_m_isam.o${OBJ} ../lib/m_isam.o${OBJ} \
+test_m_isam.exe${OBJ}: test_m_isam.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/m_strpool.o${OBJ} \
 	../lib/bptree.o${OBJ} ../lib/darray.o${OBJ} ../lib/hashmap.o${OBJ}
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_m_dbwords.exe${OBJ}: test_m_dbwords.o${OBJ} ../lib/m_dbwords.o${OBJ} \
-	../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/bptree.o${OBJ} \
+	../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/m_strpool.o${OBJ} ../lib/bptree.o${OBJ} \
 	../lib/arena.o${OBJ} ../lib/carray.o${OBJ} ../lib/darray.o${OBJ} \
 	../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} \
 	../lib/token.o${OBJ}
@@ -67,7 +67,7 @@ test_m_fproto.exe${OBJ}: test_m_fproto.o${OBJ} ../lib/m_fproto.o${OBJ} \
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_m_engine.exe${OBJ}: test_m_engine.o${OBJ} ../lib/m_engine.o${OBJ} \
-	../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} \
+	../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/m_strpool.o${OBJ} \
 	../lib/m_fproto.o${OBJ} ../lib/bptree.o${OBJ} ../lib/arena.o${OBJ} \
 	../lib/carray.o${OBJ} ../lib/darray.o${OBJ} ../lib/strbuf.o${OBJ} \
 	../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} ../lib/token.o${OBJ}
@@ -76,7 +76,7 @@ test_m_engine.exe${OBJ}: test_m_engine.o${OBJ} ../lib/m_engine.o${OBJ} \
 test_m_fapi.exe${OBJ}: test_m_fapi.o${OBJ} ../lib/m_fapi.o${OBJ} \
 	../lib/m_fclient.o${OBJ} ../lib/m_ftransport.o${OBJ} \
 	../lib/m_engine.o${OBJ} ../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} \
-	../lib/m_isam.o${OBJ} ../lib/m_fproto.o${OBJ} ../lib/bptree.o${OBJ} \
+	../lib/m_isam.o${OBJ} ../lib/m_strpool.o${OBJ} ../lib/m_fproto.o${OBJ} ../lib/bptree.o${OBJ} \
 	../lib/arena.o${OBJ} ../lib/carray.o${OBJ} ../lib/darray.o${OBJ} \
 	../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} \
 	../lib/token.o${OBJ}
@@ -88,7 +88,7 @@ test_m_ftransport.exe${OBJ}: test_m_ftransport.o${OBJ} \
 
 test_m_fserver.exe${OBJ}: test_m_fserver.o${OBJ} ../lib/m_fserver.o${OBJ} \
 	../lib/m_engine.o${OBJ} ../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} \
-	../lib/m_isam.o${OBJ} ../lib/m_fproto.o${OBJ} ../lib/m_ftransport.o${OBJ} \
+	../lib/m_isam.o${OBJ} ../lib/m_strpool.o${OBJ} ../lib/m_fproto.o${OBJ} ../lib/m_ftransport.o${OBJ} \
 	../lib/bptree.o${OBJ} ../lib/arena.o${OBJ} ../lib/carray.o${OBJ} \
 	../lib/darray.o${OBJ} ../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} \
 	../lib/hashmap.o${OBJ} ../lib/token.o${OBJ}
@@ -96,7 +96,7 @@ test_m_fserver.exe${OBJ}: test_m_fserver.o${OBJ} ../lib/m_fserver.o${OBJ} \
 
 test_m_fclient.exe${OBJ}: test_m_fclient.o${OBJ} ../lib/m_fclient.o${OBJ} \
 	../lib/m_fserver.o${OBJ} ../lib/m_engine.o${OBJ} ../lib/m_dbwords.o${OBJ} \
-	../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/m_fproto.o${OBJ} \
+	../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/m_strpool.o${OBJ} ../lib/m_fproto.o${OBJ} \
 	../lib/m_ftransport.o${OBJ} ../lib/bptree.o${OBJ} ../lib/arena.o${OBJ} \
 	../lib/carray.o${OBJ} ../lib/darray.o${OBJ} ../lib/strbuf.o${OBJ} \
 	../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} ../lib/token.o${OBJ}

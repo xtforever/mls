@@ -1,8 +1,7 @@
 #include "m_isam.h"
 
 #include "bptree.h"
-#include "darray.h"
-#include "hashmap.h"
+#include "m_strpool.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,44 +36,26 @@ struct m_isam_db {
 	m_isam_table_t **tables;
 	int ntables;
 	int cap;
-	darray_t *id2str;
-	hashmap_t *str2id;
-	uint32_t strcount;
-	char *dir;     /* database directory (meta + <table>.dat) */
-	int anonymous; /* dir was mkdtemp: remove files + dir on free */
+	m_strpool_t *pool; /* persistent string pool (strings.str) */
+	char *dir;	   /* database directory (meta + <table>.dat) */
+	int anonymous;	   /* dir was mkdtemp: remove files + dir on free */
 };
 
 /* --- per-db string table ----------------------------------------------- */
 
 static uint32_t db_intern (m_isam_db_t *db, const char *s)
 {
-	if (!db || !s)
+	if (!db || !db->pool || !s)
 		return 0;
-	uint32_t id;
-	if (hm_get (db->str2id, s, &id))
-		return id;
-	if (db->strcount == UINT32_MAX)
-		return 0;
-	size_t n = strlen (s) + 1;
-	char *copy = malloc (n);
-	if (!copy)
-		return 0;
-	memcpy (copy, s, n);
-	da_push (db->id2str, copy);
-	if (da_len (db->id2str) != (int)db->strcount + 1 ||
-	    hm_put (db->str2id, copy, db->strcount + 1) != 0) {
-		free (da_pop (db->id2str));
-		free (copy);
-		return 0;
-	}
-	return ++db->strcount;
+	return m_strpool_intern (db->pool, s);
 }
 
 static const char *db_resolve (const m_isam_db_t *db, uint32_t id)
 {
-	if (!db || id == 0 || id > db->strcount)
+	if (!db || !db->pool)
 		return "";
-	return da_get (db->id2str, (int)id - 1);
+	const char *r = m_strpool_resolve (db->pool, id);
+	return r ? r : "";
 }
 
 /* --- primary-key comparator -------------------------------------------- */
@@ -472,21 +453,7 @@ out:
 	return rc;
 }
 
-static m_isam_db_t *db_alloc (void)
-{
-	m_isam_db_t *db = calloc (1, sizeof *db);
-	if (!db)
-		return NULL;
-	db->id2str = da_new ();
-	db->str2id = hm_new ();
-	if (!db->id2str || !db->str2id) {
-		da_free (db->id2str);
-		hm_free (db->str2id);
-		free (db);
-		return NULL;
-	}
-	return db;
-}
+static m_isam_db_t *db_alloc (void) { return calloc (1, sizeof (m_isam_db_t)); }
 
 m_isam_db_t *m_isam_db_new (void)
 {
@@ -501,7 +468,10 @@ m_isam_db_t *m_isam_db_new (void)
 	}
 	db->dir = dup_str (dir);
 	db->anonymous = 1;
-	if (!db->dir || meta_write (db) != 0) {
+	char *sp = db->dir ? db_path (db->dir, "strings", ".str") : NULL;
+	db->pool = sp ? m_strpool_create (sp) : NULL;
+	free (sp);
+	if (!db->dir || !db->pool || meta_write (db) != 0) {
 		m_isam_db_free (db);
 		return NULL;
 	}
@@ -521,7 +491,10 @@ m_isam_db_t *m_isam_db_create (const char *dir)
 	}
 	db->dir = dup_str (dir);
 	db->anonymous = 0;
-	if (!db->dir || meta_write (db) != 0) {
+	char *sp = db->dir ? db_path (db->dir, "strings", ".str") : NULL;
+	db->pool = sp ? m_strpool_create (sp) : NULL;
+	free (sp);
+	if (!db->dir || !db->pool || meta_write (db) != 0) {
 		m_isam_db_free (db);
 		return NULL;
 	}
@@ -537,7 +510,10 @@ m_isam_db_t *m_isam_db_open (const char *dir)
 		return NULL;
 	db->dir = dup_str (dir);
 	db->anonymous = 0;
-	if (!db->dir || meta_load (db) != 0) {
+	char *sp = db->dir ? db_path (db->dir, "strings", ".str") : NULL;
+	db->pool = sp ? m_strpool_open (sp) : NULL;
+	free (sp);
+	if (!db->dir || !db->pool || meta_load (db) != 0) {
 		m_isam_db_free (db);
 		return NULL;
 	}
@@ -577,13 +553,17 @@ void m_isam_db_free (m_isam_db_t *db)
 	for (int i = 0; i < db->ntables; i++)
 		table_free (db->tables[i]);
 	free (db->tables);
-	for (int i = 0; i < da_len (db->id2str); i++)
-		free (da_get (db->id2str, i));
-	da_free (db->id2str);
-	hm_free (db->str2id);
+	if (db->pool)
+		m_strpool_close (db->pool);
 	if (db->dir) {
-		if (db->anonymous)
+		if (db->anonymous) {
+			char *sp = db_path (db->dir, "strings", ".str");
+			if (sp) {
+				unlink (sp);
+				free (sp);
+			}
 			rmdir (db->dir);
+		}
 		free (db->dir);
 	}
 	free (db);
