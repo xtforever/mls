@@ -2,10 +2,10 @@
 
 Status: Entwurf v8 — **Single Source of Truth**. Phase 0–4 (Schritte 0.1–0.20,
 Monolith + Daemon) sind implementiert; Skalierungs-/Multi-Core-Erkenntnisse in
-**§14**. M1.1-Persistenz ist in **§11a.7** ausgearbeitet: **Schritte 1–2**
-(persistente Schema-Registry `meta`/`.dat`-Header + persistenter String-Pool
-`strings.str`) sind umgesetzt; Record-Paging und Laufzeitmessung folgen.
-Schema-DDL +
+**§14**. M1.1-Persistenz ist in **§11a.7** ausgearbeitet: **Schritte 1–3**
+(persistente Schema-Registry `meta`, String-Pool `strings.str`, seitenbasierte
+Records in `<table>.dat`) sind umgesetzt; M1.3-Härtung und Laufzeitmessung
+folgen. Schema-DDL +
 ALTER-per-Copy (FR-42/FR-43, §8.7) sind auf dem In-Memory-Kern umgesetzt.
 Kontext: `../forth-db-c` (Referenz-Forth-VM), `mls` (Handle-Bibliothek).
 
@@ -1105,7 +1105,7 @@ Open-Validierung (M1.3-Vorarbeit). Transaktionen/WAL bleiben Backlog (§4.4).
 |---|---|---|
 | 1 | Dateiformate + Schema-Registry (`meta`) + DB-Lifecycle; `.dat`-Header (**umgesetzt**) | create→2 Tabellen→close→open→Schema+leere `.dat` intakt; korrupt/gekürzt/inkonsistent → sauberer Fehler; open mutiert nichts |
 | 2 | Persistenter String-Pool (`strings.str`) (**umgesetzt**) | intern→close→open→gleiche ID; leerer String; `0`/out-of-range→`""`; korrupter Pool → Fehler |
-| 3 | Seitenbasierte Record-CRUD (Cross-Page-RMW, Tombstone) | insert/fetch/delete/count für RRDS, Composite-PK, String-PK; Tombstone überlebt Flush+Reopen per recno |
+| 3 | Seitenbasierte Record-CRUD (Cross-Page-RMW, Tombstone) (**umgesetzt**) | insert/fetch/delete/count für RRDS, Composite-PK, String-PK; Tombstone überlebt Flush+Reopen per recno |
 | 4 | Reopen + M1.3-Validierung + B⁺-Rebuild | alle PK-Modi nach Reopen korrekt; ungültige Pool-ID/Duplikat-PK/Schema-Mismatch/Trunkierung → Fehler; Reopen verändert nichts |
 | 5 | Stats, Build-Wiring, Demo, Docs | `make run` grün; `DB-STATS` real (Per-Query-Delta); Demo übersteht Neustart; Docs aktuell |
 | 6 | Laufzeitmessung gesamt + pro Wort (C-API) | Self-Test: Wort-count>0/total_ns>0, off-Modus leer; Harness druckt elapsed + Hotlist + `DB-STATS` |

@@ -306,6 +306,108 @@ int main (void)
 		rmdir (dir);
 	}
 
+	/* --- M1.1 Schritt 3: page-backed records survive close/open --- */
+	{
+		char dir[512];
+		char path[600];
+		snprintf (dir, sizeof dir, "/tmp/mlsisam_rec_%ld",
+			  (long)getpid ());
+		snprintf (path, sizeof path, "%s/meta", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/rec.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/rrd.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/users.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/strings.str", dir);
+		unlink (path);
+		rmdir (dir);
+
+		m_isam_db_t *p = m_isam_db_create (dir);
+		assert (p);
+		m_isam_col_t rc[] = {{"k", 'i'}, {"v", 'i'}};
+		const char *rpk[] = {"k"};
+		m_isam_table_t *rt =
+			m_isam_create_table (p, "rec", rc, 2, rpk, 1);
+		assert (rt);
+		m_isam_col_t ac[] = {{"x", 'i'}};
+		m_isam_table_t *at =
+			m_isam_create_table (p, "rrd", ac, 1, NULL, 0);
+		assert (at);
+		m_isam_col_t sc[] = {{"name", 's'}, {"age", 'i'}};
+		const char *spk[] = {"name"};
+		m_isam_table_t *st =
+			m_isam_create_table (p, "users", sc, 2, spk, 1);
+		assert (st);
+
+		assert (m_isam_put (rt, "k", 1) == 0);
+		assert (m_isam_put (rt, "v", 10) == 0);
+		assert (m_isam_insert (rt) == 1);
+		assert (m_isam_put (rt, "k", 2) == 0);
+		assert (m_isam_put (rt, "v", 20) == 0);
+		assert (m_isam_insert (rt) == 2);
+		assert (m_isam_put (rt, "k", 3) == 0);
+		assert (m_isam_put (rt, "v", 30) == 0);
+		assert (m_isam_insert (rt) == 3);
+		assert (m_isam_delete (rt, 2) == 1); /* tombstone survives */
+		assert (m_isam_count (rt) == 2);
+
+		assert (m_isam_put (at, "x", 7) == 0);
+		assert (m_isam_insert (at) == 1);
+
+		uint32_t alice = m_isam_intern (st, "alice");
+		uint32_t bob = m_isam_intern (st, "bob");
+		assert (alice > 0 && bob > 0);
+		assert (m_isam_put (st, "name", alice) == 0);
+		assert (m_isam_put (st, "age", 30) == 0);
+		assert (m_isam_insert (st) == 1);
+		assert (m_isam_put (st, "name", bob) == 0);
+		assert (m_isam_put (st, "age", 40) == 0);
+		assert (m_isam_insert (st) == 2);
+
+		assert (m_isam_db_close (p) == 0);
+
+		m_isam_db_t *q = m_isam_db_open (dir);
+		assert (q);
+		m_isam_table_t *rq = m_isam_table (q, "rec");
+		assert (rq && m_isam_count (rq) == 2 && m_isam_nrecs (rq) == 3);
+		cell_t out[4];
+		assert (!m_isam_fetch (rq, 2, out)); /* tombstone */
+		assert (m_isam_fetch (rq, 1, out) && out[1] == 10);
+		assert (m_isam_fetch (rq, 3, out) && out[1] == 30);
+		int64_t recno = 0;
+		cell_t k3[1] = {3}, k2[1] = {2};
+		assert (m_isam_seek (rq, k3, 1, &recno) && recno == 3);
+		assert (!m_isam_seek (rq, k2, 1,
+				      &recno)); /* deleted key gone */
+
+		m_isam_table_t *aq = m_isam_table (q, "rrd");
+		assert (aq && m_isam_count (aq) == 1);
+		assert (m_isam_fetch (aq, 1, out) && out[0] == 7);
+
+		m_isam_table_t *sq = m_isam_table (q, "users");
+		assert (sq && m_isam_count (sq) == 2);
+		assert (m_isam_intern (sq, "alice") == alice);
+		cell_t sk[1] = {(cell_t)alice}, av;
+		assert (m_isam_seek (sq, sk, 1, &recno));
+		assert (m_isam_get (sq, recno, "age", &av) && av == 30);
+
+		assert (m_isam_db_close (q) == 0);
+
+		snprintf (path, sizeof path, "%s/meta", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/rec.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/rrd.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/users.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/strings.str", dir);
+		unlink (path);
+		rmdir (dir);
+	}
+
 	assert (m_isam_count (NULL) == 0);
 	assert (m_isam_field (NULL, "x") == -1);
 	m_isam_db_free (db);

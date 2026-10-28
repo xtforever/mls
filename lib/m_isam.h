@@ -7,11 +7,11 @@
 
 #define M_ISAM_MAX_COLS 16
 
-/* ISAM table core (Phase 2 + M1.1 schema/string persistence).
-   The schema is persisted in <dir>/meta, strings in <dir>/strings.str
-   (m_strpool) and each table has a <dir>/<table>.dat with a 4096-byte header
-   page. Records and the primary index still live in RAM; paged records are
-   the next M1.1 step. recno is monotonic, never reused; delete = tombstone.
+/* ISAM table core (Phase 2 + M1.1 persistence).
+   Schema in <dir>/meta, strings in <dir>/strings.str (m_strpool), records in
+   <dir>/<table>.dat pages (page 0 = header; recno N -> offset
+   4096 + (N-1)*recsize). The primary index is in RAM and rebuilt from live
+   records on open. recno is monotonic, never reused; delete = tombstone.
    String columns ('s'/'z') store a per-database string pool ID. */
 typedef struct m_isam_db m_isam_db_t;
 typedef struct m_isam_table m_isam_table_t;

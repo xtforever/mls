@@ -2,6 +2,7 @@
 
 #include "bptree.h"
 #include "m_strpool.h"
+#include "pager.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,10 +24,8 @@ struct m_isam_table {
 	int *pk;       /* column indices, prefix of the record */
 	bptree_t *idx; /* NULL for RRDS (npk == 0) */
 
-	cell_t **recs;	/* record cells */
-	uint8_t *flags; /* bit0 = tombstone */
-	int64_t nrecs;	/* allocated records (including tombstones) */
-	int64_t cap;
+	pager_t *data; /* <table>.dat (page 0 = header) */
+	int64_t nrecs; /* allocated slots (including tombstones) */
 	int64_t live;
 	cell_t *buf; /* insert/update buffer */
 	int buf_set;
@@ -111,15 +110,17 @@ static int build_key (const m_isam_table_t *t, const cell_t *cells, cell_t *key)
 	return t->npk;
 }
 
+static int dat_record_rw (m_isam_table_t *t, int64_t recno, const cell_t *cells,
+			  int write, uint8_t flags, cell_t *out,
+			  uint8_t *flags_out);
+static int dat_write_header (m_isam_table_t *t);
+
 static void table_free (m_isam_table_t *t)
 {
 	if (!t)
 		return;
 	bpt_free (t->idx);
-	for (int64_t r = 0; r < t->nrecs; r++)
-		free (t->recs[r]);
-	free (t->recs);
-	free (t->flags);
+	pager_close (t->data);
 	free (t->buf);
 	free (t->pk);
 	for (int c = 0; c < t->ncols; c++)
@@ -132,12 +133,11 @@ static void table_free (m_isam_table_t *t)
 /* Roll a partially copied table back to empty (used by m_isam_copy_table). */
 static void table_clear_records (m_isam_table_t *t)
 {
-	for (int64_t r = 0; r < t->nrecs; r++)
-		free (t->recs[r]);
-	t->nrecs = 0;
+	if (!t)
+		return;
+	for (int64_t r = 1; r <= t->nrecs; r++)
+		dat_record_rw (t, r, NULL, 1, 1, NULL, NULL); /* tombstone */
 	t->live = 0;
-	if (t->flags)
-		memset (t->flags, 0, (size_t)t->cap);
 	if (t->buf) {
 		memset (t->buf, 0, (size_t)t->ncols * sizeof *t->buf);
 		t->buf_set = 0;
@@ -146,6 +146,7 @@ static void table_clear_records (m_isam_table_t *t)
 		bpt_free (t->idx);
 		t->idx = bpt_new ((size_t)t->npk * sizeof (cell_t), pk_cmp, t);
 	}
+	dat_write_header (t);
 }
 
 /* --- on-disk schema registry (meta) + <table>.dat header ---------------- */
@@ -268,37 +269,128 @@ static int dat_create (m_isam_db_t *db, const m_isam_table_t *t)
 	return ok ? 0 : -1;
 }
 
-static int dat_validate (m_isam_db_t *db, const m_isam_table_t *t)
+/* Read one 4096-byte page; pages past EOF read as zero. */
+static int dat_page_get (m_isam_table_t *t, uint32_t page, unsigned char *buf)
 {
-	if (!db || !db->dir)
+	if (!t || !t->data)
+		return -1;
+	if (page >= pager_pages (t->data)) {
+		memset (buf, 0, PAGER_PAGE_SIZE);
+		return 0;
+	}
+	return pager_read (t->data, page, buf) == 0 ? 0 : -1;
+}
+
+/* Read or write one fixed-size record (a record may span two pages). */
+static int dat_record_rw (m_isam_table_t *t, int64_t recno, const cell_t *cells,
+			  int write, uint8_t flags, cell_t *out,
+			  uint8_t *flags_out)
+{
+	if (!t || !t->data || recno < 1)
+		return -1;
+	uint32_t recsize = table_recsize (t);
+	uint64_t off =
+		(uint64_t)PAGER_PAGE_SIZE + (uint64_t)(recno - 1) * recsize;
+	uint32_t p0 = (uint32_t)(off / PAGER_PAGE_SIZE);
+	uint32_t o0 = (uint32_t)(off % PAGER_PAGE_SIZE);
+	uint32_t p1 = (uint32_t)((off + recsize - 1) / PAGER_PAGE_SIZE);
+	unsigned char b0[PAGER_PAGE_SIZE], b1[PAGER_PAGE_SIZE];
+	unsigned char rec[8 + M_ISAM_MAX_COLS * sizeof (cell_t)];
+	int two = p1 != p0;
+	size_t first;
+
+	if (dat_page_get (t, p0, b0) != 0)
+		return -1;
+	if (two && dat_page_get (t, p1, b1) != 0)
+		return -1;
+
+	first = (o0 + recsize <= PAGER_PAGE_SIZE) ? recsize
+						  : PAGER_PAGE_SIZE - o0;
+	if (write) {
+		memset (rec, 0, recsize);
+		rec[0] = flags;
+		if (cells)
+			memcpy (rec + 8, cells,
+				(size_t)t->ncols * sizeof (cell_t));
+		memcpy (b0 + o0, rec, first);
+		if (two)
+			memcpy (b1, rec + first, recsize - first);
+		if (pager_write (t->data, p0, b0) != 0)
+			return -1;
+		if (two && pager_write (t->data, p1, b1) != 0)
+			return -1;
+		return 0;
+	}
+
+	memcpy (rec, b0 + o0, first);
+	if (two)
+		memcpy (rec + first, b1, recsize - first);
+	if (flags_out)
+		*flags_out = rec[0];
+	if (out)
+		memcpy (out, rec + 8, (size_t)t->ncols * sizeof (cell_t));
+	return 0;
+}
+
+static int dat_write_header (m_isam_table_t *t)
+{
+	if (!t || !t->data)
+		return -1;
+	unsigned char page[PAGER_PAGE_SIZE];
+	if (dat_page_get (t, 0, page) != 0)
+		return -1;
+	uint64_t nslots = (uint64_t)t->nrecs, live = (uint64_t)t->live;
+	memcpy (page + 24, &nslots, 8);
+	memcpy (page + 32, &live, 8);
+	return pager_write (t->data, 0, page) == 0 ? 0 : -1;
+}
+
+/* Open <table>.dat, validate the header, load counts and rebuild the index. */
+static int table_open_data (m_isam_db_t *db, m_isam_table_t *t)
+{
+	if (!db || !t)
+		return -1;
+	if (!db->dir)
 		return 0;
 	char *path = db_path (db->dir, t->name, ".dat");
 	if (!path)
 		return -1;
-	FILE *fp = fopen (path, "rb");
+	t->data = pager_open (path);
 	free (path);
-	if (!fp)
+	if (!t->data)
 		return -1;
-	unsigned char page[4096];
-	int ok = fread (page, 1, sizeof page, fp) == sizeof page;
-	if (ok) {
-		uint32_t ver, nc, rs;
-		memcpy (&ver, page + 8, 4);
-		memcpy (&nc, page + 12, 4);
-		memcpy (&rs, page + 16, 4);
-		ok = memcmp (page, DAT_MAGIC, 8) == 0 && ver == DAT_VERSION &&
-		     nc == (uint32_t)t->ncols && rs == table_recsize (t);
-	}
-	if (ok) {
-		if (fseek (fp, 0, SEEK_END) == 0) {
-			long sz = ftell (fp);
-			ok = sz >= 4096 && sz % 4096 == 0;
-		} else {
-			ok = 0;
+
+	unsigned char page[PAGER_PAGE_SIZE];
+	if (pager_read (t->data, 0, page) != 0)
+		return -1;
+	uint32_t ver, nc, rs;
+	uint64_t nslots;
+	memcpy (&ver, page + 8, 4);
+	memcpy (&nc, page + 12, 4);
+	memcpy (&rs, page + 16, 4);
+	memcpy (&nslots, page + 24, 8);
+	if (memcmp (page, DAT_MAGIC, 8) != 0 || ver != DAT_VERSION ||
+	    nc != (uint32_t)t->ncols || rs != table_recsize (t))
+		return -1;
+
+	t->nrecs = (int64_t)nslots;
+	t->live = 0;
+	for (int64_t r = 1; r <= t->nrecs; r++) {
+		cell_t cells[M_ISAM_MAX_COLS];
+		uint8_t fl;
+		if (dat_record_rw (t, r, NULL, 0, 0, cells, &fl) != 0)
+			return -1;
+		if (fl & 1)
+			continue;
+		if (t->idx) {
+			cell_t key[M_ISAM_MAX_COLS];
+			build_key (t, cells, key);
+			if (bpt_insert (t->idx, key, r) != 0)
+				return -1; /* duplicate PK = corrupt */
 		}
+		t->live++;
 	}
-	fclose (fp);
-	return ok ? 0 : -1;
+	return 0;
 }
 
 static void dat_unlink (m_isam_db_t *db, const char *name)
@@ -325,11 +417,8 @@ static m_isam_table_t *table_alloc (m_isam_db_t *db, const char *name,
 	t->cols = calloc ((size_t)ncols, sizeof *t->cols);
 	t->pk = calloc ((size_t)(npk ? npk : 1), sizeof *t->pk);
 	t->buf = calloc ((size_t)ncols, sizeof *t->buf);
-	t->recs = calloc (8, sizeof *t->recs);
-	t->flags = calloc (8, sizeof *t->flags);
-	t->cap = 8;
 	t->npk = npk;
-	if (!t->name || !t->cols || !t->pk || !t->buf || !t->recs || !t->flags)
+	if (!t->name || !t->cols || !t->pk || !t->buf)
 		goto fail;
 	for (int c = 0; c < ncols; c++) {
 		t->cols[c].name = dup_str (cols[c].name);
@@ -363,8 +452,6 @@ fail:
 		free (t->cols);
 		free (t->pk);
 		free (t->buf);
-		free (t->recs);
-		free (t->flags);
 		free (t->name);
 		free (t);
 	}
@@ -415,7 +502,7 @@ static int meta_read_table (FILE *fp, m_isam_db_t *db)
 		goto out;
 	if (!table_alloc (db, name, cols, (int)nc, (int)npk))
 		goto out;
-	if (dat_validate (db, db->tables[db->ntables - 1]) != 0)
+	if (table_open_data (db, db->tables[db->ntables - 1]) != 0)
 		goto out;
 	rc = 0;
 out:
@@ -530,6 +617,11 @@ void m_isam_db_free (m_isam_db_t *db)
 {
 	if (!db)
 		return;
+	for (int i = 0; i < db->ntables; i++)
+		if (db->tables[i]->data) {
+			pager_close (db->tables[i]->data);
+			db->tables[i]->data = NULL;
+		}
 	if (db->dir && db->anonymous) {
 		char *m = db_path (db->dir, "meta", "");
 		char *mt = db_path (db->dir, "meta", ".tmp");
@@ -602,9 +694,14 @@ m_isam_table_t *m_isam_create_table (m_isam_db_t *db, const char *name,
 	m_isam_table_t *t = table_alloc (db, name, cols, ncols, npk);
 	if (!t)
 		return NULL;
-	if (dat_create (db, t) != 0 || meta_write (db) != 0) {
+	if (dat_create (db, t) != 0 || table_open_data (db, t) != 0 ||
+	    meta_write (db) != 0) {
 		/* rollback the just-appended table and its data file */
 		db->ntables--;
+		if (t->data) {
+			pager_close (t->data);
+			t->data = NULL;
+		}
 		dat_unlink (db, name);
 		table_free (t);
 		meta_write (db); /* best effort */
@@ -642,48 +739,41 @@ int m_isam_put (m_isam_table_t *t, const char *col, cell_t value)
 
 int64_t m_isam_insert (m_isam_table_t *t)
 {
-	if (!t)
+	if (!t || !t->data)
 		return 0;
-
-	cell_t *rec = malloc ((size_t)t->ncols * sizeof *rec);
-	if (!rec)
-		return 0;
-
-	if (t->nrecs == t->cap) {
-		int64_t cap = t->cap * 2;
-		cell_t **rp = realloc (t->recs, (size_t)cap * sizeof *rp);
-		if (!rp) {
-			free (rec);
-			return 0;
-		}
-		t->recs = rp;
-		uint8_t *fp = realloc (t->flags, (size_t)cap);
-		if (!fp) {
-			free (rec);
-			return 0;
-		}
-		t->flags = fp;
-		memset (t->flags + t->cap, 0, (size_t)(cap - t->cap));
-		t->cap = cap;
-	}
 
 	if (t->idx) {
 		cell_t key[M_ISAM_MAX_COLS];
+		int64_t dummy;
 		build_key (t, t->buf, key);
-		if (bpt_insert (t->idx, key, (int64_t)(t->nrecs + 1)) != 0) {
-			free (rec); /* duplicate or error */
+		if (bpt_get (t->idx, key, &dummy))
+			return 0; /* duplicate PK */
+	}
+
+	int64_t recno = t->nrecs + 1;
+	if (dat_record_rw (t, recno, t->buf, 1, 0, NULL, NULL) != 0)
+		return 0;
+	t->nrecs = recno;
+	t->live++;
+	if (dat_write_header (t) != 0) {
+		t->nrecs = recno - 1;
+		t->live--;
+		return 0;
+	}
+	if (t->idx) {
+		cell_t key[M_ISAM_MAX_COLS];
+		build_key (t, t->buf, key);
+		if (bpt_insert (t->idx, key, recno) != 0) {
+			/* rollback: tombstone the slot, keep recno monotonic */
+			dat_record_rw (t, recno, t->buf, 1, 1, NULL, NULL);
+			t->live--;
+			dat_write_header (t);
 			return 0;
 		}
 	}
-
-	memcpy (rec, t->buf, (size_t)t->ncols * sizeof *rec);
-	t->recs[t->nrecs] = rec;
-	t->flags[t->nrecs] = 0;
-	t->nrecs++;
-	t->live++;
 	memset (t->buf, 0, (size_t)t->ncols * sizeof *t->buf);
 	t->buf_set = 0;
-	return t->nrecs; /* recno */
+	return recno;
 }
 
 int m_isam_seek (const m_isam_table_t *t, const cell_t *key, int nkey,
@@ -700,12 +790,16 @@ int m_isam_seek (const m_isam_table_t *t, const cell_t *key, int nkey,
 
 int m_isam_fetch (const m_isam_table_t *t, int64_t recno, cell_t *out)
 {
-	if (!t || !out || recno < 1 || recno > t->nrecs)
+	if (!t || !out || !t->data || recno < 1 || recno > t->nrecs)
 		return 0;
-	int64_t i = recno - 1;
-	if (t->flags[i] & 1)
+	cell_t cells[M_ISAM_MAX_COLS];
+	uint8_t fl;
+	if (dat_record_rw ((m_isam_table_t *)t, recno, NULL, 0, 0, cells,
+			   &fl) != 0)
 		return 0;
-	memcpy (out, t->recs[i], (size_t)t->ncols * sizeof *out);
+	if (fl & 1)
+		return 0;
+	memcpy (out, cells, (size_t)t->ncols * sizeof *out);
 	return 1;
 }
 
@@ -726,18 +820,23 @@ int m_isam_get (const m_isam_table_t *t, int64_t recno, const char *col,
 
 int m_isam_delete (m_isam_table_t *t, int64_t recno)
 {
-	if (!t || recno < 1 || recno > t->nrecs)
+	if (!t || !t->data || recno < 1 || recno > t->nrecs)
 		return 0;
-	int64_t i = recno - 1;
-	if (t->flags[i] & 1)
+	cell_t cells[M_ISAM_MAX_COLS];
+	uint8_t fl;
+	if (dat_record_rw (t, recno, NULL, 0, 0, cells, &fl) != 0)
+		return 0;
+	if (fl & 1)
 		return 0;
 	if (t->idx) {
 		cell_t key[M_ISAM_MAX_COLS];
-		build_key (t, t->recs[i], key);
+		build_key (t, cells, key);
 		bpt_del (t->idx, key);
 	}
-	t->flags[i] |= 1;
+	if (dat_record_rw (t, recno, cells, 1, 1, NULL, NULL) != 0)
+		return 0;
 	t->live--;
+	dat_write_header (t);
 	return 1;
 }
 
@@ -783,6 +882,10 @@ int m_isam_drop_table (m_isam_db_t *db, const char *name)
 	for (int i = 0; i < db->ntables; i++) {
 		if (strcmp (db->tables[i]->name, name) == 0) {
 			m_isam_table_t *t = db->tables[i];
+			if (t->data) {
+				pager_close (t->data);
+				t->data = NULL;
+			}
 			dat_unlink (db, t->name);
 			table_free (t);
 			for (int j = i; j < db->ntables - 1; j++)
@@ -832,7 +935,7 @@ int m_isam_copy_table (m_isam_db_t *db, const char *src, const char *dst)
 	m_isam_table_t *d = db_find_table (db, dst);
 	if (!s || !d || s == d)
 		return 0;
-	if (d->nrecs != 0 || d->live != 0)
+	if (d->live != 0)
 		return 0; /* destination must be empty */
 
 	/* Pre-validate type compatibility for columns present on both sides. */
@@ -842,12 +945,16 @@ int m_isam_copy_table (m_isam_db_t *db, const char *src, const char *dst)
 			return 0;
 	}
 
-	for (int64_t r = 0; r < s->nrecs; r++) {
-		if (s->flags[r] & 1)
+	for (int64_t r = 1; r <= s->nrecs; r++) {
+		cell_t scells[M_ISAM_MAX_COLS];
+		uint8_t fl;
+		if (dat_record_rw (s, r, NULL, 0, 0, scells, &fl) != 0)
+			goto fail;
+		if (fl & 1)
 			continue;
 		for (int c = 0; c < d->ncols; c++) {
 			int sc = m_isam_field (s, d->cols[c].name);
-			cell_t v = sc >= 0 ? s->recs[r][sc] : 0;
+			cell_t v = sc >= 0 ? scells[sc] : 0;
 			if (m_isam_put (d, d->cols[c].name, v) != 0)
 				goto fail;
 		}
