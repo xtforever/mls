@@ -7,9 +7,11 @@
 
 #define M_ISAM_MAX_COLS 16
 
-/* In-memory ISAM table core (Phase 2).
-   ponytail: records and the primary index live in RAM; persistence via pager
-   is the M1.1 upgrade. recno is monotonic, never reused; delete = tombstone.
+/* ISAM table core (Phase 2 + M1.1 schema persistence).
+   The schema is persisted in <dir>/meta and <dir>/<table>.dat (4096-byte
+   header page). Records and the primary index still live in RAM; paged
+   records + the persistent string pool are the next M1.1 steps.
+   recno is monotonic, never reused; delete = tombstone.
    String columns ('s'/'z') store a per-database string ID. */
 typedef struct m_isam_db m_isam_db_t;
 typedef struct m_isam_table m_isam_table_t;
@@ -19,8 +21,11 @@ typedef struct {
 	char type; /* 'i','d','s','z' */
 } m_isam_col_t;
 
-m_isam_db_t *m_isam_db_new (void);
-void m_isam_db_free (m_isam_db_t *db);
+m_isam_db_t *m_isam_db_new (void);		 /* anonymous temp-dir DB */
+m_isam_db_t *m_isam_db_create (const char *dir); /* mkdir, empty schema */
+m_isam_db_t *m_isam_db_open (const char *dir);	 /* validate + reload */
+int m_isam_db_close (m_isam_db_t *db);		 /* flush + free */
+void m_isam_db_free (m_isam_db_t *db);		 /* NULL-safe close */
 
 m_isam_table_t *m_isam_create_table (m_isam_db_t *db, const char *name,
 				     const m_isam_col_t *cols, int ncols,

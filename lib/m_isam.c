@@ -4,8 +4,11 @@
 #include "darray.h"
 #include "hashmap.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 typedef struct {
 	char *name;
@@ -37,6 +40,8 @@ struct m_isam_db {
 	darray_t *id2str;
 	hashmap_t *str2id;
 	uint32_t strcount;
+	char *dir;     /* database directory (meta + <table>.dat) */
+	int anonymous; /* dir was mkdtemp: remove files + dir on free */
 };
 
 /* --- per-db string table ----------------------------------------------- */
@@ -162,46 +167,174 @@ static void table_clear_records (m_isam_table_t *t)
 	}
 }
 
-m_isam_db_t *m_isam_db_new (void)
+/* --- on-disk schema registry (meta) + <table>.dat header ---------------- */
+
+#define META_MAGIC "MLSDB1\0\0" /* exactly 8 bytes on disk */
+#define META_VERSION 1u
+#define DAT_MAGIC "MLSISAM1" /* exactly 8 bytes on disk */
+#define DAT_VERSION 1u
+#define META_MAX_NAME 120u
+#define META_MAX_TABLES 100000u
+
+static char *db_path (const char *dir, const char *name, const char *ext)
 {
-	m_isam_db_t *db = calloc (1, sizeof *db);
-	if (!db)
+	if (!dir || !name || !ext)
 		return NULL;
-	db->id2str = da_new ();
-	db->str2id = hm_new ();
-	if (!db->id2str || !db->str2id) {
-		da_free (db->id2str);
-		hm_free (db->str2id);
-		free (db);
-		return NULL;
+	size_t n = strlen (dir) + 1 + strlen (name) + strlen (ext) + 1;
+	char *p = malloc (n);
+	if (p)
+		snprintf (p, n, "%s/%s%s", dir, name, ext);
+	return p;
+}
+
+/* Table names become path components: reject anything that can escape. */
+static int valid_table_name (const char *name)
+{
+	if (!name || !*name || strlen (name) > META_MAX_NAME)
+		return 0;
+	if (strcmp (name, ".") == 0 || strcmp (name, "..") == 0)
+		return 0;
+	if (strchr (name, '/') || strchr (name, '\\'))
+		return 0;
+	return 1;
+}
+
+static int write_u32 (FILE *fp, uint32_t v)
+{
+	return fwrite (&v, sizeof v, 1, fp) == 1 ? 0 : -1;
+}
+
+static int read_u32 (FILE *fp, uint32_t *v)
+{
+	return fread (v, sizeof *v, 1, fp) == 1 ? 0 : -1;
+}
+
+static uint32_t table_recsize (const m_isam_table_t *t)
+{
+	return (uint32_t)(8 + (uint64_t)t->ncols * sizeof (cell_t));
+}
+
+static int meta_write (m_isam_db_t *db)
+{
+	if (!db || !db->dir)
+		return 0;
+	char *tmp = db_path (db->dir, "meta", ".tmp");
+	char *fin = db_path (db->dir, "meta", "");
+	if (!tmp || !fin) {
+		free (tmp);
+		free (fin);
+		return -1;
 	}
-	return db;
+	FILE *fp = fopen (tmp, "wb");
+	int ok = fp != NULL;
+	if (ok)
+		ok = fwrite (META_MAGIC, 1, 8, fp) == 8 &&
+		     write_u32 (fp, META_VERSION) == 0 &&
+		     write_u32 (fp, (uint32_t)db->ntables) == 0;
+	for (int i = 0; ok && i < db->ntables; i++) {
+		m_isam_table_t *t = db->tables[i];
+		uint32_t nl = (uint32_t)strlen (t->name);
+		ok = write_u32 (fp, nl) == 0 &&
+		     fwrite (t->name, 1, nl, fp) == nl &&
+		     write_u32 (fp, (uint32_t)t->ncols) == 0;
+		for (int c = 0; ok && c < t->ncols; c++) {
+			uint32_t cl = (uint32_t)strlen (t->cols[c].name);
+			uint8_t ty = (uint8_t)t->cols[c].type;
+			ok = write_u32 (fp, cl) == 0 &&
+			     fwrite (t->cols[c].name, 1, cl, fp) == cl &&
+			     fwrite (&ty, 1, 1, fp) == 1;
+		}
+		if (ok)
+			ok = write_u32 (fp, (uint32_t)t->npk) == 0;
+	}
+	if (fp) {
+		if (ok)
+			ok = fflush (fp) == 0;
+		if (fclose (fp) != 0)
+			ok = 0;
+	}
+	if (ok && rename (tmp, fin) != 0)
+		ok = 0;
+	if (!ok)
+		unlink (tmp);
+	free (tmp);
+	free (fin);
+	return ok ? 0 : -1;
 }
 
-void m_isam_db_free (m_isam_db_t *db)
+static int dat_create (m_isam_db_t *db, const m_isam_table_t *t)
 {
-	if (!db)
+	if (!db || !db->dir)
+		return 0;
+	char *path = db_path (db->dir, t->name, ".dat");
+	if (!path)
+		return -1;
+	FILE *fp = fopen (path, "wb");
+	free (path);
+	if (!fp)
+		return -1;
+	unsigned char page[4096];
+	memset (page, 0, sizeof page);
+	memcpy (page, DAT_MAGIC, 8);
+	uint32_t ver = DAT_VERSION, nc = (uint32_t)t->ncols,
+		 rs = table_recsize (t);
+	memcpy (page + 8, &ver, 4);
+	memcpy (page + 12, &nc, 4);
+	memcpy (page + 16, &rs, 4);
+	int ok = fwrite (page, 1, sizeof page, fp) == sizeof page;
+	if (fclose (fp) != 0)
+		ok = 0;
+	return ok ? 0 : -1;
+}
+
+static int dat_validate (m_isam_db_t *db, const m_isam_table_t *t)
+{
+	if (!db || !db->dir)
+		return 0;
+	char *path = db_path (db->dir, t->name, ".dat");
+	if (!path)
+		return -1;
+	FILE *fp = fopen (path, "rb");
+	free (path);
+	if (!fp)
+		return -1;
+	unsigned char page[4096];
+	int ok = fread (page, 1, sizeof page, fp) == sizeof page;
+	if (ok) {
+		uint32_t ver, nc, rs;
+		memcpy (&ver, page + 8, 4);
+		memcpy (&nc, page + 12, 4);
+		memcpy (&rs, page + 16, 4);
+		ok = memcmp (page, DAT_MAGIC, 8) == 0 && ver == DAT_VERSION &&
+		     nc == (uint32_t)t->ncols && rs == table_recsize (t);
+	}
+	if (ok) {
+		if (fseek (fp, 0, SEEK_END) == 0) {
+			long sz = ftell (fp);
+			ok = sz >= 4096 && sz % 4096 == 0;
+		} else {
+			ok = 0;
+		}
+	}
+	fclose (fp);
+	return ok ? 0 : -1;
+}
+
+static void dat_unlink (m_isam_db_t *db, const char *name)
+{
+	if (!db || !db->dir)
 		return;
-	for (int i = 0; i < db->ntables; i++)
-		table_free (db->tables[i]);
-	free (db->tables);
-	for (int i = 0; i < da_len (db->id2str); i++)
-		free (da_get (db->id2str, i));
-	da_free (db->id2str);
-	hm_free (db->str2id);
-	free (db);
+	char *p = db_path (db->dir, name, ".dat");
+	if (p) {
+		unlink (p);
+		free (p);
+	}
 }
 
-m_isam_table_t *m_isam_create_table (m_isam_db_t *db, const char *name,
-				     const m_isam_col_t *cols, int ncols,
-				     const char *const *pk_names, int npk)
+static m_isam_table_t *table_alloc (m_isam_db_t *db, const char *name,
+				    const m_isam_col_t *cols, int ncols,
+				    int npk)
 {
-	if (!db || !name || !cols || ncols <= 0 || ncols > M_ISAM_MAX_COLS ||
-	    npk < 0 || npk > ncols || (npk > 0 && !pk_names))
-		return NULL;
-	if (db_find_table (db, name))
-		return NULL;
-
 	m_isam_table_t *t = calloc (1, sizeof *t);
 	if (!t)
 		return NULL;
@@ -217,36 +350,19 @@ m_isam_table_t *m_isam_create_table (m_isam_db_t *db, const char *name,
 	t->npk = npk;
 	if (!t->name || !t->cols || !t->pk || !t->buf || !t->recs || !t->flags)
 		goto fail;
-
 	for (int c = 0; c < ncols; c++) {
-		if (!cols[c].name ||
-		    (cols[c].type != 'i' && cols[c].type != 'd' &&
-		     cols[c].type != 's' && cols[c].type != 'z'))
-			goto fail;
 		t->cols[c].name = dup_str (cols[c].name);
 		t->cols[c].type = cols[c].type;
 		if (!t->cols[c].name)
 			goto fail;
 	}
-
-	for (int i = 0; i < npk; i++) {
-		int c = -1;
-		for (int j = 0; j < ncols; j++)
-			if (strcmp (cols[j].name, pk_names[i]) == 0) {
-				c = j;
-				break;
-			}
-		if (c < 0 || c != i) /* PK is a column prefix */
-			goto fail;
-		t->pk[i] = c;
-	}
-
+	for (int i = 0; i < npk; i++)
+		t->pk[i] = i; /* PK is a column prefix */
 	if (npk > 0) {
 		t->idx = bpt_new ((size_t)npk * sizeof (cell_t), pk_cmp, t);
 		if (!t->idx)
 			goto fail;
 	}
-
 	if (db->ntables == db->cap) {
 		int cap = db->cap ? db->cap * 2 : 8;
 		m_isam_table_t **p =
@@ -258,7 +374,6 @@ m_isam_table_t *m_isam_create_table (m_isam_db_t *db, const char *name,
 	}
 	db->tables[db->ntables++] = t;
 	return t;
-
 fail:
 	if (t) {
 		bpt_free (t->idx);
@@ -273,6 +388,249 @@ fail:
 		free (t);
 	}
 	return NULL;
+}
+
+static int meta_read_table (FILE *fp, m_isam_db_t *db)
+{
+	uint32_t nl;
+	char name[META_MAX_NAME + 1];
+	char *colnames[M_ISAM_MAX_COLS] = {0};
+	m_isam_col_t cols[M_ISAM_MAX_COLS];
+	int nread = 0;
+	int rc = -1;
+
+	if (read_u32 (fp, &nl) != 0 || nl == 0 || nl > META_MAX_NAME)
+		return -1;
+	if (fread (name, 1, nl, fp) != nl)
+		return -1;
+	name[nl] = '\0';
+	if (!valid_table_name (name) || db_find_table (db, name))
+		return -1;
+
+	uint32_t nc;
+	if (read_u32 (fp, &nc) != 0 || nc < 1 || nc > M_ISAM_MAX_COLS)
+		return -1;
+	for (uint32_t c = 0; c < nc; c++) {
+		uint32_t cl;
+		uint8_t ty;
+		if (read_u32 (fp, &cl) != 0 || cl == 0 || cl > META_MAX_NAME)
+			goto out;
+		char *cn = malloc ((size_t)cl + 1);
+		if (!cn)
+			goto out;
+		colnames[c] = cn;
+		nread = (int)c + 1;
+		if (fread (cn, 1, cl, fp) != cl)
+			goto out;
+		cn[cl] = '\0';
+		if (!*cn || fread (&ty, 1, 1, fp) != 1 ||
+		    (ty != 'i' && ty != 'd' && ty != 's' && ty != 'z'))
+			goto out;
+		cols[c].name = cn;
+		cols[c].type = (char)ty;
+	}
+	uint32_t npk;
+	if (read_u32 (fp, &npk) != 0 || npk > nc)
+		goto out;
+	if (!table_alloc (db, name, cols, (int)nc, (int)npk))
+		goto out;
+	if (dat_validate (db, db->tables[db->ntables - 1]) != 0)
+		goto out;
+	rc = 0;
+out:
+	for (int i = 0; i < nread; i++)
+		free (colnames[i]);
+	return rc;
+}
+
+static int meta_load (m_isam_db_t *db)
+{
+	if (!db || !db->dir)
+		return -1;
+	char *path = db_path (db->dir, "meta", "");
+	if (!path)
+		return -1;
+	FILE *fp = fopen (path, "rb");
+	free (path);
+	if (!fp)
+		return -1;
+	char magic[8];
+	uint32_t ver, nt;
+	int rc = -1;
+	if (fread (magic, 1, 8, fp) != 8 || memcmp (magic, META_MAGIC, 8) != 0)
+		goto out;
+	if (read_u32 (fp, &ver) != 0 || ver != META_VERSION)
+		goto out;
+	if (read_u32 (fp, &nt) != 0 || nt > META_MAX_TABLES)
+		goto out;
+	for (uint32_t i = 0; i < nt; i++)
+		if (meta_read_table (fp, db) != 0)
+			goto out;
+	rc = 0;
+out:
+	fclose (fp);
+	return rc;
+}
+
+static m_isam_db_t *db_alloc (void)
+{
+	m_isam_db_t *db = calloc (1, sizeof *db);
+	if (!db)
+		return NULL;
+	db->id2str = da_new ();
+	db->str2id = hm_new ();
+	if (!db->id2str || !db->str2id) {
+		da_free (db->id2str);
+		hm_free (db->str2id);
+		free (db);
+		return NULL;
+	}
+	return db;
+}
+
+m_isam_db_t *m_isam_db_new (void)
+{
+	char tmpl[] = "/tmp/mlsisamXXXXXX";
+	char *dir = mkdtemp (tmpl);
+	if (!dir)
+		return NULL;
+	m_isam_db_t *db = db_alloc ();
+	if (!db) {
+		rmdir (dir);
+		return NULL;
+	}
+	db->dir = dup_str (dir);
+	db->anonymous = 1;
+	if (!db->dir || meta_write (db) != 0) {
+		m_isam_db_free (db);
+		return NULL;
+	}
+	return db;
+}
+
+m_isam_db_t *m_isam_db_create (const char *dir)
+{
+	if (!dir || !*dir)
+		return NULL;
+	if (mkdir (dir, 0755) != 0)
+		return NULL; /* exists or no permission: never clobber */
+	m_isam_db_t *db = db_alloc ();
+	if (!db) {
+		rmdir (dir);
+		return NULL;
+	}
+	db->dir = dup_str (dir);
+	db->anonymous = 0;
+	if (!db->dir || meta_write (db) != 0) {
+		m_isam_db_free (db);
+		return NULL;
+	}
+	return db;
+}
+
+m_isam_db_t *m_isam_db_open (const char *dir)
+{
+	if (!dir || !*dir)
+		return NULL;
+	m_isam_db_t *db = db_alloc ();
+	if (!db)
+		return NULL;
+	db->dir = dup_str (dir);
+	db->anonymous = 0;
+	if (!db->dir || meta_load (db) != 0) {
+		m_isam_db_free (db);
+		return NULL;
+	}
+	return db;
+}
+
+int m_isam_db_close (m_isam_db_t *db)
+{
+	m_isam_db_free (db);
+	return 0;
+}
+
+void m_isam_db_free (m_isam_db_t *db)
+{
+	if (!db)
+		return;
+	if (db->dir && db->anonymous) {
+		char *m = db_path (db->dir, "meta", "");
+		char *mt = db_path (db->dir, "meta", ".tmp");
+		if (m) {
+			unlink (m);
+			free (m);
+		}
+		if (mt) {
+			unlink (mt);
+			free (mt);
+		}
+		for (int i = 0; i < db->ntables; i++) {
+			char *p =
+				db_path (db->dir, db->tables[i]->name, ".dat");
+			if (p) {
+				unlink (p);
+				free (p);
+			}
+		}
+	}
+	for (int i = 0; i < db->ntables; i++)
+		table_free (db->tables[i]);
+	free (db->tables);
+	for (int i = 0; i < da_len (db->id2str); i++)
+		free (da_get (db->id2str, i));
+	da_free (db->id2str);
+	hm_free (db->str2id);
+	if (db->dir) {
+		if (db->anonymous)
+			rmdir (db->dir);
+		free (db->dir);
+	}
+	free (db);
+}
+
+m_isam_table_t *m_isam_create_table (m_isam_db_t *db, const char *name,
+				     const m_isam_col_t *cols, int ncols,
+				     const char *const *pk_names, int npk)
+{
+	if (!db || !name || !cols || ncols <= 0 || ncols > M_ISAM_MAX_COLS ||
+	    npk < 0 || npk > ncols || (npk > 0 && !pk_names))
+		return NULL;
+	if (!valid_table_name (name) || db_find_table (db, name))
+		return NULL;
+
+	for (int c = 0; c < ncols; c++) {
+		if (!cols[c].name || !*cols[c].name ||
+		    (cols[c].type != 'i' && cols[c].type != 'd' &&
+		     cols[c].type != 's' && cols[c].type != 'z'))
+			return NULL;
+		for (int j = 0; j < c; j++)
+			if (strcmp (cols[j].name, cols[c].name) == 0)
+				return NULL;
+	}
+	for (int i = 0; i < npk; i++) {
+		int c = -1;
+		for (int j = 0; j < ncols; j++)
+			if (strcmp (cols[j].name, pk_names[i]) == 0) {
+				c = j;
+				break;
+			}
+		if (c < 0 || c != i) /* PK is a column prefix */
+			return NULL;
+	}
+
+	m_isam_table_t *t = table_alloc (db, name, cols, ncols, npk);
+	if (!t)
+		return NULL;
+	if (dat_create (db, t) != 0 || meta_write (db) != 0) {
+		/* rollback the just-appended table and its data file */
+		db->ntables--;
+		dat_unlink (db, name);
+		table_free (t);
+		meta_write (db); /* best effort */
+		return NULL;
+	}
+	return t;
 }
 
 m_isam_table_t *m_isam_table (m_isam_db_t *db, const char *name)
@@ -444,10 +802,13 @@ int m_isam_drop_table (m_isam_db_t *db, const char *name)
 		return 0;
 	for (int i = 0; i < db->ntables; i++) {
 		if (strcmp (db->tables[i]->name, name) == 0) {
-			table_free (db->tables[i]);
+			m_isam_table_t *t = db->tables[i];
+			dat_unlink (db, t->name);
+			table_free (t);
 			for (int j = i; j < db->ntables - 1; j++)
 				db->tables[j] = db->tables[j + 1];
 			db->ntables--;
+			meta_write (db);
 			return 1;
 		}
 	}
@@ -456,7 +817,7 @@ int m_isam_drop_table (m_isam_db_t *db, const char *name)
 
 int m_isam_rename_table (m_isam_db_t *db, const char *name, const char *newname)
 {
-	if (!db || !name || !newname || !*newname)
+	if (!db || !name || !newname || !valid_table_name (newname))
 		return 0;
 	if (db_find_table (db, newname))
 		return 0;
@@ -466,8 +827,20 @@ int m_isam_rename_table (m_isam_db_t *db, const char *name, const char *newname)
 	char *copy = dup_str (newname);
 	if (!copy)
 		return 0;
+	if (db->dir) {
+		char *oldp = db_path (db->dir, t->name, ".dat");
+		char *newp = db_path (db->dir, newname, ".dat");
+		int ok = oldp && newp && rename (oldp, newp) == 0;
+		free (oldp);
+		free (newp);
+		if (!ok) {
+			free (copy);
+			return 0;
+		}
+	}
 	free (t->name);
 	t->name = copy;
+	meta_write (db);
 	return 1;
 }
 

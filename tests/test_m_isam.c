@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 int main (void)
 {
@@ -170,6 +172,88 @@ int main (void)
 	assert (m_isam_table (db, "copy_extra") == NULL);
 	assert (m_isam_drop_table (db, "copy_extra") == 0);
 	assert (m_isam_drop_table (NULL, "x") == 0);
+
+	/* --- M1.1 Schritt 1: persistent schema registry + .dat header --- */
+	{
+		char dir[512];
+		char stale[600];
+		snprintf (dir, sizeof dir, "/tmp/mlsisam_persist_%ld",
+			  (long)getpid ());
+		/* clear stale leftovers from a crashed run */
+		snprintf (stale, sizeof stale, "%s/meta", dir);
+		unlink (stale);
+		snprintf (stale, sizeof stale, "%s/pos.dat", dir);
+		unlink (stale);
+		snprintf (stale, sizeof stale, "%s/users.dat", dir);
+		unlink (stale);
+		rmdir (dir);
+
+		assert (m_isam_db_open (dir) == NULL); /* missing directory */
+		m_isam_db_t *p = m_isam_db_create (dir);
+		assert (p);
+		assert (m_isam_db_create (dir) ==
+			NULL); /* exists: no clobber */
+
+		m_isam_col_t pc[] = {{"a", 'i'}, {"b", 'i'}, {"val", 'i'}};
+		const char *ppk[] = {"a", "b"};
+		assert (m_isam_create_table (p, "pos", pc, 3, ppk, 2));
+		m_isam_col_t uc[] = {{"name", 's'}, {"age", 'i'}};
+		const char *upk[] = {"name"};
+		assert (m_isam_create_table (p, "users", uc, 2, upk, 1));
+		assert (m_isam_create_table (p, "pos", pc, 3, ppk, 2) == NULL);
+		assert (m_isam_create_table (p, "", pc, 3, ppk, 2) == NULL);
+		assert (m_isam_create_table (p, "..", pc, 3, ppk, 2) == NULL);
+		assert (m_isam_create_table (p, "a/b", pc, 3, ppk, 2) == NULL);
+		assert (m_isam_db_close (p) == 0);
+
+		char path[600];
+		struct stat st;
+		snprintf (path, sizeof path, "%s/pos.dat", dir);
+		assert (stat (path, &st) == 0 && st.st_size == 4096);
+		snprintf (path, sizeof path, "%s/meta", dir);
+		assert (stat (path, &st) == 0 && st.st_size > 0);
+		off_t meta_size = st.st_size;
+
+		m_isam_db_t *q = m_isam_db_open (dir);
+		assert (q);
+		assert (m_isam_ntables (q) == 2);
+		m_isam_table_t *qp = m_isam_table (q, "pos");
+		assert (qp && m_isam_ncols (qp) == 3 && m_isam_npk (qp) == 2);
+		assert (strcmp (m_isam_colname (qp, 0), "a") == 0);
+		assert (m_isam_coltype (qp, 0) == 'i');
+		assert (strcmp (m_isam_colname (qp, 2), "val") == 0);
+		m_isam_table_t *qu = m_isam_table (q, "users");
+		assert (qu && m_isam_coltype (qu, 0) == 's' &&
+			m_isam_npk (qu) == 1);
+		assert (m_isam_db_close (q) == 0);
+		/* open must not mutate the registry */
+		assert (stat (path, &st) == 0 && st.st_size == meta_size);
+
+		/* truncated .dat -> clean failure */
+		snprintf (path, sizeof path, "%s/pos.dat", dir);
+		FILE *fp = fopen (path, "wb");
+		assert (fp);
+		assert (fwrite ("short", 1, 5, fp) == 5);
+		fclose (fp);
+		assert (m_isam_db_open (dir) == NULL);
+
+		/* corrupt meta magic -> clean failure */
+		snprintf (path, sizeof path, "%s/meta", dir);
+		fp = fopen (path, "wb");
+		assert (fp);
+		assert (fwrite ("XXXXXXXX", 1, 8, fp) == 8);
+		fclose (fp);
+		assert (m_isam_db_open (dir) == NULL);
+
+		/* failed opens leave files (non-anonymous): clean them up */
+		snprintf (path, sizeof path, "%s/meta", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/pos.dat", dir);
+		unlink (path);
+		snprintf (path, sizeof path, "%s/users.dat", dir);
+		unlink (path);
+		rmdir (dir);
+	}
 
 	assert (m_isam_count (NULL) == 0);
 	assert (m_isam_field (NULL, "x") == -1);

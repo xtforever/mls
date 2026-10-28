@@ -2,9 +2,10 @@
 
 Status: Entwurf v8 — **Single Source of Truth**. Phase 0–4 (Schritte 0.1–0.20,
 Monolith + Daemon) sind implementiert; Skalierungs-/Multi-Core-Erkenntnisse in
-**§14**. M1.1-Persistenz (`m_isam` v2) + Laufzeitmessung sind in **§11a.7**
-ausgearbeitet (noch nicht implementiert). Schema-DDL + ALTER-per-Copy
-(FR-42/FR-43, §8.7) sind auf dem In-Memory-Kern umgesetzt.
+**§14**. M1.1-Persistenz ist in **§11a.7** ausgearbeitet: **Schritt 1**
+(persistente Schema-Registry `meta` + `.dat`-Header + create/open/close) ist
+umgesetzt; Record-Paging, String-Pool und Laufzeitmessung folgen. Schema-DDL +
+ALTER-per-Copy (FR-42/FR-43, §8.7) sind auf dem In-Memory-Kern umgesetzt.
 Kontext: `../forth-db-c` (Referenz-Forth-VM), `mls` (Handle-Bibliothek).
 
 > Dieses Dokument ist die alleinige Quelle der Wahrheit für Anforderungen,
@@ -1101,7 +1102,7 @@ Open-Validierung (M1.3-Vorarbeit). Transaktionen/WAL bleiben Backlog (§4.4).
 **Schritte (je Modul + assert-Selbsttest; grün ⇒ eingefroren)**
 | # | Schritt | Done |
 |---|---|---|
-| 1 | Dateiformate + Schema-Registry (`meta`) + DB-Lifecycle; `.dat`-Header | create→2 Tabellen→close→open→Schema+leere `.dat` intakt; korrupt/gekürzt/inkonsistent → sauberer Fehler; open mutiert nichts |
+| 1 | Dateiformate + Schema-Registry (`meta`) + DB-Lifecycle; `.dat`-Header (**umgesetzt**) | create→2 Tabellen→close→open→Schema+leere `.dat` intakt; korrupt/gekürzt/inkonsistent → sauberer Fehler; open mutiert nichts |
 | 2 | Persistenter String-Pool (`strings.str`) | intern→close→open→gleiche ID; leerer String; `0`/out-of-range→`""`; korrupter Pool → Fehler |
 | 3 | Seitenbasierte Record-CRUD (Cross-Page-RMW, Tombstone) | insert/fetch/delete/count für RRDS, Composite-PK, String-PK; Tombstone überlebt Flush+Reopen per recno |
 | 4 | Reopen + M1.3-Validierung + B⁺-Rebuild | alle PK-Modi nach Reopen korrekt; ungültige Pool-ID/Duplikat-PK/Schema-Mismatch/Trunkierung → Fehler; Reopen verändert nichts |
