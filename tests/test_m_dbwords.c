@@ -81,6 +81,35 @@ int main (void)
 	m_forth_output_clear (f);
 	assert (m_forth_eval (f, "Z\" nope\" 1 DB-PUT") != 0);
 
+	/* Schema DDL + ALTER-per-copy via Forth words. */
+	run (f,
+	     "Z\" t_ddl\" DB-CREATE-TABLE DROP "
+	     "Z\" id\" Z\" i\" DB-COL "
+	     "Z\" txt\" Z\" s\" DB-COL "
+	     "Z\" id\" DB-PRIMARY "
+	     "DB-TABLE-CREATE DROP "
+	     "Z\" id\" 1 DB-PUT Z\" txt\" S\" one\" DB-PUT DB-INSERT DROP "
+	     "Z\" t_ddl\" DB-COUNT .",
+	     "1 ");
+
+	run (f,
+	     "Z\" t_copy\" DB-CREATE-TABLE DROP "
+	     "Z\" id\" Z\" i\" DB-COL "
+	     "Z\" txt\" Z\" s\" DB-COL "
+	     "Z\" extra\" Z\" i\" DB-COL "
+	     "Z\" id\" DB-PRIMARY "
+	     "DB-TABLE-CREATE DROP "
+	     "Z\" t_ddl\" Z\" t_copy\" DB-COPY-TABLE .",
+	     "-1 ");
+	run (f, "Z\" t_copy\" DB-COUNT .", "1 ");
+	run (f, "Z\" t_ddl\" DB-DROP-TABLE .", "-1 ");
+	run (f, "Z\" t_ddl\" DB-TABLE .", "0 ");
+	run (f, "Z\" t_copy\" Z\" t_ddl\" DB-RENAME-TABLE .", "-1 ");
+	run (f, "Z\" t_ddl\" DB-COUNT .", "1 ");
+	run (f, "Z\" t_ddl\" DB-COLS .", "3 ");
+	run (f, "DB-TABLES 0 > .", "-1 ");
+	run (f, "0 DB-TABLE-NAME 0 > .", "-1 ");
+
 	/* DB-STATS placeholder. */
 	run (f, "DB-STATS . .", "0 0 ");
 

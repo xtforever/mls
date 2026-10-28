@@ -10,6 +10,18 @@ struct m_dbwords {
 	int64_t current_recno;
 	int have_current;
 	cell_t current[M_ISAM_MAX_COLS];
+	/* pending schema definition for the DDL words */
+	struct {
+		int active;
+		char *name;
+		int ncols;
+		struct {
+			char *name;
+			char type;
+		} cols[M_ISAM_MAX_COLS];
+		int npk;
+		char *pk[M_ISAM_MAX_COLS];
+	} def;
 };
 
 #define DBW(f) ((m_dbwords_t *)m_forth_user (f))
@@ -29,6 +41,30 @@ static const char *pop_name (m_forth_t *f)
 	if (!s)
 		m_forth_raise (f, -1, "invalid string id");
 	return s;
+}
+
+static char *copy_str (const char *s)
+{
+	size_t n = strlen (s) + 1;
+	char *p = malloc (n);
+	if (p)
+		memcpy (p, s, n);
+	return p;
+}
+
+static void def_clear (m_dbwords_t *dw)
+{
+	if (!dw)
+		return;
+	free (dw->def.name);
+	dw->def.name = NULL;
+	for (int c = 0; c < dw->def.ncols; c++)
+		free (dw->def.cols[c].name);
+	for (int i = 0; i < dw->def.npk; i++)
+		free (dw->def.pk[i]);
+	dw->def.active = 0;
+	dw->def.ncols = 0;
+	dw->def.npk = 0;
 }
 
 static void p_db_open (m_forth_t *f)
@@ -249,6 +285,231 @@ static void p_db_find (m_forth_t *f)
 	m_forth_push (f, 0);
 }
 
+/* --- schema DDL + ALTER-per-copy --------------------------------------- */
+
+static void p_db_create_table (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw) {
+		m_forth_raise (f, -1, "DB words not bound");
+		return;
+	}
+	const char *name = pop_name (f);
+	if (!name || !*name) {
+		m_forth_raise (f, -1, "table name required");
+		return;
+	}
+	if (m_isam_table (dw->db, name)) {
+		m_forth_push (f, 0);
+		return;
+	}
+	def_clear (dw);
+	dw->def.name = copy_str (name);
+	if (!dw->def.name) {
+		m_forth_raise (f, -8, "out of memory");
+		return;
+	}
+	dw->def.active = 1;
+	dw->table = NULL;
+	dw->current_recno = 0;
+	dw->have_current = 0;
+	m_forth_push (f, -1);
+}
+
+static void p_db_col (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw || !dw->def.active) {
+		m_forth_raise (f, -1, "no table definition");
+		return;
+	}
+	const char *type = pop_name (f);
+	const char *name = pop_name (f);
+	if (!name || !*name) {
+		m_forth_raise (f, -1, "column name required");
+		return;
+	}
+	if (!type || type[0] == 0 || type[1] != 0 ||
+	    (type[0] != 'i' && type[0] != 'd' && type[0] != 's' &&
+	     type[0] != 'z')) {
+		m_forth_raise (f, -1, "invalid column type");
+		return;
+	}
+	if (dw->def.ncols >= M_ISAM_MAX_COLS) {
+		m_forth_raise (f, -1, "too many columns");
+		return;
+	}
+	for (int c = 0; c < dw->def.ncols; c++)
+		if (strcmp (dw->def.cols[c].name, name) == 0) {
+			m_forth_raise (f, -1, "duplicate column");
+			return;
+		}
+	char *copy = copy_str (name);
+	if (!copy) {
+		m_forth_raise (f, -8, "out of memory");
+		return;
+	}
+	dw->def.cols[dw->def.ncols].name = copy;
+	dw->def.cols[dw->def.ncols].type = type[0];
+	dw->def.ncols++;
+}
+
+static void p_db_primary (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw || !dw->def.active) {
+		m_forth_raise (f, -1, "no table definition");
+		return;
+	}
+	const char *name = pop_name (f);
+	if (!name || !*name) {
+		m_forth_raise (f, -1, "column name required");
+		return;
+	}
+	if (dw->def.npk >= M_ISAM_MAX_COLS) {
+		m_forth_raise (f, -1, "too many key columns");
+		return;
+	}
+	char *copy = copy_str (name);
+	if (!copy) {
+		m_forth_raise (f, -8, "out of memory");
+		return;
+	}
+	dw->def.pk[dw->def.npk++] = copy;
+}
+
+static void p_db_table_create (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw || !dw->def.active) {
+		m_forth_raise (f, -1, "no table definition");
+		return;
+	}
+	if (dw->def.ncols < 1) {
+		m_forth_raise (f, -1, "no columns");
+		return;
+	}
+	if (dw->def.npk > dw->def.ncols) {
+		m_forth_raise (f, -1, "too many key columns");
+		return;
+	}
+	for (int i = 0; i < dw->def.npk; i++)
+		if (strcmp (dw->def.pk[i], dw->def.cols[i].name) != 0) {
+			m_forth_raise (f, -1,
+				       "primary key must be a column prefix");
+			return;
+		}
+	m_isam_col_t cols[M_ISAM_MAX_COLS];
+	const char *pkp[M_ISAM_MAX_COLS];
+	for (int c = 0; c < dw->def.ncols; c++) {
+		cols[c].name = dw->def.cols[c].name;
+		cols[c].type = dw->def.cols[c].type;
+	}
+	for (int i = 0; i < dw->def.npk; i++)
+		pkp[i] = dw->def.pk[i];
+	m_isam_table_t *t = m_isam_create_table (
+		dw->db, dw->def.name, cols, dw->def.ncols, pkp, dw->def.npk);
+	if (!t) {
+		def_clear (dw);
+		m_forth_raise (f, -1, "create table failed");
+		return;
+	}
+	dw->table = t;
+	def_clear (dw);
+	dw->current_recno = 0;
+	dw->have_current = 0;
+	m_forth_push (f, -1);
+}
+
+static void p_db_copy_table (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw) {
+		m_forth_raise (f, -1, "DB words not bound");
+		return;
+	}
+	const char *dst = pop_name (f);
+	const char *src = pop_name (f);
+	if (!src || !dst) {
+		m_forth_raise (f, -1, "table name required");
+		return;
+	}
+	m_forth_push (f, m_isam_copy_table (dw->db, src, dst) ? -1 : 0);
+}
+
+static void p_db_drop_table (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw) {
+		m_forth_raise (f, -1, "DB words not bound");
+		return;
+	}
+	const char *name = pop_name (f);
+	if (!name) {
+		m_forth_raise (f, -1, "table name required");
+		return;
+	}
+	m_isam_table_t *t = m_isam_table (dw->db, name);
+	int rc = m_isam_drop_table (dw->db, name);
+	if (rc && t == dw->table) {
+		dw->table = NULL;
+		dw->current_recno = 0;
+		dw->have_current = 0;
+	}
+	m_forth_push (f, rc ? -1 : 0);
+}
+
+static void p_db_rename_table (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	if (!dw) {
+		m_forth_raise (f, -1, "DB words not bound");
+		return;
+	}
+	const char *newname = pop_name (f);
+	const char *name = pop_name (f);
+	if (!name || !newname) {
+		m_forth_raise (f, -1, "table name required");
+		return;
+	}
+	m_forth_push (f, m_isam_rename_table (dw->db, name, newname) ? -1 : 0);
+}
+
+static void p_db_tables (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	m_forth_push (f, dw ? m_isam_ntables (dw->db) : 0);
+}
+
+static void p_db_table_name (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	int i = (int)m_forth_pop (f);
+	const char *name = dw ? m_isam_table_at (dw->db, i) : NULL;
+	if (!name) {
+		m_forth_push (f, 0);
+		return;
+	}
+	uint32_t id = m_forth_intern (f, name);
+	if (!id) {
+		m_forth_raise (f, -8, "string intern failed");
+		return;
+	}
+	m_forth_push (f, (cell_t)id);
+}
+
+static void p_db_cols (m_forth_t *f)
+{
+	m_dbwords_t *dw = DBW (f);
+	const char *name = pop_name (f);
+	m_isam_table_t *t = (dw && name) ? m_isam_table (dw->db, name) : NULL;
+	if (!t) {
+		m_forth_raise (f, -1, "unknown table");
+		return;
+	}
+	m_forth_push (f, m_isam_ncols (t));
+}
+
 m_dbwords_t *m_dbwords_new (m_forth_t *f, m_isam_db_t *db)
 {
 	if (!f || !db)
@@ -273,6 +534,16 @@ m_dbwords_t *m_dbwords_new (m_forth_t *f, m_isam_db_t *db)
 	m_forth_define (f, "DB-DELETE", p_db_delete, 0);
 	m_forth_define (f, "DB-COUNT", p_db_count, 0);
 	m_forth_define (f, "DB-STATS", p_db_stats, 0);
+	m_forth_define (f, "DB-CREATE-TABLE", p_db_create_table, 0);
+	m_forth_define (f, "DB-COL", p_db_col, 0);
+	m_forth_define (f, "DB-PRIMARY", p_db_primary, 0);
+	m_forth_define (f, "DB-TABLE-CREATE", p_db_table_create, 0);
+	m_forth_define (f, "DB-COPY-TABLE", p_db_copy_table, 0);
+	m_forth_define (f, "DB-DROP-TABLE", p_db_drop_table, 0);
+	m_forth_define (f, "DB-RENAME-TABLE", p_db_rename_table, 0);
+	m_forth_define (f, "DB-TABLES", p_db_tables, 0);
+	m_forth_define (f, "DB-TABLE-NAME", p_db_table_name, 0);
+	m_forth_define (f, "DB-COLS", p_db_cols, 0);
 	return dw;
 }
 
@@ -295,6 +566,7 @@ void m_dbwords_free (m_dbwords_t *dw)
 {
 	if (!dw)
 		return;
+	def_clear (dw);
 	if (m_forth_user (dw->f) == dw)
 		m_forth_set_user (dw->f, NULL);
 	free (dw);

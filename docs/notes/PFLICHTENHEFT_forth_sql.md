@@ -1,9 +1,10 @@
 # Pflichtenheft: Forth als SQL-Ersatz auf ISAM (mls)
 
-Status: Entwurf v7 — **Single Source of Truth**. Phase 0–4 (Schritte 0.1–0.20,
+Status: Entwurf v8 — **Single Source of Truth**. Phase 0–4 (Schritte 0.1–0.20,
 Monolith + Daemon) sind implementiert; Skalierungs-/Multi-Core-Erkenntnisse in
 **§14**. M1.1-Persistenz (`m_isam` v2) + Laufzeitmessung sind in **§11a.7**
-ausgearbeitet (noch nicht implementiert).
+ausgearbeitet (noch nicht implementiert). Schema-DDL + ALTER-per-Copy
+(FR-42/FR-43, §8.7) sind auf dem In-Memory-Kern umgesetzt.
 Kontext: `../forth-db-c` (Referenz-Forth-VM), `mls` (Handle-Bibliothek).
 
 > Dieses Dokument ist die alleinige Quelle der Wahrheit für Anforderungen,
@@ -52,6 +53,13 @@ Kontext: `../forth-db-c` (Referenz-Forth-VM), `mls` (Handle-Bibliothek).
 > neu aufgebaut. Zusätzlich können Tests die **Laufzeit** von Forth-Skripten
 > messen (gesamt + pro Wort, C-API, kein Wire-Change). Details + Schritte in
 > **§11a.7**.
+
+> **v8-Ergänzung (Schema-DDL + ALTER-per-Copy):** Schema-Erstellung ist jetzt
+> auch per Forth möglich (`DB-CREATE-TABLE`/`DB-COL`/`DB-PRIMARY`/
+> `DB-TABLE-CREATE`), nicht nur über die C-API. `ALTER TABLE` läuft als
+> **Copy-and-Swap** (`DB-COPY-TABLE`/`DB-DROP-TABLE`/`DB-RENAME-TABLE`);
+> hinzugefügte Spalten werden mit `0` (kein NULL) aufgefüllt. Persistente
+> Schema-Ablage (`meta`) bleibt Teil von **§11a.7** Schritt 1. Details **§8.7**.
 
 ---
 
@@ -239,6 +247,8 @@ mehrere Tabellen und Server auslagern, ohne den Client-Code zu ändern**.
 | FR-39 | **Referenz-Datenmodell** (Artikel/Bestellung/Kunde, §6.7) als Abnahmebasis abfragbar | M | M2 |
 | FR-40 | **Unabhängige Cursor + Scan/Range + Mengen-Primitive** (`DB-SCAN`/`DB-RANGE`/`CUR-*`, `DB-LOOKUP`, `SET?`/`SET-ADD`) | M | M1 |
 | FR-41 | **Laufzeitmessung**: Tests messen die Forth-Skript-Laufzeit **gesamt + pro Wort** über die C-API (`m_engine_elapsed_ns`, `m_forth_prof*`); kein neues Forth-Wort, kein Wire-Change. Dient der Identifikation von Optimierungsquellen | S | M1.1 |
+| FR-42 | **Schema-DDL**: Tabellen/Spalten/PK per Forth anlegen (`DB-CREATE-TABLE`/`DB-COL`/`DB-PRIMARY`/`DB-TABLE-CREATE`); Schema-Ablage (`meta`) persistent (§11a.7) | M | M1.1 |
+| FR-43 | **ALTER per Copy**: Spalte add/drop/rename + Typänderung via create→copy→swap (`DB-COPY-TABLE`/`DB-DROP-TABLE`/`DB-RENAME-TABLE`); Introspektion (`DB-TABLES`/`DB-COLS`) | M | M1.1 |
 
 ### 4.2 Nicht-funktionale Anforderungen (NFR)
 
@@ -482,6 +492,10 @@ DB-TABLE Z" position"     \ Composite-PK: (bestellung_id, artikel_id)
   Z" bestellung_id" Z" i" Z" artikel_id" Z" i" Z" menge" Z" i"
 ```
 
+> Die konkrete Schema-Erstellung nutzt die DDL-Wörter aus **§8.7**
+> (`DB-CREATE-TABLE`/`DB-COL`/`DB-PRIMARY`/`DB-TABLE-CREATE`); die Skizze zeigt
+> das Ziel-Schema.
+
 | Operation | Forth | Struktur | FR |
 |---|---|---|---|
 | Kunde/Artikel anlegen | `DB-PUT` + `DB-INSERT` | B⁺-Unique-Check, Unique-ID | FR-07/12 |
@@ -574,6 +588,16 @@ Query wird als Skript-Stream gesendet; Antwort kann zeilenweise fließen
 | `DB-BIND` | `Z"word" Z"proc" --` | Wort für die aktuelle Tabelle binden/überschreiben |
 | `HAS-WORD` | `Z"table" Z"word" -- flag` | Capability-Query (pro Tabelle) |
 | `CAPS` | `Z"table" -- list` | verfügbare Erweiterungen der Tabelle |
+| `DB-CREATE-TABLE` | `Z"name" -- flag` | Schema-Definition starten (DDL, §8.7) |
+| `DB-COL` | `Z"name" Z"type" --` | Spalte (`i`/`d`/`s`/`z`) anhängen |
+| `DB-PRIMARY` | `Z"name" --` | PK-Spalte markieren (mehrfach = composite, Präfix) |
+| `DB-TABLE-CREATE` | `-- flag` | Schema validieren + anlegen |
+| `DB-COPY-TABLE` | `Z"src" Z"dst" -- flag` | Live-Records per Spaltenname in leeres `dst` kopieren |
+| `DB-DROP-TABLE` | `Z"name" -- flag` | Tabelle löschen |
+| `DB-RENAME-TABLE` | `Z"name" Z"new" -- flag` | Tabelle umbenennen |
+| `DB-TABLES` | `-- n` | Anzahl Tabellen (Introspektion) |
+| `DB-TABLE-NAME` | `i -- Z"name"` | Tabellenname per Index |
+| `DB-COLS` | `Z"table" -- n` | Spaltenanzahl |
 
 ### 8.1a Per-Table-Override (Mechanik)
 - Jede Tabelle besitzt ein **eigenes Wörterbuch**. Lookup-Reihenfolge:
@@ -737,6 +761,42 @@ rs COUNT .
 
 `GROUP-SUM`/`GROUP-AVG`/`GROUP-COUNT` ersetzen die Group-by-Schleife aus §6.7 für
 den häufigen Fall; die allgemeine Form bleibt ein expliziter Forth-Loop.
+
+### 8.7 Schema-DDL & ALTER (per Copy)
+
+Schema-Erstellung ist ein Forth-Programm (DDL), symmetrisch zum Insert-Muster
+`DB-PUT` → `DB-INSERT`:
+
+```
+Z" kunde" DB-CREATE-TABLE      \ Schema-Puffer starten (flag)
+  Z" kunde_id" Z" i" DB-COL    \ Spalte name+typ (i/d/s/z)
+  Z" name"     Z" s" DB-COL
+  Z" ort"      Z" s" DB-COL
+Z" kunde_id" DB-PRIMARY        \ PK = Spalten-Präfix (mehrfach = composite)
+DB-TABLE-CREATE                \ validieren + anlegen (+ meta, §11a.7)
+```
+
+`DB-CREATE-TABLE` setzt die aktuelle Tabelle auf „keine“; `DB-TABLE-CREATE`
+wählt die neue Tabelle aus. Ohne `DB-PRIMARY` entsteht eine RRDS-Tabelle
+(kein PK); PK-Spalten müssen ein **Präfix** der Spaltenliste sein. Ungültige
+Typen, Doppelspalten und ein Nicht-Präfix-PK werden abgelehnt.
+
+**ALTER TABLE = Copy-and-Swap** (kein In-Place-Umbau, keine Transaktion):
+
+```
+\ 1) Ziel mit neuem Schema anlegen (DDL wie oben)
+Z" kunde" Z" kunde_v2" DB-COPY-TABLE   \ Live-Records per Spaltenname kopieren
+Z" kunde" DB-DROP-TABLE                 \ alte Tabelle löschen
+Z" kunde_v2" Z" kunde" DB-RENAME-TABLE  \ umbenennen
+```
+
+- Spalten werden **per Name** gemappt: gleiche Spalte → Wert; neue Zielspalte →
+  `0` (kein NULL, §3.2); Quellspalte ohne Ziel → ignoriert.
+- Typ-Mismatch, nicht-leeres Ziel und Duplikat-PK brechen ab (Ziel wird
+  zurückgesetzt).
+- Dieselbe DB/Pool ⇒ String-IDs werden direkt übernommen.
+- `DB-TABLES`/`DB-TABLE-NAME`/`DB-COLS` liefern die Schema-Introspektion.
+- Persistenz (`.dat`/`meta`) folgt §11a.7; der In-Memory-Kern ist umgesetzt.
 
 ---
 
@@ -1032,6 +1092,11 @@ Open-Validierung (M1.3-Vorarbeit). Transaktionen/WAL bleiben Backlog (§4.4).
   Per-Wort-Profiling (`m_forth_profile`/Report) an den **beiden**
   Dispatch-Stellen (`m_forth_execute`-Einstieg + innere Threaded-Loop); off =
   Nullkosten; keine neuen Forth-Wörter, kein Protokoll-Change.
+- **Schema-DDL/ALTER (FR-42/FR-43, §8.7):** `DB-CREATE-TABLE`/`DB-COL`/
+  `DB-PRIMARY`/`DB-TABLE-CREATE`; `ALTER` als Copy-and-Swap
+  (`DB-COPY-TABLE`/`DB-DROP-TABLE`/`DB-RENAME-TABLE`) + Introspektion
+  (`DB-TABLES`/`DB-TABLE-NAME`/`DB-COLS`). In-Memory-Kern umgesetzt;
+  Persistenz schreibt `meta` (Schritt 1) + `.dat`.
 
 **Schritte (je Modul + assert-Selbsttest; grün ⇒ eingefroren)**
 | # | Schritt | Done |
@@ -1042,6 +1107,8 @@ Open-Validierung (M1.3-Vorarbeit). Transaktionen/WAL bleiben Backlog (§4.4).
 | 4 | Reopen + M1.3-Validierung + B⁺-Rebuild | alle PK-Modi nach Reopen korrekt; ungültige Pool-ID/Duplikat-PK/Schema-Mismatch/Trunkierung → Fehler; Reopen verändert nichts |
 | 5 | Stats, Build-Wiring, Demo, Docs | `make run` grün; `DB-STATS` real (Per-Query-Delta); Demo übersteht Neustart; Docs aktuell |
 | 6 | Laufzeitmessung gesamt + pro Wort (C-API) | Self-Test: Wort-count>0/total_ns>0, off-Modus leer; Harness druckt elapsed + Hotlist + `DB-STATS` |
+| 7 | Schema-DDL-Wörter (In-Memory-Kern, umgesetzt) | DDL-Skript legt Tabelle an; danach SELECT/INSERT; ungültiger Typ/Doppelspalte/Nicht-Präfix-PK → Fehler |
+| 8 | ALTER-per-Copy + Introspektion (In-Memory-Kern, umgesetzt) | add/drop/rename-Spalte + Typänderung per Copy; Datenerhalt; Duplikat-PK → Fehler; `DB-TABLES`/`DB-COLS`/Drop/Rename |
 
 **Build-Wiring:** `pager.o` + `m_strpool.o` zu allen `m_isam`-linkenden Targets
 (`test_m_isam`, `test_m_dbwords`, `test_m_engine`, `test_m_fapi`,
@@ -1070,6 +1137,8 @@ seed-once, um Persistenz über einen Neustart zu zeigen.
 - **Laufzeit** (FR-41): Forth-Skript-Laufzeit gesamt (`m_engine_elapsed_ns`) +
   pro Wort (`m_forth_profile`/Report, flag-gated) im Test-Harness; I/O separat
   über `DB-STATS`. Nur C-API, kein Wire-Change.
+- **Schema**: DDL-Validierung (Typ, Doppelspalte, PK-Präfix) und ALTER-per-Copy
+  (Namens-Mapping, Default `0`, Duplikat-PK) prüfen.
 
 ---
 

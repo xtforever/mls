@@ -46,10 +46,12 @@ FORTH_SRCS = ../lib/m_fapi.c ../lib/m_engine.c ../lib/m_dbwords.c \
 FORTH_SOCKET_SRCS = $(FORTH_SRCS) ../lib/m_fclient.c ../lib/m_fserver.c \
                     ../lib/m_ftransport.c
 
-forth_db_demo.exed: forth_db_demo.c $(LIBS) $(FORTH_SRCS)
+# m_fapi references m_fclient_* unconditionally, so link the socket superset
+# even for the in-process demo (only the engine backend is exercised).
+forth_db_demo.exed: forth_db_demo.c $(LIBS) $(FORTH_SOCKET_SRCS)
 	$(CC) $(CFLAGS_DEBUG) -o $@ $^ $(LDLIBS)
 
-forth_db_demo.exe: forth_db_demo.c $(LIBS) $(FORTH_SRCS)
+forth_db_demo.exe: forth_db_demo.c $(LIBS) $(FORTH_SOCKET_SRCS)
 	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(LDLIBS)
 
 forth_db_socket_demo.exed: forth_db_socket_demo.c $(LIBS) $(FORTH_SOCKET_SRCS)

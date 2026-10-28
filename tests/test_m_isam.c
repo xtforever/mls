@@ -122,6 +122,55 @@ int main (void)
 	assert (m_isam_create_table (db, "bad2", cols, 3, not_prefix, 1) ==
 		NULL);
 
+	/* Schema helpers: enumerate, rename, copy, drop. */
+	assert (m_isam_ntables (db) == 3);
+	assert (m_isam_table_at (db, 0) != NULL);
+	assert (m_isam_table_at (db, -1) == NULL);
+	assert (m_isam_table_at (db, 3) == NULL);
+
+	assert (m_isam_rename_table (db, "users", "users_renamed") == 1);
+	assert (m_isam_table (db, "users") == NULL);
+	assert (m_isam_table (db, "users_renamed") != NULL);
+	assert (m_isam_rename_table (db, "users_renamed", "pos") ==
+		0); /* dup */
+	assert (m_isam_rename_table (db, "missing", "x") == 0);
+
+	/* Copy live records into an empty clone (same schema). */
+	m_isam_col_t u2cols[] = {{"name", 's'}, {"age", 'i'}};
+	const char *u2pk[] = {"name"};
+	m_isam_table_t *u2 =
+		m_isam_create_table (db, "users_copy", u2cols, 2, u2pk, 1);
+	assert (u2);
+	assert (m_isam_copy_table (db, "users_renamed", "users_copy") == 1);
+	assert (m_isam_count (u2) ==
+		m_isam_count (m_isam_table (db, "users_renamed")));
+	uint32_t alice2 = m_isam_intern (u2, "alice");
+	cell_t ck[1] = {(cell_t)alice2};
+	int64_t cf = 0;
+	assert (m_isam_seek (u2, ck, 1, &cf));
+	assert (m_isam_get (u2, cf, "age", &v) && v == 30);
+	assert (m_isam_copy_table (db, "users_renamed", "users_copy") == 0);
+
+	/* Copy into a table with an extra column: missing source -> 0. */
+	m_isam_col_t dcols[] = {{"name", 's'}, {"age", 'i'}, {"extra", 'i'}};
+	const char *dpk[] = {"name"};
+	m_isam_table_t *d =
+		m_isam_create_table (db, "copy_extra", dcols, 3, dpk, 1);
+	assert (d);
+	assert (m_isam_copy_table (db, "users_renamed", "copy_extra") == 1);
+	int64_t dr = 0;
+	for (int64_t rr = 1; rr <= m_isam_nrecs (d); rr++)
+		if (m_isam_get (d, rr, "extra", &v)) {
+			dr = rr;
+			break;
+		}
+	assert (dr > 0 && v == 0);
+
+	assert (m_isam_drop_table (db, "copy_extra") == 1);
+	assert (m_isam_table (db, "copy_extra") == NULL);
+	assert (m_isam_drop_table (db, "copy_extra") == 0);
+	assert (m_isam_drop_table (NULL, "x") == 0);
+
 	assert (m_isam_count (NULL) == 0);
 	assert (m_isam_field (NULL, "x") == -1);
 	m_isam_db_free (db);

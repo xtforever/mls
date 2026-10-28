@@ -48,4 +48,14 @@ char m_isam_coltype (const m_isam_table_t *t, int c);
 uint32_t m_isam_intern (m_isam_table_t *t, const char *s);
 const char *m_isam_resolve (const m_isam_table_t *t, uint32_t id);
 
+/* Schema / DDL helpers (in-memory core; persistent meta is M1.1, §11a.7). */
+int m_isam_ntables (const m_isam_db_t *db);
+const char *m_isam_table_at (const m_isam_db_t *db, int i); /* NULL if oob */
+int m_isam_drop_table (m_isam_db_t *db, const char *name);  /* 1 removed */
+int m_isam_rename_table (m_isam_db_t *db, const char *name,
+			 const char *newname); /* 1 renamed */
+/* Copy live records from src into the (empty) dst, mapping columns by name;
+   missing source columns become 0, type mismatches and duplicate PKs fail. */
+int m_isam_copy_table (m_isam_db_t *db, const char *src, const char *dst);
+
 #endif

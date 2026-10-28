@@ -125,6 +125,43 @@ static int build_key (const m_isam_table_t *t, const cell_t *cells, cell_t *key)
 	return t->npk;
 }
 
+static void table_free (m_isam_table_t *t)
+{
+	if (!t)
+		return;
+	bpt_free (t->idx);
+	for (int64_t r = 0; r < t->nrecs; r++)
+		free (t->recs[r]);
+	free (t->recs);
+	free (t->flags);
+	free (t->buf);
+	free (t->pk);
+	for (int c = 0; c < t->ncols; c++)
+		free (t->cols[c].name);
+	free (t->cols);
+	free (t->name);
+	free (t);
+}
+
+/* Roll a partially copied table back to empty (used by m_isam_copy_table). */
+static void table_clear_records (m_isam_table_t *t)
+{
+	for (int64_t r = 0; r < t->nrecs; r++)
+		free (t->recs[r]);
+	t->nrecs = 0;
+	t->live = 0;
+	if (t->flags)
+		memset (t->flags, 0, (size_t)t->cap);
+	if (t->buf) {
+		memset (t->buf, 0, (size_t)t->ncols * sizeof *t->buf);
+		t->buf_set = 0;
+	}
+	if (t->idx) {
+		bpt_free (t->idx);
+		t->idx = bpt_new ((size_t)t->npk * sizeof (cell_t), pk_cmp, t);
+	}
+}
+
 m_isam_db_t *m_isam_db_new (void)
 {
 	m_isam_db_t *db = calloc (1, sizeof *db);
@@ -145,21 +182,8 @@ void m_isam_db_free (m_isam_db_t *db)
 {
 	if (!db)
 		return;
-	for (int i = 0; i < db->ntables; i++) {
-		m_isam_table_t *t = db->tables[i];
-		bpt_free (t->idx);
-		for (int64_t r = 0; r < t->nrecs; r++)
-			free (t->recs[r]);
-		free (t->recs);
-		free (t->flags);
-		free (t->buf);
-		free (t->pk);
-		for (int c = 0; c < t->ncols; c++)
-			free (t->cols[c].name);
-		free (t->cols);
-		free (t->name);
-		free (t);
-	}
+	for (int i = 0; i < db->ntables; i++)
+		table_free (db->tables[i]);
 	free (db->tables);
 	for (int i = 0; i < da_len (db->id2str); i++)
 		free (da_get (db->id2str, i));
@@ -381,20 +405,11 @@ int m_isam_delete (m_isam_table_t *t, int64_t recno)
 
 int64_t m_isam_count (const m_isam_table_t *t) { return t ? t->live : 0; }
 
-int64_t m_isam_nrecs (const m_isam_table_t *t)
-{
-	return t ? t->nrecs : 0;
-}
+int64_t m_isam_nrecs (const m_isam_table_t *t) { return t ? t->nrecs : 0; }
 
-int m_isam_ncols (const m_isam_table_t *t)
-{
-	return t ? t->ncols : 0;
-}
+int m_isam_ncols (const m_isam_table_t *t) { return t ? t->ncols : 0; }
 
-int m_isam_npk (const m_isam_table_t *t)
-{
-	return t ? t->npk : 0;
-}
+int m_isam_npk (const m_isam_table_t *t) { return t ? t->npk : 0; }
 
 const char *m_isam_colname (const m_isam_table_t *t, int c)
 {
@@ -414,4 +429,80 @@ uint32_t m_isam_intern (m_isam_table_t *t, const char *s)
 const char *m_isam_resolve (const m_isam_table_t *t, uint32_t id)
 {
 	return t ? db_resolve (t->db, id) : "";
+}
+
+int m_isam_ntables (const m_isam_db_t *db) { return db ? db->ntables : 0; }
+
+const char *m_isam_table_at (const m_isam_db_t *db, int i)
+{
+	return db && i >= 0 && i < db->ntables ? db->tables[i]->name : NULL;
+}
+
+int m_isam_drop_table (m_isam_db_t *db, const char *name)
+{
+	if (!db || !name)
+		return 0;
+	for (int i = 0; i < db->ntables; i++) {
+		if (strcmp (db->tables[i]->name, name) == 0) {
+			table_free (db->tables[i]);
+			for (int j = i; j < db->ntables - 1; j++)
+				db->tables[j] = db->tables[j + 1];
+			db->ntables--;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int m_isam_rename_table (m_isam_db_t *db, const char *name, const char *newname)
+{
+	if (!db || !name || !newname || !*newname)
+		return 0;
+	if (db_find_table (db, newname))
+		return 0;
+	m_isam_table_t *t = db_find_table (db, name);
+	if (!t)
+		return 0;
+	char *copy = dup_str (newname);
+	if (!copy)
+		return 0;
+	free (t->name);
+	t->name = copy;
+	return 1;
+}
+
+int m_isam_copy_table (m_isam_db_t *db, const char *src, const char *dst)
+{
+	if (!db || !src || !dst)
+		return 0;
+	m_isam_table_t *s = db_find_table (db, src);
+	m_isam_table_t *d = db_find_table (db, dst);
+	if (!s || !d || s == d)
+		return 0;
+	if (d->nrecs != 0 || d->live != 0)
+		return 0; /* destination must be empty */
+
+	/* Pre-validate type compatibility for columns present on both sides. */
+	for (int c = 0; c < d->ncols; c++) {
+		int sc = m_isam_field (s, d->cols[c].name);
+		if (sc >= 0 && s->cols[sc].type != d->cols[c].type)
+			return 0;
+	}
+
+	for (int64_t r = 0; r < s->nrecs; r++) {
+		if (s->flags[r] & 1)
+			continue;
+		for (int c = 0; c < d->ncols; c++) {
+			int sc = m_isam_field (s, d->cols[c].name);
+			cell_t v = sc >= 0 ? s->recs[r][sc] : 0;
+			if (m_isam_put (d, d->cols[c].name, v) != 0)
+				goto fail;
+		}
+		if (m_isam_insert (d) <= 0)
+			goto fail;
+	}
+	return 1;
+fail:
+	table_clear_records (d);
+	return 0;
 }
