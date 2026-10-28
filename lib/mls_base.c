@@ -21,9 +21,23 @@ int error_occurred = 0;
 static int UAF_PROTECTION = 0;
 struct ls_st ML = {0}; // stack allocated vars
 #if MLS_THREAD_SAFE
-pthread_mutex_t ml_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t ml_lock;
 pthread_mutex_t cs_map_lock = PTHREAD_MUTEX_INITIALIZER;
 static MLS_THREAD_LOCAL int freeing_handle = 0;
+static pthread_once_t ml_lock_once = PTHREAD_ONCE_INIT;
+
+/* ml_lock must be recursive: mls re-enters itself (m_alloc -> m_len(FH),
+   m_free -> mls(FH), in-place slice, ...). One thread may hold the single
+   global lock across such nested calls; other threads still block. */
+static void ml_lock_do_init (void)
+{
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init (&attr);
+	pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init (&ml_lock, &attr);
+	pthread_mutexattr_destroy (&attr);
+}
+void ml_lock_init (void) { pthread_once (&ml_lock_once, ml_lock_do_init); }
 #else
 static int freeing_handle = 0;
 #endif
@@ -33,32 +47,6 @@ void (*mls_on_free) (int) = 0;
 /* prototypes */
 static int get_free_hdl (void);
 
-static void init_handle_lock (lst_t lp)
-{
-#if MLS_THREAD_SAFE
-	if (lp->lock)
-		return;
-	lp->lock = malloc (sizeof (*lp->lock));
-	if (!lp->lock)
-		ERR ("Out of Memory");
-	if (pthread_rwlock_init (lp->lock, NULL) != 0)
-		ERR ("Unable to initialize handle lock");
-#else
-	(void)lp;
-#endif
-}
-static void destroy_handle_lock (lst_t lp)
-{
-#if MLS_THREAD_SAFE
-	if (!lp->lock)
-		return;
-	pthread_rwlock_destroy (lp->lock);
-	free (lp->lock);
-	lp->lock = NULL;
-#else
-	(void)lp;
-#endif
-}
 static inline lst_t get_list_locked (int m)
 {
 	int idx = REAL_HDL (m);
@@ -74,7 +62,6 @@ static inline lst_t get_list_locked (int m)
 		     l->uaf_protection, uaf);
 	}
 
-	init_handle_lock (l);
 	return l;
 }
 /* One locking core for both paths.
@@ -107,24 +94,13 @@ static lst_t lock_handle_core (int m, int write, int die)
 		return NULL;
 	}
 
-	init_handle_lock (lp);
-#if MLS_THREAD_SAFE
-	if (write)
-		pthread_rwlock_wrlock (lp->lock);
-	else
-		pthread_rwlock_rdlock (lp->lock);
-#else
 	(void)write;
-#endif
-	/* ponytail: data+free_hdl checks moved here from get_list_locked
-	   so reads happen under per-handle rwlock, matching the writes
-	   in lst_resize/m_free — eliminates TSAN data races */
+	/* data + free_hdl are checked under ml_lock (exclusive), so they
+	   cannot change concurrently. Returning lp with ml_lock still held
+	   stops ML.data from being realloc'd (moved) under the caller. */
 	if (lp->data == NULL ||
 	    (lp->free_hdl == 255 &&
 	     (!die || REAL_HDL (freeing_handle) != REAL_HDL (m)))) {
-#if MLS_THREAD_SAFE
-		pthread_rwlock_unlock (lp->lock);
-#endif
 		MLS_MASTER_UNLOCK ();
 		if (die)
 			ERR (lp->data == NULL ? "List %d not allocated"
@@ -133,17 +109,13 @@ static lst_t lock_handle_core (int m, int write, int die)
 		mls_errno = MLS_EUAF;
 		return NULL;
 	}
-	MLS_MASTER_UNLOCK ();
-	return lp;
+	return lp; /* ml_lock stays held until unlock_handle() */
 }
 lst_t lock_handle (int m, int write) { return lock_handle_core (m, write, 1); }
 void unlock_handle (lst_t lp)
 {
-#if MLS_THREAD_SAFE
-	pthread_rwlock_unlock (lp->lock);
-#else
 	(void)lp;
-#endif
+	MLS_MASTER_UNLOCK ();
 }
 /* Non-dying lock used only by m_is_freed(): never exits, sets mls_errno. */
 lst_t lock_handle_safe (int m, int write)
@@ -592,7 +564,6 @@ int new_list (const char *buf, size_t len, size_t max, size_t w, int hdl)
 	MLS_MASTER_LOCK ();
 	int h = get_free_hdl ();
 	lst_t lp = (lst_t)lst (&ML, h);
-	init_handle_lock (lp);
 	lp->w = w;
 	lp->data = (char *)buf;
 	lp->max = max;
@@ -1023,7 +994,6 @@ int m_base_init ()
 	lst_create (&ML, 100, sizeof (struct ls_st));
 	lst_t lp = lst (&ML, lst_new (&ML, 1));
 	lst_create (lp, 100, sizeof (int));
-	init_handle_lock (lp);
 	MLS_MASTER_UNLOCK ();
 
 	FH = m_alloc (10, sizeof (void *), 0);
@@ -1049,8 +1019,6 @@ void m_base_destruct ()
 			d->data = 0;
 		} else
 			TRACE (1, "%d", idx);
-		if (d)
-			destroy_handle_lock (d);
 	}
 
 	if (ML.data) {

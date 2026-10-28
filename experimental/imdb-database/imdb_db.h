@@ -32,6 +32,7 @@ struct imdb_hit {
 	uint16_t nmatch; /* Anzahl gematchter Query-Tokens (Tiebreak) */
 	uint8_t yhit;	 /* 1 = Record-Jahr passt zu year_hint */
 	uint8_t thit;	 /* 1 = Record-Typ passt zu want_series */
+	uint8_t exact;	 /* 1 = Titelreihenfolge entspricht der Query */
 };
 
 /* Bonus fuer einen Jahres-Treffer bei der Kandidatenauswahl: gross genug,

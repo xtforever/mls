@@ -50,9 +50,11 @@ gcc -std=c11 -I./lib prog.c lib/mls_base.c lib/mls_ext.c -o prog -lpthread -lm -
 - `-DMLS_DEBUG` aktiviert Debug-Wrapper + Post-Mortem; CMake-Debug baut
   automatisch mit ASan. `-DMLS_WERROR=ON` macht Warnungen zu Fehlern.
 - C11, kein C++-Syntax.
-- Thread-Safety: per-Handle `pthread_rwlock_t`. `s_cstr`/`s_ccstr` nicht
-  concurrent aufrufen (Pointer-Truncation-Race); Ring-Buffer braucht externen
-  Mutex; `m_foreach` gibt die Read-Lock zwischen Elementen frei.
+- Thread-Safety: **ein globaler rekursiver `ml_lock`** (Mutex), der jede
+  Operation serialisiert; **keine** Per-Handle-Locks. Handles dürfen **nicht**
+  zwischen Threads geteilt werden (Rohzeiger-APIs wie `m_str`/`mls` geben den
+  Lock vor der Rückgabe frei). `s_cstr`/`s_ccstr` nicht concurrent aufrufen
+  (Pointer-Truncation-Race); Ring-Buffer braucht externen Mutex.
 
 ---
 

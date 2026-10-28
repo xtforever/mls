@@ -71,17 +71,7 @@ int m_ins_safe (int m, size_t p, size_t n);
 int m_slice (int dest, int offs, int m, int a, int b);
 void m_remove (int m, size_t p, size_t n);
 
-static inline char *m_str (int m)
-{
-	if (m_is_freed (m) || m_len (m) == 0)
-		return "";
-	char *s = (char *)m_buf (m);
-#ifdef MLS_DEBUG
-	if (s[m_len (m) - 1] != 0)
-		ERR ("handle %d not zero terminated", m);
-#endif
-	return s;
-}
+char *m_str (int m);
 
 int _m_init ();
 void _m_destruct ();

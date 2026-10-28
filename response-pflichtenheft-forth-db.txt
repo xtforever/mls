@@ -1,0 +1,47 @@
+Ich habe das Pflichtenheft komplett gelesen. Die Rationale (§3), die Handle-Invariante und die Architektur-Invarianten in §14.5 sind stark. Die Schwächen liegen in einigen Designlücken und in Stellen, an denen sich das Dokument selbst widerspricht, obwohl es “Single Source of Truth” sein will.
+
+Designfragen mit echtem Gewicht
+Query-Literale landen im persistenten Pool. Laut §5.4 interniert S" in den DB-Pool, der append-only und persistent ist. Damit verändert jedes SELECT mit neuem Suchwert den Pool, braucht in §14.4 den exklusiven Lock (intern) und lässt die Platte wachsen. Das widerspricht “read-heavy” und ist ein DoS-Vektor. Besser: Lookup-only (nicht gefunden heißt kein Treffer) oder ein transienter Query-Pool.
+Sicherheits- und Ressourcenmodell fehlt.
+R-6 sagt “nicht für untrusted Skripte”, §14 zielt aber auf eine Million Nutzer.
+Es gibt kein Instruktionsbudget und kein Timeout. Ein BEGIN AGAIN (siehe §8.3) blockiert den single-threaded Server.
+Es gibt auch kein Limit für Antwortgröße oder Cursor-Anzahl.
+DB-OPEN nimmt einen Pfad vom Client, das ist Path-Traversal-Gefahr. Besser: logische Namen auf Server-Seite.
+fdb_select baut Skripte aus Nutzerstrings, also Forth-Injection. Parametrisierte Templates wären robuster als reines Escaping (R-5).
+Außerdem darf scheinbar jedes Skript DB-PROC/DB-BIND aufrufen. Das sollte nur Admin-Verbindungen können.
+Wird die Antwort ausgeführt oder geparst? §11a/0.14 spricht von “Re-Eval”, §9.3 von “kein Forth-VM client-seitig”. Wenn der Client Serverausgabe ausführt, ist der Server in dessen Vertrauensgrenze. Ich würde ein striktes Datenformat mit Forth-ähnlicher Syntax festschreiben.
+Der Insert-Puffer ist vermutlich schon heute ein Bug (B-3/R-13). Bricht ein Skript nach DB-PUT ab, steckt der Rest im geteilten m_isam_table.buf und landet beim nächsten Insert einer anderen Verbindung. Das ist kein reines Threading-Thema. Ich würde es jetzt beheben, auch den Backlog=8 (B-1), die Änderung ist eine Zeile.
+Cursor-Semantik unter Schreibzugriff ist offen. Hält ein Scan den Read-Lock, verhungert der Writer. Gibt er ihn zwischen CUR-NEXT frei, kann sich das Blatt per Split ändern. Bei Time-Series mit Appends ist das der Normalfall. Cursor-Cleanup bei THROW fehlt ebenfalls.
+Persistenz-Lücken:
+Wo liegen Schema, Procs, Views, Bindings und Indexe? §6 kennt nur Seiten und .str.
+Offline-Reorg mit Remap (§6.2) ändert recnos und damit alle gespeicherten FKs, das widerspricht der stabilen ID.
+Der Pool hat keine GC, jedes String-Update hinterlässt Leichen.
+Auch ohne WAL würde ich ein Dirty-Flag und eine fsync-Policy festlegen.
+Für Time-Series fehlen Typen: kein Float/Double, keine Zeitauflösung bei d (s/ms/µs?). DB-FIND wählt “indexiert→Index, sonst Scan” selbst, das ist ein Mini-Optimizer und widerspricht NFR-02. Besser sind explizite Wörter.
+Widersprüche und Fehler im Text
+Pool pro Tabelle oder pro DB? §6.3 sagt <t>.str, §5.4 und §14.2 sagen pro DB. Bei Pool pro Tabelle funktionieren Anti-Join und FK-Vergleiche über Handles nicht.
+Spaltentyp z: conststr-Handles sind prozess-lokal (§5.3). Was wird auf Platte gespeichert? Außerdem fehlt d in der Wire-Grammatik (§7.2).
+uint64-ID kollidiert in mehreren Punkten:
+Mit 8 Routing-Bits ist die ID als int64-Zelle (§7.2) bei Selektor ≥128 negativ.
+-1 als Fehlerwert bei DB-LOOKUP kann mit einer gültigen ID kollidieren. Das Forth-Idiom ( uid true | false ) wäre sauberer.
+§6.7 sagt “FKs sind Unique-IDs”, das Schema nutzt aber Business-Keys (kunde_id i).
+Prefix- statt Postfix-Beispiele: Laut §8.1 ist DB-OPEN ( Z"db" -- flag ), die Beispiele schreiben DB-OPEN Z" users.db". DB-TABLE ist in §8.1 “selektieren”, in §6.7 “definieren”. -> curB in §8.5 ist Pseudocode.
+Ketten-Showcase §8.3: Nach S. im Zyklus-Zweig dürfte DROP einen Underflow auslösen. Die Demo-Ausgabe (“Alpha -> Beta …”) passt nicht zum Code.
+SET? und VISITED? sind redundant und global pro Query, verschachtelte Nutzung kollidiert. Besser sind Set-Handles.
+Nummerierung: Schritt “0.1” meint in §11 und §11a verschiedene Dinge, und §14 verweist auf “M1.1”. B-6 (“ISAM rein in-memory”) widerspricht dem Header “Phase 0–4 umgesetzt” und §6.4 (pread/pwrite). Markiere pro FR einen Status wie implementiert / geplant.
+Referenzfehler: §3.2 verweist für Impedance Mismatch auf NFR-09, richtig ist NFR-08. FR-23 steht in M2/M3, R-3 und NFR-05 sagen M3.
+“Eingefroren” (§11a.5) vs. §14.4: Das Locking und das Verschieben des Puffers fassen eingefrorene Module an. Wie läuft “neue Version” konkret?
+Inhaltlich angreifbar
+§3.3: “95 % der Kartenzahlungen” stammt meines Wissens aus einer Reuters-Meldung von 2017 und bezog sich auf Geldautomaten-Transaktionen. Bitte prüfen oder streichen.
+§8.3: “kein früher Abbruch, O(n²) bei Zyklen” gilt für rekursive CTEs so pauschal nicht (UNION, CYCLE, LIMIT). Eine fairere Darstellung macht Ihre Argumentation glaubwürdiger.
+Fehlende Abschnitte
+
+Fehlercode-Katalog (ERROR <code>), Protokoll-Version/Handshake (sonst ist FR-33 nicht testbar), Antwort-Chunking über 64 MiB, harte Limits (Spalten, Stringlänge, Cursor), Performance-Zahlen (Sie führen sie selbst als “offen”), Abnahmekriterien für FR-19 bis FR-25, Kollation/Normalisierung für s. Die Fallback-Regel R-8 kann bei fehlendem Override stillschweigend falsche Ergebnisse liefern (z. B. nur die Live-Tabelle statt aller Jahres-Splits). Ein Fehler wäre sicherer.
+
+Testing: Feste assert-Fälle reichen für B⁺-Split/Merge kaum. Ein Differential-Test (zufällige Operationen gegen ein sortiertes Array als Referenz) fängt solche Fehler zuverlässig.
+
+Zwei Fragen
+Wofür dient das Dokument? Als Abnahmegrundlage für Dritte oder als Leitfaden für dich und KI-Agenten (AGENTS.md)? Davon hängt ab, wie stark ich Struktur und Formalität empfehle.
+Was bedeutet “eine Million Nutzer” für das Vertrauensmodell? Sind das nur lokale, vertrauenswürdige App-Prozesse am Unix-Socket, oder können Fremde Skripte einspielen? Das entscheidet, ob Punkt 2 oben ein Blocker ist.
+
+Wenn du möchtest, mache ich daraus eine abhakbare Review-Checkliste mit Priorität und Paragraph-Verweis. Falls du lib/m_isam.c und lib/m_dbwords.c hochlädst, prüfe ich auch, ob Pool-Intern bei SELECT und der Insert-Puffer wirklich so im Code stecken.

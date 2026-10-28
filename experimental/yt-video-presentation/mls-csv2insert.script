@@ -1,0 +1,181 @@
+# mls-csv2insert — Präsentation
+# Aus dem mls-Quickstart + den nötigen Bausteinen für csv2insert.c.
+# Zielpublikum: erfahrene C-Programmierer (dynamische Arrays sind bekannt).
+#
+# Direktiven: clear, pause <s>, text..end, code..end, highlight <n>, highlight off
+# Die langen Pausen am Szenenende sind Haltezeit für das Voiceover.
+
+# ---------------------------------------------------------------- Szene 0
+text
+Wir bauen csv2insert: CSV von stdin -> SQL-INSERT-Zeilen.
+Eine Header-Datei (mls_full.h). Kein Makefile, kein Threading.
+end
+pause 13
+
+# ---------------------------------------------------------------- Szene 1
+clear
+text
+Kernmodell: ein Array ist ein int-Handle, kein roher Pointer.
+end
+pause 0.8
+
+code
+m_init();
+int h = m_alloc(0, sizeof(int), MFREE);
+int v = 42;
+m_put(h, &v);               // anhängen
+printf("%d\n", INT(h, 0));  // 42, bounds-checked
+m_free(h);
+m_destruct();
+end
+highlight 5
+pause 2.5
+highlight off
+pause 21.5
+
+# ---------------------------------------------------------------- Szene 2
+clear
+text
+Einbau: genau eine .c-Datei definiert die Implementierung.
+end
+pause 0.8
+
+text
+#define MLS_FULL_IMPLEMENTATION
+#include "mls_full.h"
+end
+pause 1.5
+
+text
+gcc -std=c11 -DMLS_THREAD_SAFE=0 csv2insert.c -o csv2insert -lm -ldl
+end
+pause 13
+
+# ---------------------------------------------------------------- Szene 3
+clear
+text
+Strings sind ebenfalls Handles. tmls gibt am Blockende automatisch frei.
+end
+pause 0.8
+
+code
+int s = s_cstrdup("hallo");       // String-Handle
+s_printf(s, m_len(s), " welt");   // anfügen
+printf("%s\n", m_str(s));         // "hallo welt"
+m_free(s);
+end
+highlight 2
+pause 1.5
+
+code
+tmls buf = m_alloc(0, 1, MFREE);  // char-Puffer, auto-free
+end
+highlight 5
+pause 2.5
+highlight off
+pause 17
+
+# ---------------------------------------------------------------- Szene 4
+clear
+text
+Das Variable-System: Name + Werteliste, per $ im Formatstring expandiert.
+end
+pause 0.8
+
+code
+static const char *cols[] = {"id", "name", "cnt", "ref", "verify"};
+#define NCOLS ((int)ALEN(cols))
+
+tmls vset = vs_add(0, "col_names", cols, NCOLS);
+tmls buf  = vs_string_builder(
+    0, vset, "insert into datax ( $col_names[*] ) values (");
+end
+highlight 4
+pause 2.5
+highlight 5
+pause 2.5
+highlight off
+pause 19.5
+
+# ---------------------------------------------------------------- Szene 5
+clear
+text
+Jetzt die Schleife: eine Zeile lesen, Feldzahl prüfen, sonst überspringen.
+end
+pause 0.8
+
+code
+int len = s_strlen(buf);   // Checkpoint: nur der Header
+
+for (;;) {
+    int fields = vs_read_fields(vset, "fields", stdin, ",");
+    if (vs_klen(fields) == 0)
+        break;                 // EOF
+    if (vs_klen(fields) != NCOLS)
+        continue;              // Formatfehler überspringen
+    /* INSERT-Zeile */
+}
+end
+highlight 4
+pause 2.5
+highlight 5
+pause 2
+highlight off
+pause 18
+
+# ---------------------------------------------------------------- Szene 6
+clear
+text
+Pro Datensatz: auf den Header zurückspulen und die Werte SQL-quoten.
+end
+pause 0.8
+
+code
+m_setlen(buf, len);    // zurück auf den Header
+vs_sql_string_builder(buf, vset, "$'fields[*]' );");
+s_puts(buf);
+end
+highlight 1
+pause 2
+highlight 2
+pause 3
+highlight off
+pause 16.5
+
+# ---------------------------------------------------------------- Szene 7
+clear
+text
+Der ganze Kern: single source of truth, Quoting an genau einer Stelle.
+end
+pause 0.8
+
+code
+void csv2insert(void)
+{
+    tmls vset = vs_add(0, "col_names", cols, NCOLS);
+    tmls buf = vs_string_builder(
+        0, vset, "insert into datax ( $col_names[*] ) values (");
+    int len = s_strlen(buf);
+
+    for (;;) {
+        int fields = vs_read_fields(vset, "fields", stdin, ",");
+        if (vs_klen(fields) == 0) break;
+        if (vs_klen(fields) != NCOLS) continue;
+        m_setlen(buf, len);
+        vs_sql_string_builder(buf, vset, "$'fields[*]' );");
+        s_puts(buf);
+    }
+}
+end
+pause 2.5
+
+text
+printf '1, alice, 3, x, y\n' | ./csv2insert
+end
+pause 1
+
+text
+insert into datax ( id,name,cnt,ref,verify ) values
+('1','alice','3','x','y' );
+end
+pause 15

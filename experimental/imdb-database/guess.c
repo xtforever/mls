@@ -28,10 +28,16 @@ static char g_series_name[512];
 /* 1, wenn g_series_name aus dem Dateinamen stammt (nicht aus den
  * Verzeichnissen). Tiefere Suche nur dann noetig. */
 static int g_name_from_file;
+/* Index des Fallback-Kandidaten "B" aus "A - B" (-1 = keiner). */
+static int g_fallback_idx;
 
 /* Serientitel mit vielen Titelwoertern erreichen bei kurzer Query die
  * normale IMDB_SCORE_MIN nicht ("buffy" vs "Buffy the Vampire Slayer"). */
 #define GUESS_SERIES_MIN 0.25f
+
+/* Ab diesem Score wird die zweite Titelvariante ("A - B") nicht mehr
+ * gesucht; sonst verdraengt z. B. "Teil 1" den richtigen Serientitel. */
+#define GUESS_DASH_FALLBACK_MIN 0.7f
 
 /* Rauschen, das in Filmtiteln praktisch nie vorkommt */
 static const char *NOISE[] = {
@@ -77,6 +83,17 @@ static int is_year (const char *t)
 	return y >= 1800 && y <= 2099;
 }
 
+/* Reine 4-stellige Zahl (auch ausserhalb des Jahresbereichs). */
+static int is_4digits (const char *t)
+{
+	if (strlen (t) != 4)
+		return 0;
+	for (int i = 0; i < 4; i++)
+		if (!isdigit ((unsigned char)t[i]))
+			return 0;
+	return 1;
+}
+
 static int is_se (const char *t) /* s01e07, s1e7 */
 {
 	if (t[0] != 's')
@@ -115,6 +132,14 @@ static int is_noise (const char *t)
 		if (!strcmp (t, *p))
 			return 1;
 	return 0;
+}
+
+/* Sprach-Tag, das auch Titelwort sein kann ("The German"). */
+static int is_lang_tag (const char *t)
+{
+	return !strcmp (t, "german") || !strcmp (t, "deutsch") ||
+	       !strcmp (t, "eng") || !strcmp (t, "english") ||
+	       !strcmp (t, "dt");
 }
 
 /* Ordnungszahl: Ziffern + englisches Suffix "st"/"nd"/"rd"/"th"
@@ -236,6 +261,22 @@ static int convert_numbers (const char *in, char *out, size_t cap)
 	return changed;
 }
 
+/* Letzter Titel-Trenner ("A - B", "A.-.B") in einem Pfad-Element; ein
+ * Bindestrich zwischen Buchstaben ("Spider-Man") trennt keine Varianten. */
+static const char *title_dash (const char *s)
+{
+	const char *last = NULL;
+	for (const char *p = s; *p; p++) {
+		if (*p != '-')
+			continue;
+		int lp = p > s && isalnum ((unsigned char)p[-1]);
+		int ln = p[1] && isalnum ((unsigned char)p[1]);
+		if (!lp && !ln)
+			last = p;
+	}
+	return last;
+}
+
 /* Haengt an cands[ncan-1] eine Zahlwort-Variante an (falls vorhanden). */
 static void add_num_variant (char cands[][1024], int *ncan, int max)
 {
@@ -338,7 +379,14 @@ static int denoise (char **tok, int ntok, int *year, char *out, size_t cap)
 		 * Episoden-/Release-Info -> abschneiden. */
 		if (is_se (t) || is_season_or_episode (t))
 			break;
-		if (is_noise (t))
+		/* Sprach-Tag direkt vor dem Serien-Marker kann Teil des
+		 * Titels sein ("The German S01E01"). Behalten; der
+		 * Prefix-Drop in run_algo entfernt es bei Bedarf
+		 * ("Show.German.S01E01" -> "show"). */
+		int keep_tag = is_lang_tag (t) && i + 1 < ntok &&
+			       (is_se (tok[i + 1]) ||
+				is_season_or_episode (tok[i + 1]));
+		if (is_noise (t) && !keep_tag)
 			continue;
 		/* An Buchstaben/Ziffern-Grenzen zerlegen ("sg1" -> "sg",
 		 * "1"), damit z. B. "Stargate SG1" den DB-Titel
@@ -371,7 +419,7 @@ static int denoise (char **tok, int ntok, int *year, char *out, size_t cap)
 		}
 		for (int j = 0; j < np; j++) {
 			const char *s = parts[j];
-			if (strlen (s) < 2 || is_noise (s))
+			if (strlen (s) < 2 || (is_noise (s) && !keep_tag))
 				continue;
 			/* Eingeklebtes Jahr ("(2019)" -> "2019") ist kein
 			 * Titelwort. Tritt nur im Jahr-Algo auf (roh-Pfad ohne
@@ -440,7 +488,8 @@ static int looks_series (const char *path)
 	for (int i = 0; i < nt; i++) {
 		if (is_se (tok[i]) || is_season_or_episode (tok[i]))
 			return 1;
-		if (!strcmp (tok[i], "staffel") || !strcmp (tok[i], "season"))
+		if (!strcmp (tok[i], "staffel") || !strcmp (tok[i], "season") ||
+		    !strcmp (tok[i], "serien") || !strcmp (tok[i], "series"))
 			return 1;
 	}
 	return 0;
@@ -492,6 +541,40 @@ static int title_prefix (struct imdb_db *db, uint32_t rec, const char *cand)
 	if (!n || strncmp (norm, cand, n) != 0)
 		return 0;
 	return norm[n] == 0 || norm[n] == ' ';
+}
+
+/* Vergleicht zwei normalisierte Strings Wort fuer Wort; Leerraum-/Punkt-
+ * Reste ("Friendship!" vs "Friendship") zaehlen nicht, Wortstellung schon. */
+static int norm_eq (const char *a, const char *b)
+{
+	while (*a || *b) {
+		while (*a == ' ')
+			a++;
+		while (*b == ' ')
+			b++;
+		const char *ae = a, *be = b;
+		while (*ae && *ae != ' ')
+			ae++;
+		while (*be && *be != ' ')
+			be++;
+		size_t al = (size_t)(ae - a), bl = (size_t)(be - b);
+		if (al != bl || memcmp (a, b, al))
+			return 0;
+		a = ae;
+		b = be;
+	}
+	return 1;
+}
+
+/* 1, wenn der normalisierte DB-Titel exakt dem Kandidaten entspricht
+ * (Wortstellung inklusive). Bricht Gleichstand bei vertauschten Woertern
+ * ("Bright Star" vs "Star Bright"). */
+static int title_exact (struct imdb_db *db, uint32_t rec, const char *cand)
+{
+	char cn[512], tn[512];
+	imdb_norm (cand, cn, sizeof cn);
+	imdb_norm (imdb_title (db, rec), tn, sizeof tn);
+	return norm_eq (cn, tn);
 }
 
 /* 1, wenn der normalisierte DB-Titel ein Kuerzel des Seriennamens ist
@@ -564,8 +647,9 @@ static int type_tier (uint8_t t)
 }
 
 /* Ist h (Key hk) besser als b (Key bk)? Prioritaet: Key, laengerer Titel,
- * Typ (Serie), Anzahl gematchter Tokens, IDF-Gewicht, dann bei
- * Namenszwilling das zum year_hint naechste (sonst neuere) Jahr. */
+ * Typ (Serie), Anzahl gematchter Tokens, IDF-Gewicht, exakte
+ * Wortstellung, dann bei Namenszwilling das zum year_hint naechste
+ * (sonst neuere) Jahr. */
 static int hit_better (struct imdb_db *db, int year_hint,
 		       const struct imdb_hit *h, float hk,
 		       const struct imdb_hit *b, float bk)
@@ -590,6 +674,8 @@ static int hit_better (struct imdb_db *db, int year_hint,
 		return h->nmatch > b->nmatch;
 	if (h->weight != b->weight)
 		return h->weight > b->weight;
+	if (h->exact != b->exact)
+		return h->exact > b->exact;
 	if (bk >= 0.0f &&
 	    !strcmp (imdb_title (db, h->rec), imdb_title (db, b->rec))) {
 		int hy = imdb_year (db, h->rec), by = imdb_year (db, b->rec);
@@ -660,11 +746,19 @@ static int cand_current (const char *path, char cands[][1024], int max,
 			continue;
 		imdb_norm (comp[i], norm, sizeof norm);
 		int nt = imdb_split (norm, tok, 256);
+		/* Reiner 4-stelliger Zahlenordner ausserhalb des Jahresbereichs
+		 * ist eine Kategorie, kein Titel (".../2111/..."). */
+		if (i >= 1 && nt == 1 && is_4digits (tok[0]) &&
+		    !is_year (tok[0]))
+			continue;
 		int nc = denoise (tok, nt, &year, cands[ncan], sizeof cands[0]);
 		/* Fuehrendes Jahr kann der Titel selbst sein
 		 * ("1923.YELLOSTONE", "2012.German...", "1883.S01E01"):
-		 * denoise verwirft es sonst als Jahr. */
-		int lead_year = (i >= 1 && nt > 0 && is_year (tok[0]));
+		 * denoise verwirft es sonst als Jahr. Ein Verzeichnis, das
+		 * NUR aus dem Jahr besteht (".../2002/..."), ist dagegen ein
+		 * Jahres-Ordner und kein Titel - sonst gewinnt z. B. die
+		 * Episode "Folge #1.2002" gegen den eigentlichen Filmtitel. */
+		int lead_year = (i >= 1 && nt > 1 && is_year (tok[0]));
 		if (nc <= 0) {
 			/* Nach dem Serien-Marker bleibt nichts uebrig, das
 			 * fuehrende Jahr ist aber der Serientitel ("1883"). */
@@ -737,6 +831,25 @@ static int cand_current (const char *path, char cands[][1024], int max,
 						  cands[ncan]);
 					g_name_from_file = 0;
 				}
+				ncan++;
+			}
+		}
+	}
+	/* "A - B" im Dateinamen: B als Fallback-Kandidat (siehe run_algo),
+	 * damit Untertitel/Episodennamen den Haupttitel nicht verdraengen. */
+	if (ncomp > 0 && !*want_series && !base_series && ncan < max) {
+		const char *dash = title_dash (comp[0]);
+		if (dash) {
+			char sub[1024], sn[1024];
+			char *st[256];
+			int sy = 0;
+			snprintf (sub, sizeof sub, "%s", dash + 1);
+			imdb_norm (sub, sn, sizeof sn);
+			int snt = imdb_split (sn, st, 256);
+			int snc = denoise (st, snt, &sy, cands[ncan],
+					   sizeof cands[0]);
+			if (snc > 0) {
+				g_fallback_idx = ncan;
 				ncan++;
 			}
 		}
@@ -901,6 +1014,7 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 	int file_year = 0, want_series = 0;
 	g_series_name[0] = 0;
 	g_name_from_file = 0;
+	g_fallback_idx = -1;
 	int ncan = algo->cand (path, cands, 8, &file_year, &want_series);
 	/* Tiefer suchen, damit ein schwaecher bewerteter Serientitel
 	 * ueberhaupt unter den Treffern landet (Buffy vs "Buffy the
@@ -921,6 +1035,11 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 	}
 
 	for (int i = 0; i < ncan; i++) {
+		/* Zweite Titelvariante nur als Fallback, wenn der Haupttitel
+		 * schwach trifft ("Shogun - Teil 1" bleibt Shogun). */
+		if (i == g_fallback_idx &&
+		    best.score >= GUESS_DASH_FALLBACK_MIN)
+			continue;
 		/* Vollen Kandidaten und Prefixe (min. 2 Tokens) suchen;
 		 * Release-Tags/Gruppen am Ende wuerden sonst seltene
 		 * Query-Tokens beisteuern. Bei Gleichstand gewinnt der
@@ -934,8 +1053,17 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 				for (const char *p = cc; *p; p++)
 					if (*p == ' ')
 						nt2++;
-				if (nt2 < 2)
-					break;
+				if (nt2 < 2) {
+					/* Ein-Token-Prefix nur, wenn das
+					 * abgeschnittene Ende ein
+					 * Sprach-Tag ist
+					 * ("dark german" -> "dark"). */
+					const char *ol =
+						strrchr (cands[i], ' ');
+					ol = ol ? ol + 1 : cands[i];
+					if (nt2 != 1 || !is_noise (ol))
+						break;
+				}
 				/* Endet der Prefix auf einem Stoppwort,
 				 * degeneriert die Query ("zwei vom" ->
 				 * "zwei") und trifft Kurztitel exakt. */
@@ -961,6 +1089,8 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 			int cnt = imdb_search (db, cc, file_year, want_series,
 					       depth, hits, depth);
 			for (int k = 0; k < cnt; k++) {
+				hits[k].exact = (uint8_t)title_exact (
+					db, hits[k].rec, cc);
 				/* Serientitel, dessen normalisierter Titel
 				 * mit dem Dateinamen-Seriennamen beginnt. */
 				if (want_series && g_series_name[0] &&
@@ -1068,6 +1198,10 @@ static int run_algo (const char *path, struct imdb_db *db, int topk,
 								depth);
 							for (int k = 0; k < cnt;
 							     k++) {
+								hits[k].exact = (uint8_t)title_exact (
+									db,
+									hits[k].rec,
+									q);
 								if (!hits[k].thit ||
 								    hits[k].score <
 									    0.7f)

@@ -6,7 +6,7 @@
 #
 #   - basics: primaryTitle + originalTitle, nicht-Adult, gewaehlte titleTypes
 #   - akas:   deutschsprachige Titel
-#             (region DE/DEAT/AT/CH oder language == de), mit Jahr und
+#             (region DE/DEAT/AT/CH/GB oder language == de), mit Jahr und
 #             Typ des basics-Eintrags (aka-Zeilen tragen beides nicht)
 #
 # Aufruf:
@@ -62,11 +62,13 @@ else
             print $1 "\t" ($6 == "\\N" ? "" : $6) "\t" tcode($2)
         }' | LC_ALL=C sort -u > "$years"
 
-    # deutschsprachige aka-Titel, nach titleId sortiert (Join-Schluessel).
+    # aka-Titel, nach titleId sortiert (Join-Schluessel). GB mitnehmen:
+    # Releases tragen oft den UK-Titel statt des Originaltitels
+    # ("Rise of the Predator" vs "Seal Patrol").
     zcat "$DIR/title.akas.tsv.gz" | LC_ALL=C awk -F'\t' '
         NR > 1 && $3 != "\\N" &&
         ($5 == "de" || $4 == "DE" || $4 == "DEAT" ||
-         $4 == "AT" || $4 == "CH") {
+         $4 == "AT" || $4 == "CH" || $4 == "GB") {
             print $1 "\t" $3
         }' | LC_ALL=C sort -u > "$akas"
 

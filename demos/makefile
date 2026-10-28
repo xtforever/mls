@@ -33,7 +33,30 @@ o  = $(patsubst %.c,%.o,$(1))
 %.exe: %.o $(call o,$(LIBS))
 	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(LDLIBS)
 
-APPS = hdf_dump list_demo table_demo csv2insert sql_demo world 
+APPS = hdf_dump list_demo table_demo csv2insert sql_demo world forth_db_demo forth_db_socket_demo 
+
+# The Forth-ISAM monolith needs its own module chain (plus the mls core for m_init).
+FORTH_SRCS = ../lib/m_fapi.c ../lib/m_engine.c ../lib/m_dbwords.c \
+             ../lib/m_forth.c ../lib/m_isam.c ../lib/m_fproto.c \
+             ../lib/bptree.c ../lib/arena.c ../lib/carray.c \
+             ../lib/darray.c ../lib/strbuf.c ../lib/htable.c \
+             ../lib/hashmap.c ../lib/token.c
+
+# Two-process variant: same app code, socket backend.
+FORTH_SOCKET_SRCS = $(FORTH_SRCS) ../lib/m_fclient.c ../lib/m_fserver.c \
+                    ../lib/m_ftransport.c
+
+forth_db_demo.exed: forth_db_demo.c $(LIBS) $(FORTH_SRCS)
+	$(CC) $(CFLAGS_DEBUG) -o $@ $^ $(LDLIBS)
+
+forth_db_demo.exe: forth_db_demo.c $(LIBS) $(FORTH_SRCS)
+	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(LDLIBS)
+
+forth_db_socket_demo.exed: forth_db_socket_demo.c $(LIBS) $(FORTH_SOCKET_SRCS)
+	$(CC) $(CFLAGS_DEBUG) -o $@ $^ $(LDLIBS)
+
+forth_db_socket_demo.exe: forth_db_socket_demo.c $(LIBS) $(FORTH_SOCKET_SRCS)
+	$(CC) $(CFLAGS_RELEASE) -o $@ $^ $(LDLIBS)
 
 all: $(addsuffix .exe,$(APPS)) $(addsuffix .exed,$(APPS))
 

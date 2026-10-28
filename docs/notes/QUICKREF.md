@@ -212,15 +212,19 @@ User code: mls(h, i)
 
 - `MLS_THREAD_SAFE` is auto-defined on Unix platforms. Users can
   override with `-DMLS_THREAD_SAFE=0` or Makefile `thread_safe=0`.
-- Per-handle `pthread_rwlock_t` (write lock for mutations, read
-  lock for reads).
+- One global **recursive** mutex (`ml_lock`) is held for the whole
+  duration of every handle operation. There are no per-handle locks.
+  Calls from multiple threads are safe but **serialized**.
+- Handles are not meant to be shared across threads: hand off ownership,
+  do not access the same handle concurrently. Raw-pointer APIs (`m_str`,
+  `mls`, `m_buf`) release the lock before returning, so the pointer must
+  not be used while another thread could resize/free the same handle.
 - `s_printf()` on shared handles is safe (uses temp buffer + `m_write`).
 - `conststr_lookup_c` has a 64-bit pointer-truncation race (don't
   call `s_cstr`/`s_ccstr` concurrently from multiple threads).
-- Ring buffer functions (`ring_put`/`ring_get`) bypass per-handle
-  locks — use an external mutex for concurrent access.
-- `m_foreach` iteration releases the read lock between elements.
-  A concurrent writer can delete elements during iteration.
+- Ring buffer functions need an external mutex for concurrent access.
+- `m_foreach` takes the lock per element via `m_next`; no lock is held
+  across the iteration, so a concurrent writer can still mutate the list.
 
 ## Common Pitfalls
 

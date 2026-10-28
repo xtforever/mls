@@ -14,6 +14,25 @@
 static int CS_MAP = 0;
 static int CS_ZERO = 0;
 
+/* Return the char buffer of a string handle. The zero-termination debug
+   check reads data and length from a single locked snapshot, so it neither
+   races with a concurrent realloc nor reports false positives. */
+char *m_str (int m)
+{
+	if (m_is_freed (m) || m_len (m) == 0)
+		return "";
+	lst_t lp = lock_handle (m, 0);
+	char *s = (char *)lp->data;
+#ifdef MLS_DEBUG
+	if (lp->l > 0 && s[lp->l - 1] != 0) {
+		unlock_handle (lp);
+		ERR ("handle %d not zero terminated", m);
+	}
+#endif
+	unlock_handle (lp);
+	return s;
+}
+
 /* prototypes */
 int m_binsert (int buf, const void *data,
 	       int (*cmpf) (const void *data, const void *buf_elem),
@@ -778,11 +797,8 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		size_t nbytes = cnt * width;
 		if (cnt > 0 && nbytes / cnt != width)
 			ERR ("Integer overflow in slice");
-		/* ponytail: threaded builds copy src to a temp and drop the src
-		   lock before taking the dest lock — avoids
-		   lock-order-inversion (rwlock → master). Non-threaded builds
-		   have no locks to invert and copy straight across. */
-#if MLS_THREAD_SAFE
+		/* Copy src out first: keeps the copy overlap-safe (dest may
+		   equal m) and means only one handle slot is held at a time. */
 		lst_t src_lp = lock_handle (m, 0);
 		void *tmp = malloc (nbytes);
 		if (!tmp)
@@ -794,24 +810,6 @@ int m_slice (int dest, int offs, int m, int a, int b)
 		lst_write (dst_lp, offs, tmp, cnt);
 		unlock_handle (dst_lp);
 		free (tmp);
-#else
-		/* dest may equal m (m_mcopy shifts in place), so grow first and
-		   memmove to stay overlap-safe. */
-		lst_t dst_lp = lock_handle (dest, 1);
-		if (dest == m) {
-			if (offs + cnt > dst_lp->max)
-				lst_resize (dst_lp, offs + cnt);
-			if (offs + cnt > dst_lp->l)
-				dst_lp->l = offs + cnt;
-			memmove (lst (dst_lp, offs), lst (dst_lp, (size_t)a),
-				 nbytes);
-		} else {
-			lst_t src_lp = lock_handle (m, 0);
-			lst_write (dst_lp, offs, lst (src_lp, (size_t)a), cnt);
-			unlock_handle (src_lp);
-		}
-		unlock_handle (dst_lp);
-#endif
 	}
 	return dest;
 }
@@ -1354,16 +1352,8 @@ size_t m_count_allocated (void)
 	}
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
-#if MLS_THREAD_SAFE
-		if (l->lock)
-			pthread_rwlock_rdlock (l->lock);
-#endif
 		if (l->data && l->free_hdl != 255)
 			count++;
-#if MLS_THREAD_SAFE
-		if (l->lock)
-			pthread_rwlock_unlock (l->lock);
-#endif
 	}
 	MLS_MASTER_UNLOCK ();
 	return count;
@@ -1385,17 +1375,9 @@ size_t m_total_bytes (void)
 	}
 	for (int idx = 1; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
-#if MLS_THREAD_SAFE
-		if (l->lock)
-			pthread_rwlock_rdlock (l->lock);
-#endif
 		if (l->data && l->free_hdl != 255 &&
 		    !(l->free_hdl & MFREE_NOALLOC))
 			total += l->max * l->w;
-#if MLS_THREAD_SAFE
-		if (l->lock)
-			pthread_rwlock_unlock (l->lock);
-#endif
 	}
 	MLS_MASTER_UNLOCK ();
 	return total;
@@ -1434,10 +1416,6 @@ void m_debug_print (FILE *fp)
 		 "Type", "Len", "Cap", "Data");
 	for (int idx = 0; idx < ML.l; idx++) {
 		lst_t l = lst (&ML, idx);
-#if MLS_THREAD_SAFE
-		if (l->lock)
-			pthread_rwlock_rdlock (l->lock);
-#endif
 		if (l->data && l->free_hdl != 255) {
 			int h = (int)((unsigned int)idx) |
 				((int)(l->uaf_protection) << 24);
@@ -1445,10 +1423,6 @@ void m_debug_print (FILE *fp)
 				 idx, h, l->free_hdl, l->l, l->max,
 				 (void *)l->data);
 		}
-#if MLS_THREAD_SAFE
-		if (l->lock)
-			pthread_rwlock_unlock (l->lock);
-#endif
 	}
 	MLS_MASTER_UNLOCK ();
 }

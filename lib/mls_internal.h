@@ -9,17 +9,24 @@
    that -DMLS_THREAD_SAFE=0 actually disables threading. */
 #if MLS_THREAD_SAFE
 #include <pthread.h>
-typedef pthread_rwlock_t mls_rwlock_t;
+
+/* One global recursive mutex, held for the whole duration of every handle
+   operation. There are no per-handle locks anymore; see
+   docs/guide/thread-safety.md. ml_lock_init() is idempotent (pthread_once)
+   and is called before every acquisition so an early lock is still safe. */
+void ml_lock_init (void);
 
 extern pthread_mutex_t ml_lock;
 extern pthread_mutex_t cs_map_lock;
-#define MLS_MASTER_LOCK() pthread_mutex_lock (&ml_lock)
+#define MLS_MASTER_LOCK()                                                      \
+	do {                                                                   \
+		ml_lock_init ();                                               \
+		pthread_mutex_lock (&ml_lock);                                 \
+	} while (0)
 #define MLS_MASTER_UNLOCK() pthread_mutex_unlock (&ml_lock)
 #define CS_MAP_LOCK() pthread_mutex_lock (&cs_map_lock)
 #define CS_MAP_UNLOCK() pthread_mutex_unlock (&cs_map_lock)
 #else
-typedef void mls_rwlock_t;
-
 #define MLS_MASTER_LOCK() ((void)0)
 #define MLS_MASTER_UNLOCK() ((void)0)
 #define CS_MAP_LOCK() ((void)0)
@@ -33,7 +40,6 @@ struct ls_st {
 	size_t w, l, max;
 	char uaf_protection;
 	uint8_t free_hdl;
-	mls_rwlock_t *lock;
 	char *data;
 };
 typedef struct ls_st *lst_t;

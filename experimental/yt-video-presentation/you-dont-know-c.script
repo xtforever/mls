@@ -1,0 +1,61 @@
+# you-do-not-know-c — multi-scene example
+#
+# Directives:
+#   clear            start a new scene (screen is cleared)
+#   pause 2.5s       hold the current screen for N seconds
+#   text ... end     explanatory text (warm off-white, bold)
+#   code ... end     C code (green, subtle syntax highlighting, line numbers)
+#   highlight <n>    outline code line n of the scene (replaces previous outline)
+#   highlight off    remove the current outline
+#
+# Code lines are numbered automatically from 1, continuing across all code
+# blocks of a scene. Text and code blocks stack top-to-bottom.
+
+text
+A handle is a small positive integer.
+The buffer lives in a library-managed table.
+end
+pause 1
+
+code
+m_init();
+int h = m_alloc(10, sizeof(int), MFREE);
+m_put(h, &i);   // bounds-checked, auto-resizing
+end
+highlight 2
+pause 1.5
+highlight 3
+pause 1.5
+highlight off
+pause 0.5
+
+clear
+
+text
+The handle survives realloc.
+No pointer is held across a resize.
+end
+pause 1
+
+code
+int x = INT(h, 2);   // checked access
+m_free(h);           // recursive teardown
+m_destruct();
+end
+highlight 2
+pause 1.5
+highlight off
+pause 0.5
+
+clear
+
+text
+Use-after-free becomes a loud error.
+end
+pause 1
+
+code
+int y = INT(h, 0);   // stale handle: aborts
+end
+highlight 1
+pause 2

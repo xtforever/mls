@@ -1,6 +1,6 @@
 include ../rules.mk
 
-TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved test_http_hostile http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_m_var test_sql memcached_server test_string_robustness test_splice test_m_subproc test_read_fields test_implode
+TARGETS=test_mls_core test_autofree test_ssplit test_nested_lists test_circular_marker test_slice test_table test_memory_advanced test_http test_http_improved test_http_hostile http_server http_client test_hdf hdf_http_server test_flask test_flask_advanced test_extra test_m_var test_sql memcached_server test_string_robustness test_splice test_m_subproc test_read_fields test_implode test_arena test_carray test_darray test_strbuf test_htable test_hashmap test_token test_bptree test_pager test_m_strpool test_m_forth test_m_isam test_m_dbwords test_m_fproto test_m_engine test_m_fapi test_m_ftransport test_m_fserver test_m_fclient
 ifeq ($(thread_safe),1)
 TARGETS+=test_thread_safe_fuzzy
 TARGETS+=test_thread_safety
@@ -13,6 +13,93 @@ EXE_TARGETS := $(patsubst %,%.exe${OBJ},$(TARGETS))
 ALL: $(EXE_TARGETS) error-handler
 
 memcached_server.exed: memcached_server.od $(DEPS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_arena.exe${OBJ}: test_arena.o${OBJ} ../lib/arena.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_carray.exe${OBJ}: test_carray.o${OBJ} ../lib/carray.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_darray.exe${OBJ}: test_darray.o${OBJ} ../lib/darray.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_strbuf.exe${OBJ}: test_strbuf.o${OBJ} ../lib/strbuf.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_htable.exe${OBJ}: test_htable.o${OBJ} ../lib/htable.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_hashmap.exe${OBJ}: test_hashmap.o${OBJ} ../lib/hashmap.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_token.exe${OBJ}: test_token.o${OBJ} ../lib/token.o${OBJ} ../lib/strbuf.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_bptree.exe${OBJ}: test_bptree.o${OBJ} ../lib/bptree.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_pager.exe${OBJ}: test_pager.o${OBJ} ../lib/pager.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_strpool.exe${OBJ}: test_m_strpool.o${OBJ} ../lib/m_strpool.o${OBJ} ../lib/hashmap.o${OBJ} ../lib/darray.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_forth.exe${OBJ}: test_m_forth.o${OBJ} ../lib/m_forth.o${OBJ} \
+	../lib/arena.o${OBJ} ../lib/carray.o${OBJ} ../lib/darray.o${OBJ} \
+	../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} \
+	../lib/token.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_isam.exe${OBJ}: test_m_isam.o${OBJ} ../lib/m_isam.o${OBJ} \
+	../lib/bptree.o${OBJ} ../lib/darray.o${OBJ} ../lib/hashmap.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_dbwords.exe${OBJ}: test_m_dbwords.o${OBJ} ../lib/m_dbwords.o${OBJ} \
+	../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/bptree.o${OBJ} \
+	../lib/arena.o${OBJ} ../lib/carray.o${OBJ} ../lib/darray.o${OBJ} \
+	../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} \
+	../lib/token.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_fproto.exe${OBJ}: test_m_fproto.o${OBJ} ../lib/m_fproto.o${OBJ} \
+	../lib/strbuf.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_engine.exe${OBJ}: test_m_engine.o${OBJ} ../lib/m_engine.o${OBJ} \
+	../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} \
+	../lib/m_fproto.o${OBJ} ../lib/bptree.o${OBJ} ../lib/arena.o${OBJ} \
+	../lib/carray.o${OBJ} ../lib/darray.o${OBJ} ../lib/strbuf.o${OBJ} \
+	../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} ../lib/token.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_fapi.exe${OBJ}: test_m_fapi.o${OBJ} ../lib/m_fapi.o${OBJ} \
+	../lib/m_fclient.o${OBJ} ../lib/m_ftransport.o${OBJ} \
+	../lib/m_engine.o${OBJ} ../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} \
+	../lib/m_isam.o${OBJ} ../lib/m_fproto.o${OBJ} ../lib/bptree.o${OBJ} \
+	../lib/arena.o${OBJ} ../lib/carray.o${OBJ} ../lib/darray.o${OBJ} \
+	../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} \
+	../lib/token.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_ftransport.exe${OBJ}: test_m_ftransport.o${OBJ} \
+	../lib/m_ftransport.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_fserver.exe${OBJ}: test_m_fserver.o${OBJ} ../lib/m_fserver.o${OBJ} \
+	../lib/m_engine.o${OBJ} ../lib/m_dbwords.o${OBJ} ../lib/m_forth.o${OBJ} \
+	../lib/m_isam.o${OBJ} ../lib/m_fproto.o${OBJ} ../lib/m_ftransport.o${OBJ} \
+	../lib/bptree.o${OBJ} ../lib/arena.o${OBJ} ../lib/carray.o${OBJ} \
+	../lib/darray.o${OBJ} ../lib/strbuf.o${OBJ} ../lib/htable.o${OBJ} \
+	../lib/hashmap.o${OBJ} ../lib/token.o${OBJ}
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test_m_fclient.exe${OBJ}: test_m_fclient.o${OBJ} ../lib/m_fclient.o${OBJ} \
+	../lib/m_fserver.o${OBJ} ../lib/m_engine.o${OBJ} ../lib/m_dbwords.o${OBJ} \
+	../lib/m_forth.o${OBJ} ../lib/m_isam.o${OBJ} ../lib/m_fproto.o${OBJ} \
+	../lib/m_ftransport.o${OBJ} ../lib/bptree.o${OBJ} ../lib/arena.o${OBJ} \
+	../lib/carray.o${OBJ} ../lib/darray.o${OBJ} ../lib/strbuf.o${OBJ} \
+	../lib/htable.o${OBJ} ../lib/hashmap.o${OBJ} ../lib/token.o${OBJ}
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 test_string_robustness.exe${OBJ}: test_string_robustness.o${OBJ} $(DEPS)

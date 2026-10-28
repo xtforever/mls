@@ -46,6 +46,23 @@ check: $(TARGET) $(BUILD) $(MOVDB)
 	# Ein Sammlungsordner ("...Collection...") darf nicht als Titel
 	# durchschlagen; der Dateiname (Cartouche) ist massgeblich.
 	! grep -q 'Belmondo (2003)' /tmp/imdb-guess.out
+	# Ein reiner Jahres-Ordner (".../2002/...") ist kein Titel: der
+	# gleichnamige Film "2002" darf den echten Filmtitel nicht
+	# verdraengen.
+	! grep -q '(2001) tt9000022' /tmp/imdb-guess.out
+	grep -q 'No Mans Land (2014) tt9000023' /tmp/imdb-guess.out
+	# "German" ist Release-Tag, kann aber Teil des Titels sein:
+	# "The German S01E04" -> "The German", nicht der Release-Group-Name.
+	grep -q 'The German (2025) tt9000024' /tmp/imdb-guess.out
+	# Zwei Titelvarianten "A - B": B wird als Fallback-Kandidat gesucht,
+	# nicht nur der Prefix A ("Ein Tolpatsch ... - Der Hornochse ...").
+	grep -q 'Der Hornochse und sein Zugpferd (1981) tt9000025' /tmp/imdb-guess.out
+	# Gleiche Tokens, andere Wortstellung: exakte Reihenfolge gewinnt
+	# "Bright Star" (2009) gegen "Star Bright" (1944).
+	grep -q 'Bright Star (2009) tt9000028' /tmp/imdb-guess.out
+	# "serien"-Ordner: Episodentitel im Dateinamen verliert gegen die
+	# Serie im Elternverzeichnis ("Die Märchenbraut", nicht Pulp Fiction).
+	grep -q 'Die Märchenbraut (1980) tt9000029' /tmp/imdb-guess.out
 	# movdb: Roundtrip build -> query ueber den Mini-Index (TSV-Ausgabe).
 	./$(TARGET) /tmp/imdb-mini.bin testdata/mini-movies.txt --tsv > /tmp/imdb-mini-guess.tsv 2> /dev/null
 	./$(MOVDB) build /tmp/imdb-mini-guess.tsv /tmp/imdb-mini-movdb.bin
